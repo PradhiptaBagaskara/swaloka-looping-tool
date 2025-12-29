@@ -29,5 +29,21 @@ Swaloka Looping Tool simplifies the process of creating long-form or repetitive 
 - **macOS**: Native Apple Silicon and Intel support with Metal rendering.
 - **Windows**: Full support for Windows 10/11 with high-DPI scaling for 4K monitors.
 
+## macOS Installation Notes
+
+Since this application is distributed as an independent creative tool, you may see a "Developer cannot be verified" warning on your first launch.
+
+### How to Open the App:
+1. Try to open the app normally. When the warning appears, click **Done** (**do NOT click move to trash**).
+2. Open your Mac's **System Settings** → **Privacy & Security**.
+3. Scroll down to the **Security** section.
+4. You will see a message stating "Swaloka Looping Tool was blocked." Click the **Open Anyway** button.
+
+### Quick Terminal Method (For Advanced Users):
+If you want to bypass the security check via terminal, run:
+```bash
+sudo xattr -rd com.apple.quarantine /Applications/Swaloka\ Looping\ Tool.app
+```
+
 ---
 *Swaloka Looping Tool — Creative Video Automation Made Simple.*
