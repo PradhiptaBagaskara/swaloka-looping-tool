@@ -24,16 +24,18 @@ jobs:
       - name: Build macOS
         run: flutter build macos --release
 
-      - name: Zip macOS build
+      - name: Create macOS DMG
         run: |
-          cd build/macos/Build/Products/Release
-          zip -r ../../../../swaloka-looping-tool-macos.zip *.app
+          mkdir -p build/macos/installer
+          cp -R "build/macos/Build/Products/Release/Swaloka Looping Tool.app" build/macos/installer/
+          ln -s /Applications build/macos/installer/Applications
+          hdiutil create -volname "Swaloka Looping Tool" -srcfolder build/macos/installer -ov -format UDZO "Swaloka_Looping_Tool.dmg"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-zip
-          path: swaloka-looping-tool-macos.zip
+          name: macos-dmg
+          path: Swaloka_Looping_Tool.dmg
 
   build-windows:
     runs-on: windows-latest
@@ -53,16 +55,16 @@ jobs:
       - name: Build Windows
         run: flutter build windows --release
 
-      - name: Zip Windows build
+      - name: Create Windows Installer (Inno Setup)
         shell: pwsh
         run: |
-          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath swaloka-looping-tool-windows.zip
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows/installer_script.iss
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-zip
-          path: swaloka-looping-tool-windows.zip
+          name: windows-installer
+          path: Swaloka_Looping_Tool_Windows_Installer.exe
 
   release:
     needs: [build-macos, build-windows]
@@ -77,8 +79,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            macos-zip/swaloka-looping-tool-macos.zip
-            windows-zip/swaloka-looping-tool-windows.zip
+            macos-dmg/Swaloka_Looping_Tool.dmg
+            windows-installer/Swaloka_Looping_Tool_Windows_Installer.exe
           draft: false
           prerelease: false
           generate_release_notes: true
