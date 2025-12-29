@@ -45,5 +45,13 @@ If you want to bypass the security check via terminal, run:
 sudo xattr -rd com.apple.quarantine /Applications/Swaloka\ Looping\ Tool.app
 ```
 
+## Legal Disclaimer
+
+**Swaloka Looping Tool** is provided "as is" without warranty of any kind, either expressed or implied.
+
+*   **No Responsibility**: The developers and contributors are not responsible for any misuse of this application, including but not limited to the processing of copyrighted material without permission.
+*   **User Liability**: Users are solely responsible for ensuring that their use of this tool complies with local laws and the Terms of Service of any platform where the output videos are uploaded (such as YouTube, TikTok, or Instagram).
+*   **Limitation of Liability**: In no event shall the authors be liable for any claim, damages, or other liability arising from the use of this software.
+
 ---
 *Swaloka Looping Tool — Creative Video Automation Made Simple.*
