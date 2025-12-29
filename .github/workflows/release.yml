@@ -27,7 +27,7 @@ jobs:
       - name: Zip macOS build
         run: |
           cd build/macos/Build/Products/Release
-          zip -r ../../../../swaloka-looping-tool-macos.zip swaloka_looping_tool.app
+          zip -r ../../../../swaloka-looping-tool-macos.zip *.app
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
