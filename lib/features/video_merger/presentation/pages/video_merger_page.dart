@@ -621,13 +621,7 @@ class VideoMergerPage extends ConsumerWidget {
                         child: Container(
                           width: double.infinity,
                           color: const Color(0xFF0F0F0F),
-                          child:
-                              project.audioFiles.isEmpty &&
-                                  project.backgroundVideo == null &&
-                                  (project.title == null ||
-                                      project.title!.isEmpty)
-                              ? _buildEmptyState(context)
-                              : _buildTimelineView(context, ref, project),
+                          child: _buildTimelineView(context, ref, project),
                         ),
                       ),
                     ],
@@ -1030,31 +1024,6 @@ class VideoMergerPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.cloud_upload_outlined, size: 64, color: Colors.grey[800]),
-          const SizedBox(height: 24),
-          const Text(
-            'Add your media assets to start',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.white70,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Select background video and audio files from the sidebar',
-            style: TextStyle(color: Colors.grey[600]),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildTimelineView(
     BuildContext context,
     WidgetRef ref,
@@ -1172,24 +1141,6 @@ class VideoMergerPage extends ConsumerWidget {
         ),
         if (!collapsedSections.contains('AUDIO TRACKS (Sequential)')) ...[
           const SizedBox(height: 12),
-          if (project.audioFiles.isNotEmpty) ...[
-            ...project.audioFiles.asMap().entries.map((e) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _buildMediaItem(
-                  context,
-                  e.value,
-                  Icons.audiotrack,
-                  index: e.key + 1,
-                  label: 'Audio file',
-                  onRemove: () => ref
-                      .read(activeProjectProvider.notifier)
-                      .removeAudioAt(e.key),
-                ),
-              );
-            }),
-            const SizedBox(height: 12),
-          ],
           _buildDropZone(
             context,
             label: 'Drop audio files here or click to add',
@@ -1218,6 +1169,24 @@ class VideoMergerPage extends ConsumerWidget {
             },
             onTap: () => _selectAudioFiles(context, ref),
           ),
+          if (project.audioFiles.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            ...project.audioFiles.asMap().entries.map((e) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _buildMediaItem(
+                  context,
+                  e.value,
+                  Icons.audiotrack,
+                  index: e.key + 1,
+                  label: 'Audio file',
+                  onRemove: () => ref
+                      .read(activeProjectProvider.notifier)
+                      .removeAudioAt(e.key),
+                ),
+              );
+            }),
+          ],
         ],
       ],
     );
@@ -1645,10 +1614,10 @@ class VideoMergerPage extends ConsumerWidget {
               children: [
                 Icon(
                   project.detectedEncoder != null
-                      ? Icons.memory
+                      ? (project.useGpu ? Icons.bolt : Icons.memory)
                       : Icons.developer_board,
                   color: project.detectedEncoder != null
-                      ? Colors.greenAccent
+                      ? (project.useGpu ? Colors.greenAccent : Colors.white70)
                       : Colors.orangeAccent,
                   size: 20,
                 ),
@@ -1659,8 +1628,10 @@ class VideoMergerPage extends ConsumerWidget {
                     children: [
                       Text(
                         project.detectedEncoder != null
-                            ? 'Hardware Acceleration Detected'
-                            : 'Using CPU Encoding',
+                            ? (project.useGpu
+                                  ? 'GPU Acceleration Active'
+                                  : 'CPU Encoding Active')
+                            : 'CPU Encoding (Default)',
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
@@ -1668,23 +1639,37 @@ class VideoMergerPage extends ConsumerWidget {
                       ),
                       Text(
                         project.detectedEncoder != null
-                            ? 'Found: ${project.detectedEncoder}. Your GPU will be used for faster rendering.'
-                            : 'No compatible hardware encoder found. Rendering will be slower.',
+                            ? (project.useGpu
+                                  ? 'Using ${project.detectedEncoder} for faster rendering.'
+                                  : 'Hardware found but using CPU for encoding.')
+                            : 'No compatible GPU found. Using CPU for processing.',
                         style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                       ),
                     ],
                   ),
                 ),
-                if (project.detectedEncoder != null)
-                  Switch(
-                    value: project.useGpu,
-                    activeColor: Colors.greenAccent,
-                    onChanged: (val) {
-                      ref
-                          .read(activeProjectProvider.notifier)
-                          .updateSettings(useGpu: val);
-                    },
-                  ),
+                Switch(
+                  // The switch represents "GPU Acceleration"
+                  // It should be ON only if a GPU is detected AND useGpu is true.
+                  value: project.detectedEncoder != null && project.useGpu,
+                  activeTrackColor: Colors.greenAccent.withValues(alpha: 0.5),
+                  thumbColor: WidgetStateProperty.resolveWith<Color?>((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return Colors.greenAccent;
+                    }
+                    if (states.contains(WidgetState.disabled)) {
+                      return Colors.grey[800];
+                    }
+                    return null; // Use default
+                  }),
+                  onChanged: project.detectedEncoder != null
+                      ? (val) {
+                          ref
+                              .read(activeProjectProvider.notifier)
+                              .updateSettings(useGpu: val);
+                        }
+                      : null,
+                ),
               ],
             ),
           ),
