@@ -1,10 +1,88 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/media_information.dart';
 import 'package:path_provider/path_provider.dart';
+
+/// Media information extracted from ffprobe
+class MediaInfo {
+  final int width;
+  final int height;
+  final String? videoCodec;
+  final String? audioCodec;
+  final int? audioBitrate;
+  final int? audioSampleRate;
+
+  MediaInfo({
+    required this.width,
+    required this.height,
+    this.videoCodec,
+    this.audioCodec,
+    this.audioBitrate,
+    this.audioSampleRate,
+  });
+
+  factory MediaInfo.fromMediaInformation(MediaInformation info) {
+    // Get basic duration info from MediaInformation
+    // Note: MediaInformation has limited methods available
+    int width = 0, height = 0;
+    String? videoCodec, audioCodec;
+    int? audioBitrate, audioSampleRate;
+
+    try {
+      final duration = info.getDuration();
+      if (duration != null && duration.isNotEmpty) {
+        // MediaInformation has getDuration() method
+        // For detailed info, we'd need to parse the JSON output directly
+        // For now, we'll return defaults and let the check decide to re-encode
+      }
+    } catch (_) {
+      // If parsing fails, use defaults
+    }
+
+    return MediaInfo(
+      width: width,
+      height: height,
+      videoCodec: videoCodec,
+      audioCodec: audioCodec,
+      audioBitrate: audioBitrate,
+      audioSampleRate: audioSampleRate,
+    );
+  }
+
+  /// Check if video needs re-encoding for given parameters
+  bool needsVideoEncoding({
+    required int targetWidth,
+    required int targetHeight,
+    required bool needsScaleOrPad,
+  }) {
+    // Re-encode if resolution changes or if scaling/padding is needed
+    if (width != targetWidth || height != targetHeight) return true;
+    if (needsScaleOrPad) return true;
+    return false;
+  }
+
+  /// Check if audio needs re-encoding
+  bool needsAudioEncoding({
+    required int targetBitrate,
+    required int targetSampleRate,
+    required bool isSingleFile,
+  }) {
+    // If single file, check if matches target
+    if (isSingleFile) {
+      final matchesCodec = audioCodec?.toLowerCase() == 'aac';
+      final matchesBitrate =
+          (audioBitrate ?? 0) >= targetBitrate * 900; // Allow some tolerance
+      final matchesSampleRate = (audioSampleRate ?? 0) == targetSampleRate;
+      return !(matchesCodec && matchesBitrate && matchesSampleRate);
+    }
+    // Multiple files always need encoding (merging)
+    return true;
+  }
+}
 
 /// Service for merging background video with sequential audio files
 class VideoMergerService {
@@ -24,6 +102,7 @@ class VideoMergerService {
   /// [preset] - FFmpeg encoding preset (e.g., ultrafast, slow)
   /// [crf] - Constant Rate Factor (0-51, lower is better quality)
   /// [enableFastStart] - Whether to enable +faststart for web optimization
+  /// [avoidReencoding] - If true, skip re-encoding when not needed (faster, no quality loss)
   /// [extraFlags] - Optional extra FFmpeg flags to append
   /// [onProgress] - Callback for progress updates (0.0 to 1.0)
   /// [onLog] - Callback for real-time FFmpeg logs
@@ -42,6 +121,7 @@ class VideoMergerService {
     int crf = 18,
     bool enableFastStart = true,
     bool useGpu = true,
+    bool avoidReencoding = true,
     String? selectedEncoder,
     int concurrencyLimit = 4,
     List<String> extraFlags = const [],
@@ -63,6 +143,7 @@ class VideoMergerService {
           crf: crf,
           enableFastStart: enableFastStart,
           useGpu: useGpu,
+          avoidReencoding: avoidReencoding,
           selectedEncoder: selectedEncoder,
           concurrencyLimit: concurrencyLimit,
           extraFlags: extraFlags,
@@ -112,6 +193,7 @@ class VideoMergerService {
         crf: crf,
         enableFastStart: enableFastStart,
         useGpu: useGpu,
+        avoidReencoding: avoidReencoding,
         selectedEncoder: selectedEncoder,
         extraFlags: extraFlags,
         onProgress: (progress) =>
@@ -154,6 +236,7 @@ class VideoMergerService {
     int crf = 18,
     bool enableFastStart = true,
     bool useGpu = true,
+    bool avoidReencoding = true,
     String? selectedEncoder,
     int concurrencyLimit = 4,
     List<String> extraFlags = const [],
@@ -248,7 +331,45 @@ class VideoMergerService {
       final audioDur = await _getDurationWindows(mergedAudioPath);
       final videoDur = await _getDurationWindows(backgroundVideoPath);
 
-      // 6. Final Merge - Use selected encoder if provided, otherwise auto-detect
+      // 6. Smart encoding: Check if re-encoding is needed
+      bool needsVideoEncode = true;
+      bool needsAudioEncode = true;
+
+      if (avoidReencoding) {
+        try {
+          // Get background video info
+          final videoInfo = await _getMediaInfoWindows(backgroundVideoPath);
+
+          // Check if video needs encoding
+          final needsScaleOrPad =
+              videoInfo.width != width || videoInfo.height != height;
+          needsVideoEncode = videoInfo.needsVideoEncoding(
+            targetWidth: width,
+            targetHeight: height,
+            needsScaleOrPad: needsScaleOrPad,
+          );
+
+          // Check if audio needs encoding (multiple files always need it)
+          needsAudioEncode = audioFiles.length != 1;
+          if (!needsAudioEncode) {
+            // Single file: check if audio already matches
+            final audioInfo = await _getMediaInfoWindows(audioFiles[0]);
+            needsAudioEncode = audioInfo.needsAudioEncoding(
+              targetBitrate: 192,
+              targetSampleRate: 44100,
+              isSingleFile: true,
+            );
+          }
+
+          onLog?.call(
+            'Smart encoding: Video re-encode=$needsVideoEncode, Audio re-encode=$needsAudioEncode',
+          );
+        } catch (e) {
+          onLog?.call('Could not check media info, forcing re-encoding: $e');
+        }
+      }
+
+      // 7. Final Merge - Use selected encoder if provided, otherwise auto-detect
       final encoder = selectedEncoder ?? await _getBestEncoderWindows(useGpu);
       final mappedPreset = _mapPresetForEncoder(preset, encoder);
       final qParam = encoder.contains('nvenc') || encoder.contains('qsv')
@@ -270,28 +391,57 @@ class VideoMergerService {
             ]
           : ['-i', backgroundVideoPath];
 
-      onLog?.call('Final render starting (using $encoder)...');
-      final finalResult = await Process.start('ffmpeg', [
+      // Build ffmpeg command based on encoding needs
+      final videoCodec = needsVideoEncode ? encoder : 'copy';
+      final audioCodec = needsAudioEncode ? 'aac' : 'copy';
+      final needsVideoFilter = needsVideoEncode;
+
+      onLog?.call(
+        'Final render starting (using $encoder, vcodec=$videoCodec, acodec=$audioCodec)...',
+      );
+
+      final commandBuilder = <String>[
         '-y',
         ...loopArgs,
         '-i',
         mergedAudioPath,
-        '-vf',
-        "scale=$width:$height:force_original_aspect_ratio=decrease,pad=$width:$height:(ow-iw)/2:(oh-ih)/2",
-        '-c:v',
-        encoder,
-        ...qParam.split(' '),
-        if (mappedPreset.isNotEmpty) ...['-preset', mappedPreset],
-        '-c:a',
-        'aac',
-        '-b:a',
-        '192k',
-        if (enableFastStart) ...['-movflags', '+faststart'],
-        ...extraFlags,
-        ...metadata,
-        '-shortest',
-        outputPath,
-      ]);
+      ];
+
+      // Add video filter only if needed
+      if (needsVideoFilter) {
+        commandBuilder.addAll([
+          '-vf',
+          "scale=$width:$height:force_original_aspect_ratio=decrease,pad=$width:$height:(ow-iw)/2:(oh-ih)/2",
+        ]);
+      }
+
+      // Add video codec and parameters
+      commandBuilder.addAll(['-c:v', videoCodec]);
+
+      // Add encoding parameters only if re-encoding
+      if (needsVideoEncode) {
+        commandBuilder.addAll([...qParam.split(' ')]);
+        if (mappedPreset.isNotEmpty) {
+          commandBuilder.addAll(['-preset', mappedPreset]);
+        }
+      }
+
+      // Add audio codec and parameters
+      commandBuilder.addAll(['-c:a', audioCodec]);
+      if (needsAudioEncode) {
+        commandBuilder.addAll(['-b:a', '192k']);
+      }
+
+      // Add flags
+      if (enableFastStart) {
+        commandBuilder.addAll(['-movflags', '+faststart']);
+      }
+      commandBuilder.addAll(extraFlags);
+      commandBuilder.addAll(metadata);
+      commandBuilder.add('-shortest');
+      commandBuilder.add(outputPath);
+
+      final finalResult = await Process.start('ffmpeg', commandBuilder);
 
       // Pipe FFmpeg output to our log callback
       finalResult.stderr.transform(SystemEncoding().decoder).listen((data) {
@@ -323,6 +473,63 @@ class VideoMergerService {
       path,
     ]);
     return double.tryParse(result.stdout.toString().trim()) ?? 0.0;
+  }
+
+  /// Get media info using ffprobe on Windows
+  Future<MediaInfo> _getMediaInfoWindows(String path) async {
+    try {
+      final result = await Process.run('ffprobe', [
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0,a:0',
+        '-show_entries',
+        'stream=codec_name,width,height,bit_rate,sample_rate',
+        '-of',
+        'json',
+        path,
+      ]);
+
+      if (result.exitCode != 0) {
+        throw Exception('Failed to get media info');
+      }
+
+      final jsonStr = result.stdout.toString().trim();
+      final jsonData = jsonDecode(jsonStr) as Map<String, dynamic>;
+      final streams = jsonData['streams'] as List<dynamic>;
+
+      int width = 0, height = 0;
+      String? videoCodec, audioCodec;
+      int? audioBitrate, audioSampleRate;
+
+      for (final stream in streams) {
+        final codec = stream['codec_name'] as String?;
+        if (codec != null) {
+          if (codec.startsWith('h264') || codec.startsWith('hevc')) {
+            videoCodec = codec;
+            width = (stream['width'] as int?) ?? 0;
+            height = (stream['height'] as int?) ?? 0;
+          } else {
+            audioCodec = codec;
+            audioBitrate = int.tryParse(stream['bit_rate']?.toString() ?? '0');
+            audioSampleRate = int.tryParse(
+              stream['sample_rate']?.toString() ?? '0',
+            );
+          }
+        }
+      }
+
+      return MediaInfo(
+        width: width,
+        height: height,
+        videoCodec: videoCodec,
+        audioCodec: audioCodec,
+        audioBitrate: audioBitrate,
+        audioSampleRate: audioSampleRate,
+      );
+    } catch (e) {
+      throw Exception('Failed to get media info: $e');
+    }
   }
 
   /// Build FFmpeg metadata flags as a list from title, author, and comment.
@@ -605,6 +812,7 @@ class VideoMergerService {
     int crf = 18,
     bool enableFastStart = true,
     bool useGpu = true,
+    bool avoidReencoding = true,
     String? selectedEncoder,
     List<String> extraFlags = const [],
     void Function(double progress)? onProgress,
@@ -646,11 +854,55 @@ class VideoMergerService {
     }
 
     final mappedPreset = _mapPresetForEncoder(preset, encoder);
+
+    // Smart encoding: Check if re-encoding is needed
+    bool needsVideoEncode = true;
+    bool needsAudioEncode = true;
+    bool needsVideoFilter = false;
+
+    if (avoidReencoding && !Platform.isWindows) {
+      try {
+        // Get background video info
+        final session = await FFprobeKit.getMediaInformation(
+          backgroundVideoPath,
+        );
+        final information = session.getMediaInformation();
+
+        if (information != null) {
+          final videoInfo = MediaInfo.fromMediaInformation(information);
+
+          // Check if video needs encoding
+          final needsScaleOrPad =
+              videoInfo.width != width || videoInfo.height != height;
+          needsVideoEncode = videoInfo.needsVideoEncoding(
+            targetWidth: width,
+            targetHeight: height,
+            needsScaleOrPad: needsScaleOrPad,
+          );
+          needsVideoFilter = needsScaleOrPad;
+        }
+
+        // For audio: always encode when using ffmpegKit since we're re-encoding during merge
+        // This is a simplification - in the future we could optimize single-file audio paths too
+      } catch (e) {
+        // On error, default to encoding everything
+      }
+    }
+
+    // Build command based on encoding needs
+    final videoCodec = needsVideoEncode ? encoder : 'copy';
+    final audioCodec = needsAudioEncode ? 'aac' : 'copy';
+
     final optimizationFlags = [
-      '-vf "scale=$width:$height:force_original_aspect_ratio=decrease,pad=$width:$height:(ow-iw)/2:(oh-ih)/2"',
-      '-c:v $encoder $qualityParam',
-      if (mappedPreset.isNotEmpty) '-preset $mappedPreset',
-      '-c:a aac -b:a 192k $fastStartFlag $extraFlagsStr',
+      if (needsVideoFilter)
+        '-vf "scale=$width:$height:force_original_aspect_ratio=decrease,pad=$width:$height:(ow-iw)/2:(oh-ih)/2"',
+      '-c:v $videoCodec',
+      if (needsVideoEncode) qualityParam,
+      if (needsVideoEncode && mappedPreset.isNotEmpty) '-preset $mappedPreset',
+      '-c:a $audioCodec',
+      if (needsAudioEncode) '-b:a 192k',
+      fastStartFlag,
+      extraFlagsStr,
     ].where((flag) => flag.isNotEmpty).join(' ');
 
     if (audioDuration > videoDuration) {
@@ -676,16 +928,5 @@ class VideoMergerService {
     }
 
     onProgress?.call(1.0);
-  }
-
-  /// Get media information (duration, codec, etc.)
-  Future<MediaInformation?> getMediaInformation(String mediaPath) async {
-    if (Platform.isWindows) {
-      // On Windows, the plugin's MediaInformation class might not be fully functional
-      // without the native bridge. Return null or a minimal representation if needed.
-      return null;
-    }
-    final session = await FFprobeKit.getMediaInformation(mediaPath);
-    return session.getMediaInformation();
   }
 }
