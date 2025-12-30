@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 /// Service for merging background video with sequential audio files
 class VideoMergerService {
+  // ignore: unused_field
   String? _cachedEncoder;
 
   /// Merge background video with multiple audio files
@@ -374,7 +375,7 @@ class VideoMergerService {
       final batchTasks = <Future<void>>[];
       for (int j = i; j < end; j++) {
         final extractedPath =
-            '${tempDir.path}/audio_${j}_${DateTime.now().millisecondsSinceEpoch}_${j}.aac';
+            '${tempDir.path}/audio_${j}_${DateTime.now().millisecondsSinceEpoch}_$j.aac';
         extractedAudioFiles.add(extractedPath);
         batchTasks.add(_extractAudio(audioFiles[j], extractedPath));
       }
@@ -514,8 +515,8 @@ class VideoMergerService {
         final qValue = ((51 - crf) / 51 * 100).clamp(30, 90).toInt();
         qualityParam = '-q:v $qValue';
       } else if (Platform.isWindows) {
-        final detected = await getBestAvailableHardwareEncoder();
-        if (detected != null) {
+        final detected = await _getBestEncoderWindows(useGpu);
+        if (detected != "libx264") {
           encoder = detected;
           final qValue = ((51 - crf) / 51 * 100).clamp(30, 90).toInt();
           qualityParam = '-q:v $qValue';

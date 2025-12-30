@@ -1443,7 +1443,7 @@ class VideoMergerPage extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<int>(
-                      value: project.concurrencyLimit,
+                      initialValue: project.concurrencyLimit,
                       isExpanded: true,
                       decoration: InputDecoration(
                         contentPadding: const EdgeInsets.symmetric(
@@ -1763,12 +1763,12 @@ class VideoMergerPage extends ConsumerWidget {
                                       // Refresh hardware info
                                       ref.invalidate(hardwareInfoProvider);
                                     },
-                                    child: const Text(
-                                      'I installed it, check again',
-                                    ),
                                     style: TextButton.styleFrom(
                                       foregroundColor: Colors.grey,
                                       textStyle: const TextStyle(fontSize: 11),
+                                    ),
+                                    child: const Text(
+                                      'I installed it, check again',
                                     ),
                                   ),
                                 ],
