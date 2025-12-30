@@ -1,7 +1,5 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
-// ignore: unused_import
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 
 /// A professional hardware discovery service that makes it easy to detect
 /// CPU, GPU, and encoding capabilities across platforms.

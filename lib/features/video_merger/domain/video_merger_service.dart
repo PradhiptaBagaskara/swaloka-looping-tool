@@ -1,10 +1,5 @@
 import 'dart:io';
-import 'dart:convert';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
-import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/media_information.dart';
+import 'dart:math';
 import 'package:path_provider/path_provider.dart';
 
 /// Media information extracted from ffprobe
@@ -24,34 +19,6 @@ class MediaInfo {
     this.audioBitrate,
     this.audioSampleRate,
   });
-
-  factory MediaInfo.fromMediaInformation(MediaInformation info) {
-    // Get basic duration info from MediaInformation
-    // Note: MediaInformation has limited methods available
-    int width = 0, height = 0;
-    String? videoCodec, audioCodec;
-    int? audioBitrate, audioSampleRate;
-
-    try {
-      final duration = info.getDuration();
-      if (duration != null && duration.isNotEmpty) {
-        // MediaInformation has getDuration() method
-        // For detailed info, we'd need to parse the JSON output directly
-        // For now, we'll return defaults and let the check decide to re-encode
-      }
-    } catch (_) {
-      // If parsing fails, use defaults
-    }
-
-    return MediaInfo(
-      width: width,
-      height: height,
-      videoCodec: videoCodec,
-      audioCodec: audioCodec,
-      audioBitrate: audioBitrate,
-      audioSampleRate: audioSampleRate,
-    );
-  }
 
   /// Check if video needs re-encoding for given parameters
   bool needsVideoEncoding({
@@ -86,28 +53,24 @@ class MediaInfo {
 
 /// Service for merging background video with sequential audio files
 class VideoMergerService {
-  // ignore: unused_field
-  String? _cachedEncoder;
-
   /// Merge background video with multiple audio files
   ///
-  /// [backgroundVideoPath] - Path to the background video file
+  /// [backgroundVideoPath] - Path to background video file
   /// [audioFiles] - List of audio/video file paths (audio will be extracted from videos)
-  /// [outputPath] - Path where the final merged video will be saved
+  /// [outputPath] - Path where final merged video will be saved
   /// [title] - Video title metadata
   /// [author] - Video author metadata
   /// [comment] - Video comment metadata
-  /// [width] - Output video width
-  /// [height] - Output video height
-  /// [preset] - FFmpeg encoding preset (e.g., ultrafast, slow)
-  /// [crf] - Constant Rate Factor (0-51, lower is better quality)
-  /// [enableFastStart] - Whether to enable +faststart for web optimization
+  /// [useGpu] - Whether to use GPU acceleration
+  /// [selectedEncoder] - Specific encoder to use (null for auto-detect)
   /// [avoidReencoding] - If true, skip re-encoding when not needed (faster, no quality loss)
-  /// [extraFlags] - Optional extra FFmpeg flags to append
+  /// [concurrencyLimit] - Maximum number of parallel audio processing tasks
+  /// [audioLoopCount] - Number of times to loop and randomize audio
   /// [onProgress] - Callback for progress updates (0.0 to 1.0)
   /// [onLog] - Callback for real-time FFmpeg logs
+  /// [loopCount] - Loop count to use for output filename prefix
   ///
-  /// Returns the path to the merged video file
+  /// Returns: path to merged video file
   Future<String> mergeVideoWithAudio({
     required String backgroundVideoPath,
     required List<String> audioFiles,
@@ -115,818 +78,210 @@ class VideoMergerService {
     String? title,
     String? author,
     String? comment,
-    int width = 1920,
-    int height = 1080,
-    String preset = 'slow',
-    int crf = 18,
-    bool enableFastStart = true,
     bool useGpu = true,
-    bool avoidReencoding = true,
     String? selectedEncoder,
+    bool avoidReencoding = true,
     int concurrencyLimit = 4,
+    int audioLoopCount = 1,
     List<String> extraFlags = const [],
     void Function(double progress)? onProgress,
     void Function(String log)? onLog,
   }) async {
     try {
-      if (Platform.isWindows) {
-        return _mergeVideoWithAudioWindows(
-          backgroundVideoPath: backgroundVideoPath,
-          audioFiles: audioFiles,
-          outputPath: outputPath,
-          title: title,
-          author: author,
-          comment: comment,
-          width: width,
-          height: height,
-          preset: preset,
-          crf: crf,
-          enableFastStart: enableFastStart,
-          useGpu: useGpu,
-          avoidReencoding: avoidReencoding,
-          selectedEncoder: selectedEncoder,
-          concurrencyLimit: concurrencyLimit,
-          extraFlags: extraFlags,
-          onProgress: onProgress,
-          onLog: onLog,
-        );
-      }
-
-      // Increase session history size to avoid SESSION_NOT_FOUND
-      // especially when processing many assets.
-      FFmpegKitConfig.setSessionHistorySize(100);
-
-      // Enable log callback
-      FFmpegKitConfig.enableLogCallback((log) {
-        onLog?.call(log.getMessage());
-      });
-
-      // Step 1: Extract audio from all files and merge them sequentially
-      final mergedAudioPath = await _mergeAudioFiles(
-        audioFiles: audioFiles,
-        concurrencyLimit: concurrencyLimit,
-        onProgress: (progress) =>
-            onProgress?.call(progress * 0.5), // First 50% of progress
-      );
-
-      // Step 2: Get durations in parallel
-      final durations = await Future.wait([
-        _getMediaDuration(mergedAudioPath),
-        _getMediaDuration(backgroundVideoPath),
-      ]);
-      final audioDuration = durations[0];
-      final videoDuration = durations[1];
-
-      // Step 3: Merge audio with background video
-      await _mergeAudioWithVideo(
+      // Use system FFmpeg CLI on all platforms for consistent behavior
+      return _mergeVideoWithAudio(
         backgroundVideoPath: backgroundVideoPath,
-        audioPath: mergedAudioPath,
+        audioFiles: audioFiles,
         outputPath: outputPath,
-        audioDuration: audioDuration,
-        videoDuration: videoDuration,
         title: title,
         author: author,
         comment: comment,
-        width: width,
-        height: height,
-        preset: preset,
-        crf: crf,
-        enableFastStart: enableFastStart,
-        useGpu: useGpu,
-        avoidReencoding: avoidReencoding,
-        selectedEncoder: selectedEncoder,
+        concurrencyLimit: concurrencyLimit,
+        audioLoopCount: audioLoopCount,
         extraFlags: extraFlags,
-        onProgress: (progress) =>
-            onProgress?.call(0.5 + (progress * 0.5)), // Last 50% of progress
+        onProgress: onProgress,
+        onLog: onLog,
       );
-
-      // Clean up temporary merged audio file
-      try {
-        final tempFile = File(mergedAudioPath);
-        if (await tempFile.exists()) {
-          await tempFile.delete();
-        }
-      } catch (e) {
-        // Ignore cleanup errors
-      }
-
-      // Disable log callback after done
-      FFmpegKitConfig.enableLogCallback(null);
-
-      return outputPath;
     } catch (e) {
-      if (!Platform.isWindows) {
-        FFmpegKitConfig.enableLogCallback(null);
-      }
       throw Exception('Failed to merge video: $e');
     }
   }
+}
 
-  /// Windows-specific implementation using FFmpeg CLI directly
-  Future<String> _mergeVideoWithAudioWindows({
-    required String backgroundVideoPath,
-    required List<String> audioFiles,
-    required String outputPath,
-    String? title,
-    String? author,
-    String? comment,
-    int width = 1920,
-    int height = 1080,
-    String preset = 'slow',
-    int crf = 18,
-    bool enableFastStart = true,
-    bool useGpu = true,
-    bool avoidReencoding = true,
-    String? selectedEncoder,
-    int concurrencyLimit = 4,
-    List<String> extraFlags = const [],
-    void Function(double progress)? onProgress,
-    void Function(String log)? onLog,
-  }) async {
-    // 1. Verify ffmpeg exists
-    try {
-      final check = await Process.run('ffmpeg', ['-version']);
-      if (check.exitCode != 0) throw Exception('FFmpeg not found');
-    } catch (e) {
-      throw Exception(
-        'FFmpeg CLI not found. Please install FFmpeg and add it to your System PATH to use this tool on Windows.',
-      );
-    }
-
-    onLog?.call('Windows detected: Using FFmpeg CLI fallback.');
-
-    // 2. Prepare temp directory
-    final tempDir = await getTemporaryDirectory();
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final tempAudioDir = Directory('${tempDir.path}/swaloka_temp_$timestamp');
-    await tempAudioDir.create(recursive: true);
-
-    try {
-      // 3. Extract audio from each file in parallel
-      final extractedFiles = <String>[];
-      for (int i = 0; i < audioFiles.length; i += concurrencyLimit) {
-        final end = (i + concurrencyLimit < audioFiles.length)
-            ? i + concurrencyLimit
-            : audioFiles.length;
-        final batch = audioFiles.sublist(i, end);
-
-        await Future.wait(
-          batch.asMap().entries.map((entry) async {
-            final idx = i + entry.key;
-            final inputPath = entry.value;
-            final outPath = '${tempAudioDir.path}/part_$idx.wav';
-
-            onLog?.call('Extracting audio from: $inputPath');
-            final result = await Process.run('ffmpeg', [
-              '-y',
-              '-i',
-              inputPath,
-              '-vn',
-              '-acodec',
-              'pcm_s16le',
-              '-ar',
-              '44100',
-              '-ac',
-              '2',
-              outPath,
-            ]);
-
-            if (result.exitCode != 0) {
-              throw Exception('Failed to extract audio from $inputPath');
-            }
-            extractedFiles.add(outPath);
-          }),
-        );
-        onProgress?.call((i / audioFiles.length) * 0.4);
-      }
-
-      // 4. Concat audio files
-      final concatFilePath = '${tempAudioDir.path}/concat.txt';
-      final concatContent = extractedFiles
-          .map((f) => "file '${f.replaceAll("'", "'\\''")}'")
-          .join('\n');
-      await File(concatFilePath).writeAsString(concatContent);
-
-      final mergedAudioPath = '${tempAudioDir.path}/merged.wav';
-      onLog?.call('Merging audio tracks...');
-      final concatResult = await Process.run('ffmpeg', [
-        '-y',
-        '-f',
-        'concat',
-        '-safe',
-        '0',
-        '-i',
-        concatFilePath,
-        '-c',
-        'copy',
-        mergedAudioPath,
-      ]);
-
-      if (concatResult.exitCode != 0) {
-        throw Exception('Failed to merge audio tracks');
-      }
-      onProgress?.call(0.5);
-
-      // 5. Get durations
-      final audioDur = await _getDurationWindows(mergedAudioPath);
-      final videoDur = await _getDurationWindows(backgroundVideoPath);
-
-      // 6. Smart encoding: Check if re-encoding is needed
-      bool needsVideoEncode = true;
-      bool needsAudioEncode = true;
-
-      if (avoidReencoding) {
-        try {
-          // Get background video info
-          final videoInfo = await _getMediaInfoWindows(backgroundVideoPath);
-
-          // Check if video needs encoding
-          final needsScaleOrPad =
-              videoInfo.width != width || videoInfo.height != height;
-          needsVideoEncode = videoInfo.needsVideoEncoding(
-            targetWidth: width,
-            targetHeight: height,
-            needsScaleOrPad: needsScaleOrPad,
-          );
-
-          // Check if audio needs encoding (multiple files always need it)
-          needsAudioEncode = audioFiles.length != 1;
-          if (!needsAudioEncode) {
-            // Single file: check if audio already matches
-            final audioInfo = await _getMediaInfoWindows(audioFiles[0]);
-            needsAudioEncode = audioInfo.needsAudioEncoding(
-              targetBitrate: 192,
-              targetSampleRate: 44100,
-              isSingleFile: true,
-            );
-          }
-
-          onLog?.call(
-            'Smart encoding: Video re-encode=$needsVideoEncode, Audio re-encode=$needsAudioEncode',
-          );
-        } catch (e) {
-          onLog?.call('Could not check media info, forcing re-encoding: $e');
-        }
-      }
-
-      // 7. Final Merge - Use selected encoder if provided, otherwise auto-detect
-      final encoder = selectedEncoder ?? await _getBestEncoderWindows(useGpu);
-      final mappedPreset = _mapPresetForEncoder(preset, encoder);
-      final qParam = encoder.contains('nvenc') || encoder.contains('qsv')
-          ? '-q:v ${((51 - crf) / 51 * 100).toInt()}'
-          : '-crf $crf';
-
-      final metadata = _buildMetadataFlagsList(
-        title: title,
-        author: author,
-        comment: comment,
-      );
-
-      final loopArgs = audioDur > videoDur
-          ? [
-              '-stream_loop',
-              '${(audioDur / videoDur).ceil()}',
-              '-i',
-              backgroundVideoPath,
-            ]
-          : ['-i', backgroundVideoPath];
-
-      // Build ffmpeg command based on encoding needs
-      final videoCodec = needsVideoEncode ? encoder : 'copy';
-      final audioCodec = needsAudioEncode ? 'aac' : 'copy';
-      final needsVideoFilter = needsVideoEncode;
-
-      onLog?.call(
-        'Final render starting (using $encoder, vcodec=$videoCodec, acodec=$audioCodec)...',
-      );
-
-      final commandBuilder = <String>[
-        '-y',
-        ...loopArgs,
-        '-i',
-        mergedAudioPath,
-      ];
-
-      // Add video filter only if needed
-      if (needsVideoFilter) {
-        commandBuilder.addAll([
-          '-vf',
-          "scale=$width:$height:force_original_aspect_ratio=decrease,pad=$width:$height:(ow-iw)/2:(oh-ih)/2",
-        ]);
-      }
-
-      // Add video codec and parameters
-      commandBuilder.addAll(['-c:v', videoCodec]);
-
-      // Add encoding parameters only if re-encoding
-      if (needsVideoEncode) {
-        commandBuilder.addAll([...qParam.split(' ')]);
-        if (mappedPreset.isNotEmpty) {
-          commandBuilder.addAll(['-preset', mappedPreset]);
-        }
-      }
-
-      // Add audio codec and parameters
-      commandBuilder.addAll(['-c:a', audioCodec]);
-      if (needsAudioEncode) {
-        commandBuilder.addAll(['-b:a', '192k']);
-      }
-
-      // Add flags
-      if (enableFastStart) {
-        commandBuilder.addAll(['-movflags', '+faststart']);
-      }
-      commandBuilder.addAll(extraFlags);
-      commandBuilder.addAll(metadata);
-      commandBuilder.add('-shortest');
-      commandBuilder.add(outputPath);
-
-      final finalResult = await Process.start('ffmpeg', commandBuilder);
-
-      // Pipe FFmpeg output to our log callback
-      finalResult.stderr.transform(SystemEncoding().decoder).listen((data) {
-        onLog?.call(data);
-      });
-
-      final exitCode = await finalResult.exitCode;
-      if (exitCode != 0) throw Exception('Final merge failed');
-
-      onProgress?.call(1.0);
-      onLog?.call('Process complete! Output: $outputPath');
-      return outputPath;
-    } finally {
-      // Cleanup
-      if (await tempAudioDir.exists()) {
-        await tempAudioDir.delete(recursive: true);
-      }
-    }
-  }
-
-  Future<double> _getDurationWindows(String path) async {
-    final result = await Process.run('ffprobe', [
-      '-v',
-      'error',
-      '-show_entries',
-      'format=duration',
-      '-of',
-      'default=noprint_wrappers=1:nokey=1',
-      path,
-    ]);
-    return double.tryParse(result.stdout.toString().trim()) ?? 0.0;
-  }
-
-  /// Get media info using ffprobe on Windows
-  Future<MediaInfo> _getMediaInfoWindows(String path) async {
-    try {
-      final result = await Process.run('ffprobe', [
-        '-v',
-        'error',
-        '-select_streams',
-        'v:0,a:0',
-        '-show_entries',
-        'stream=codec_name,width,height,bit_rate,sample_rate',
-        '-of',
-        'json',
-        path,
-      ]);
-
-      if (result.exitCode != 0) {
-        throw Exception('Failed to get media info');
-      }
-
-      final jsonStr = result.stdout.toString().trim();
-      final jsonData = jsonDecode(jsonStr) as Map<String, dynamic>;
-      final streams = jsonData['streams'] as List<dynamic>;
-
-      int width = 0, height = 0;
-      String? videoCodec, audioCodec;
-      int? audioBitrate, audioSampleRate;
-
-      for (final stream in streams) {
-        final codec = stream['codec_name'] as String?;
-        if (codec != null) {
-          if (codec.startsWith('h264') || codec.startsWith('hevc')) {
-            videoCodec = codec;
-            width = (stream['width'] as int?) ?? 0;
-            height = (stream['height'] as int?) ?? 0;
-          } else {
-            audioCodec = codec;
-            audioBitrate = int.tryParse(stream['bit_rate']?.toString() ?? '0');
-            audioSampleRate = int.tryParse(
-              stream['sample_rate']?.toString() ?? '0',
-            );
-          }
-        }
-      }
-
-      return MediaInfo(
-        width: width,
-        height: height,
-        videoCodec: videoCodec,
-        audioCodec: audioCodec,
-        audioBitrate: audioBitrate,
-        audioSampleRate: audioSampleRate,
-      );
-    } catch (e) {
-      throw Exception('Failed to get media info: $e');
-    }
-  }
-
-  /// Build FFmpeg metadata flags as a list from title, author, and comment.
-  /// Returns a list of command line arguments (for Windows Process.run).
-  List<String> _buildMetadataFlagsList({
-    String? title,
-    String? author,
-    String? comment,
-  }) {
-    return [
-      if (title != null && title.isNotEmpty) ...['-metadata', 'title=$title'],
-      if (author != null && author.isNotEmpty) ...[
-        '-metadata',
-        'artist=$author',
-        '-metadata',
-        'author=$author',
-        '-metadata',
-        'creator=$author',
-        '-metadata',
-        'publisher=$author',
-      ],
-      if (comment != null && comment.isNotEmpty) ...[
-        '-metadata',
-        'comment=$comment',
-      ],
-    ];
-  }
-
-  /// Build FFmpeg metadata flags as a string from title, author, and comment.
-  /// Returns a joined string (for macOS/Linux FFmpegKit.execute).
-  String _buildMetadataFlagsString({
-    String? title,
-    String? author,
-    String? comment,
-  }) {
-    final flags = _buildMetadataFlagsList(
-      title: title,
-      author: author,
-      comment: comment,
+/// Implementation using FFmpeg CLI directly - works on all platforms
+/// Always uses fast mode: copy video stream, infinite loop, -shortest
+/// If audioLoopCount > 1, shuffles audio order for each loop iteration
+Future<String> _mergeVideoWithAudio({
+  required String backgroundVideoPath,
+  required List<String> audioFiles,
+  required String outputPath,
+  String? title,
+  String? author,
+  String? comment,
+  int concurrencyLimit = 4,
+  int audioLoopCount = 1,
+  List<String> extraFlags = const [],
+  void Function(double progress)? onProgress,
+  void Function(String log)? onLog,
+}) async {
+  // 1. Verify ffmpeg exists
+  try {
+    final check = await Process.run('ffmpeg', ['-version']);
+    if (check.exitCode != 0) throw Exception('FFmpeg not found');
+  } catch (e) {
+    throw Exception(
+      'FFmpeg CLI not found. Please install FFmpeg and add it to your System PATH.',
     );
-
-    // Build the string with quotes around values for FFmpegKit
-    final result = <String>[];
-    for (var i = 0; i < flags.length; i += 2) {
-      if (i + 1 < flags.length) {
-        final key = flags[i];
-        final value = flags[i + 1];
-        // Add quotes around values for FFmpegKit
-        result.add('$key "$value"');
-      }
-    }
-
-    return result.join(' ');
   }
 
-  Future<String> _getBestEncoderWindows(bool useGpu) async {
-    if (!useGpu) return 'libx264';
-    try {
-      final result = await Process.run('ffmpeg', ['-encoders']);
-      final output = result.stdout.toString();
-      if (output.contains('h264_nvenc')) return 'h264_nvenc';
-      if (output.contains('h264_qsv')) return 'h264_qsv';
-      if (output.contains('h264_amf')) return 'h264_amf';
-    } catch (e) {
-      // ffmpeg not in path
-    }
-    return 'libx264';
-  }
+  onLog?.call('Using FFmpeg CLI for all platforms');
 
-  /// Map standard libx264 presets to encoder-specific presets
-  /// Returns empty string if encoder doesn't support preset flag
-  String _mapPresetForEncoder(String standardPreset, String encoder) {
-    // h264_videotoolbox (macOS) - doesn't support preset flag
-    // Uses only -q:v for quality control
-    if (encoder == 'h264_videotoolbox') return '';
+  // 2. Prepare temp directory
+  final tempDir = await getTemporaryDirectory();
+  final timestamp = DateTime.now().millisecondsSinceEpoch;
+  final tempAudioDir = Directory('${tempDir.path}/swaloka_temp_$timestamp');
+  await tempAudioDir.create(recursive: true);
 
-    // libx264 presets - use as-is
-    if (encoder == 'libx264') return standardPreset;
-
-    // h264_amf (AMD) presets
-    if (encoder == 'h264_amf') {
-      switch (standardPreset.toLowerCase()) {
-        case 'ultrafast':
-        case 'superfast':
-        case 'veryfast':
-          return 'speed';
-        case 'faster':
-        case 'fast':
-          return 'balanced';
-        case 'medium':
-        case 'slow':
-        case 'slower':
-        case 'veryslow':
-          return 'quality';
-        default:
-          return 'balanced';
-      }
-    }
-
-    // h264_nvenc (NVIDIA) presets
-    if (encoder == 'h264_nvenc') {
-      switch (standardPreset.toLowerCase()) {
-        case 'ultrafast':
-        case 'superfast':
-          return 'p1';
-        case 'veryfast':
-          return 'p4';
-        case 'faster':
-          return 'p5';
-        case 'fast':
-          return 'p6';
-        case 'medium':
-        case 'slow':
-        case 'slower':
-        case 'veryslow':
-          return 'p7';
-        default:
-          return 'p6';
-      }
-    }
-
-    // h264_qsv (Intel) - supports standard presets
-    if (encoder == 'h264_qsv') {
-      // h264_qsv supports most standard presets
-      final validQsvPresets = [
-        'veryfast',
-        'faster',
-        'fast',
-        'medium',
-        'slow',
-        'slower',
-        'veryslow',
-      ];
-      if (validQsvPresets.contains(standardPreset.toLowerCase())) {
-        return standardPreset;
-      }
-      return 'medium';
-    }
-
-    // Default fallback
-    return standardPreset;
-  }
-
-
-  /// Extract audio from video/audio files and merge them sequentially
-  Future<String> _mergeAudioFiles({
-    required List<String> audioFiles,
-    int concurrencyLimit = 4,
-    void Function(double progress)? onProgress,
-  }) async {
-    if (audioFiles.isEmpty) {
-      throw Exception('No audio files provided');
-    }
-
-    final tempDir = await getTemporaryDirectory();
-    final mergedAudioPath =
-        '${tempDir.path}/merged_audio_${DateTime.now().millisecondsSinceEpoch}.aac';
-
-    // If only one file, extract audio directly
-    if (audioFiles.length == 1) {
-      await _extractAudio(audioFiles[0], mergedAudioPath);
-      onProgress?.call(1.0);
-      return mergedAudioPath;
-    }
-
-    // Extract audio from each file first with a concurrency limit
-    final List<String> extractedAudioFiles = [];
-
+  try {
+    // 3. Extract audio from each file in parallel
+    final extractedFiles = <String>[];
     for (int i = 0; i < audioFiles.length; i += concurrencyLimit) {
       final end = (i + concurrencyLimit < audioFiles.length)
           ? i + concurrencyLimit
           : audioFiles.length;
+      final batch = audioFiles.sublist(i, end);
 
-      final batchTasks = <Future<void>>[];
-      for (int j = i; j < end; j++) {
-        final extractedPath =
-            '${tempDir.path}/audio_${j}_${DateTime.now().millisecondsSinceEpoch}_$j.aac';
-        extractedAudioFiles.add(extractedPath);
-        batchTasks.add(_extractAudio(audioFiles[j], extractedPath));
-      }
+      await Future.wait(
+        batch.asMap().entries.map((entry) async {
+          final idx = i + entry.key;
+          final inputPath = entry.value;
+          final outPath = '${tempAudioDir.path}/part_$idx.wav';
 
-      await Future.wait(batchTasks);
-      onProgress?.call(0.1 + (0.8 * (end / audioFiles.length)));
+          onLog?.call('Extracting audio from: $inputPath');
+          final result = await Process.run('ffmpeg', [
+            '-y',
+            '-i',
+            inputPath,
+            '-vn',
+            '-acodec',
+            'pcm_s16le',
+            '-ar',
+            '44100',
+            '-ac',
+            '2',
+            outPath,
+          ]);
+
+          if (result.exitCode != 0) {
+            throw Exception('Failed to extract audio from $inputPath');
+          }
+          extractedFiles.add(outPath);
+        }),
+      );
+      onProgress?.call((i / audioFiles.length) * 0.4);
     }
 
-    onProgress?.call(0.9); // Mostly done with extraction
+    // 4. Concat audio files (with looping support)
+    final concatFilePath = '${tempAudioDir.path}/concat.txt';
+    final concatFiles = <String>[];
 
-    // Create file list for concatenation
-    final fileListPath =
-        '${tempDir.path}/audio_list_${DateTime.now().millisecondsSinceEpoch}.txt';
-    final fileList = File(fileListPath);
-    final buffer = StringBuffer();
-    for (final audioFile in extractedAudioFiles) {
-      buffer.writeln("file '$audioFile'");
-    }
-    await fileList.writeAsString(buffer.toString());
-
-    // Concatenate all audio files
-    final command =
-        '-f concat -safe 0 -i "$fileListPath" -c copy "$mergedAudioPath"';
-    final session = await FFmpegKit.execute(command);
-    final returnCode = await session.getReturnCode();
-
-    // Clean up extracted audio files
-    for (final audioFile in extractedAudioFiles) {
-      try {
-        await File(audioFile).delete();
-      } catch (e) {
-        // Ignore
-      }
-    }
-
-    // Clean up file list
-    try {
-      await fileList.delete();
-    } catch (e) {
-      // Ignore
-    }
-
-    if (ReturnCode.isSuccess(returnCode)) {
-      return mergedAudioPath;
+    if (audioLoopCount == 1) {
+      // Single pass - use files as-is
+      concatFiles.addAll(extractedFiles);
     } else {
-      throw Exception('Failed to merge audio files');
-    }
-  }
-
-  /// Extract audio from a video/audio file and convert to standard AAC
-  Future<void> _extractAudio(String inputPath, String outputPath) async {
-    // We explicitly re-encode to AAC at 192k to ensure all intermediate files
-    // have the exact same parameters (sample rate, codec, etc.) for perfect concatenation.
-    final command =
-        '-i "$inputPath" -vn -acodec aac -b:a 192k -ar 44100 -ac 2 "$outputPath"';
-
-    // Using executeAsync is sometimes more stable for parallel batches
-    final session = await FFmpegKit.execute(command);
-    final returnCode = await session.getReturnCode();
-
-    if (!ReturnCode.isSuccess(returnCode)) {
-      final logs = await session.getAllLogs();
-      final errorMessage = logs.map((log) => log.getMessage()).join('\n');
-      throw Exception('Failed to process audio from $inputPath: $errorMessage');
-    }
-  }
-
-  /// Get duration of a media file in seconds
-  Future<double> _getMediaDuration(String mediaPath) async {
-    if (Platform.isWindows) {
-      return _getDurationWindows(mediaPath);
-    }
-    try {
-      final session = await FFprobeKit.getMediaInformation(mediaPath);
-      final information = session.getMediaInformation();
-
-      if (information != null) {
-        final duration = information.getDuration();
-        if (duration != null) {
-          return double.parse(duration) / 1000;
-        }
+      // Multiple passes - shuffle for each iteration
+      for (int loop = 0; loop < audioLoopCount; loop++) {
+        final filesToConcat = List<String>.from(extractedFiles);
+        filesToConcat.shuffle(Random());
+        concatFiles.addAll(filesToConcat);
       }
-    } catch (e) {
-      // Ignore errors and try to return 0 or throw later
+      onLog?.call(
+        'Looping audio $audioLoopCount times with randomized order per loop',
+      );
     }
 
-    throw Exception('Could not get duration for $mediaPath');
-  }
+    final concatContent = concatFiles
+          .map((f) => "file '${f.replaceAll("'", "'\\''")}'")
+          .join('\n');
+    await File(concatFilePath).writeAsString(concatContent);
 
-  /// Merge audio with background video
-  Future<void> _mergeAudioWithVideo({
-    required String backgroundVideoPath,
-    required String audioPath,
-    required String outputPath,
-    required double audioDuration,
-    required double videoDuration,
-    String? title,
-    String? author,
-    String? comment,
-    int width = 1920,
-    int height = 1080,
-    String preset = 'slow',
-    int crf = 18,
-    bool enableFastStart = true,
-    bool useGpu = true,
-    bool avoidReencoding = true,
-    String? selectedEncoder,
-    List<String> extraFlags = const [],
-    void Function(double progress)? onProgress,
-  }) async {
-    String command;
-    final metadataFlags = _buildMetadataFlagsString(
-      title: title,
-      author: author,
-      comment: comment,
-    );
+    final mergedAudioPath = '${tempAudioDir.path}/merged.wav';
+    onLog?.call('Merging audio tracks...');
+    final concatResult = await Process.run('ffmpeg', [
+      '-y',
+      '-f',
+      'concat',
+      '-safe',
+      '0',
+      '-i',
+      concatFilePath,
+      '-c',
+      'copy',
+      mergedAudioPath,
+    ]);
 
-    // Optimization flags:
-    // -vf scale: Scale to target resolution, using force_original_aspect_ratio to avoid stretching
-    // -preset: Better compression (smaller size at same quality)
-    // -crf: Visually transparent quality
-    // -movflags +faststart: Web optimization for YouTube
-    final fastStartFlag = enableFastStart ? '-movflags +faststart' : '';
-    final extraFlagsStr = extraFlags.join(' ');
+    if (concatResult.exitCode != 0) {
+      throw Exception('Failed to merge audio tracks');
+    }
+    onProgress?.call(0.5);
 
-    // Determine best encoder based on platform and user preference
-    // Use selected encoder if provided, otherwise auto-detect
-    String encoder = selectedEncoder ?? 'libx264';
-    String qualityParam = '-crf $crf';
-
-    // If no selected encoder, auto-detect based on platform
-    if (selectedEncoder == null && useGpu) {
-      if (Platform.isMacOS) {
-        encoder = 'h264_videotoolbox';
-        final qValue = ((51 - crf) / 51 * 100).clamp(30, 90).toInt();
-        qualityParam = '-q:v $qValue';
-      } else if (Platform.isWindows) {
-        final detected = await _getBestEncoderWindows(useGpu);
-        if (detected != "libx264") {
-          encoder = detected;
-          final qValue = ((51 - crf) / 51 * 100).clamp(30, 90).toInt();
-          qualityParam = '-q:v $qValue';
-        }
-      }
+    // 5. Build metadata flags if provided
+    final metadataFlags = <String>[];
+    if (title != null) {
+      metadataFlags.addAll(['-metadata', 'title=$title']);
+    }
+    if (author != null) {
+      metadataFlags.addAll(['-metadata', 'artist=$author']);
+    }
+    if (comment != null) {
+      metadataFlags.addAll(['-metadata', 'comment=$comment']);
     }
 
-    final mappedPreset = _mapPresetForEncoder(preset, encoder);
+    // 6. Fast mode: Loop video to match audio duration
+    // -stream_loop -1 applies to next input (background video)
+    // -shortest ensures we stop when audio ends
+    onLog?.call('Starting fast merge...');
 
-    // Smart encoding: Check if re-encoding is needed
-    bool needsVideoEncode = true;
-    bool needsAudioEncode = true;
-    bool needsVideoFilter = false;
+    // Build optimized FFmpeg command
+    final command = [
+      '-stream_loop',
+      '-1',
+      '-i',
+      backgroundVideoPath,
+      '-i',
+      mergedAudioPath,
+      '-map',
+      '0:v',
+      '-map',
+      '1:a',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
+      '-shortest',
+      ...metadataFlags,
+      outputPath,
+      '-y',
+    ];
 
-    if (avoidReencoding && !Platform.isWindows) {
-      try {
-        // Get background video info
-        final session = await FFprobeKit.getMediaInformation(
-          backgroundVideoPath,
-        );
-        final information = session.getMediaInformation();
+    onLog?.call('Command: ffmpeg ${command.join(" ")}');
 
-        if (information != null) {
-          final videoInfo = MediaInfo.fromMediaInformation(information);
+    final result = await Process.run('ffmpeg', command);
 
-          // Check if video needs encoding
-          final needsScaleOrPad =
-              videoInfo.width != width || videoInfo.height != height;
-          needsVideoEncode = videoInfo.needsVideoEncoding(
-            targetWidth: width,
-            targetHeight: height,
-            needsScaleOrPad: needsScaleOrPad,
-          );
-          needsVideoFilter = needsScaleOrPad;
-        }
-
-        // For audio: always encode when using ffmpegKit since we're re-encoding during merge
-        // This is a simplification - in the future we could optimize single-file audio paths too
-      } catch (e) {
-        // On error, default to encoding everything
-      }
-    }
-
-    // Build command based on encoding needs
-    final videoCodec = needsVideoEncode ? encoder : 'copy';
-    final audioCodec = needsAudioEncode ? 'aac' : 'copy';
-
-    final optimizationFlags = [
-      if (needsVideoFilter)
-        '-vf "scale=$width:$height:force_original_aspect_ratio=decrease,pad=$width:$height:(ow-iw)/2:(oh-ih)/2"',
-      '-c:v $videoCodec',
-      if (needsVideoEncode) qualityParam,
-      if (needsVideoEncode && mappedPreset.isNotEmpty) '-preset $mappedPreset',
-      '-c:a $audioCodec',
-      if (needsAudioEncode) '-b:a 192k',
-      fastStartFlag,
-      extraFlagsStr,
-    ].where((flag) => flag.isNotEmpty).join(' ');
-
-    if (audioDuration > videoDuration) {
-      // Audio is longer - loop the video to match audio duration
-      final loopCount = (audioDuration / videoDuration).ceil();
-      command =
-          '-stream_loop $loopCount -i "$backgroundVideoPath" -i "$audioPath" '
-          '$optimizationFlags -shortest $metadataFlags "$outputPath"';
-    } else {
-      // Video is longer or equal - use video duration, trim audio if needed
-      command =
-          '-i "$backgroundVideoPath" -i "$audioPath" '
-          '$optimizationFlags -shortest $metadataFlags "$outputPath"';
-    }
-
-    final session = await FFmpegKit.execute(command);
-    final returnCode = await session.getReturnCode();
-
-    if (!ReturnCode.isSuccess(returnCode)) {
-      final logs = await session.getAllLogs();
-      final errorMessage = logs.map((log) => log.getMessage()).join('\n');
-      throw Exception('Failed to merge video with audio: $errorMessage');
+    if (result.exitCode != 0) {
+      final stderr = result.stderr.toString();
+      throw Exception('Failed to merge video: $stderr');
     }
 
     onProgress?.call(1.0);
+    onLog?.call('Process complete! Output: $outputPath');
+    return outputPath;
+  } finally {
+    // Cleanup
+    if (await tempAudioDir.exists()) {
+      await tempAudioDir.delete(recursive: true);
+    }
   }
 }

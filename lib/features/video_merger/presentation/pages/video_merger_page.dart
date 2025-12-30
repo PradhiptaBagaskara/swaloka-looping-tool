@@ -8,8 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:video_player/video_player.dart';
 import 'package:swaloka_looping_tool/core/constants/app_constants.dart';
+import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
 import '../../domain/video_merger_service.dart';
-import '../../domain/hardware_service.dart';
 import '../widgets/merge_progress_dialog.dart';
 
 // Models
@@ -22,16 +22,8 @@ class SwalokaProject {
   final String? title;
   final String? author;
   final String? comment;
-  final int resolutionWidth;
-  final int resolutionHeight;
-  final String preset;
-  final int crf;
-  final bool enableFastStart;
-  final List<String> extraFlags;
-  final bool useGpu;
-  final String? detectedEncoder;
-  final String? selectedEncoder;
   final int concurrencyLimit;
+  final int audioLoopCount;
 
   SwalokaProject({
     required this.name,
@@ -42,16 +34,8 @@ class SwalokaProject {
     this.title,
     this.author,
     this.comment,
-    this.resolutionWidth = 1920,
-    this.resolutionHeight = 1080,
-    this.preset = 'slow',
-    this.crf = 18,
-    this.enableFastStart = true,
-    this.extraFlags = const [],
-    this.useGpu = true,
-    this.detectedEncoder,
-    this.selectedEncoder,
     this.concurrencyLimit = 4,
+    this.audioLoopCount = 1,
   });
 
   Map<String, dynamic> toJson() => {
@@ -63,16 +47,8 @@ class SwalokaProject {
     'title': title,
     'author': author,
     'comment': comment,
-    'resolutionWidth': resolutionWidth,
-    'resolutionHeight': resolutionHeight,
-    'preset': preset,
-    'crf': crf,
-    'enableFastStart': enableFastStart,
-    'extraFlags': extraFlags,
-    'useGpu': useGpu,
-    'detectedEncoder': detectedEncoder,
-    'selectedEncoder': selectedEncoder,
     'concurrencyLimit': concurrencyLimit,
+    'audioLoopCount': audioLoopCount,
   };
 
   factory SwalokaProject.fromJson(Map<String, dynamic> json) => SwalokaProject(
@@ -84,22 +60,11 @@ class SwalokaProject {
     title: json['title'],
     author: json['author'],
     comment: json['comment'],
-    resolutionWidth: json['resolutionWidth'] ?? 1920,
-    resolutionHeight: json['resolutionHeight'] ?? 1080,
-    preset: json['preset'] ?? 'slow',
-    crf: json['crf'] ?? 18,
-    enableFastStart: json['enableFastStart'] ?? true,
-    extraFlags: List<String>.from(json['extraFlags'] ?? []),
-    useGpu: json['useGpu'] ?? true,
-    detectedEncoder: json['detectedEncoder'],
-    selectedEncoder: json['selectedEncoder'],
     concurrencyLimit: json['concurrencyLimit'] ?? 4,
+    audioLoopCount: json['audioLoopCount'] ?? 1,
   );
 
   String get effectiveOutputPath => customOutputPath ?? '$rootPath/outputs';
-
-  /// Get the encoder to use (selected encoder if set, otherwise detected)
-  String? get effectiveEncoder => selectedEncoder ?? detectedEncoder;
 
   SwalokaProject copyWith({
     String? name,
@@ -112,16 +77,8 @@ class SwalokaProject {
     String? title,
     String? author,
     String? comment,
-    int? resolutionWidth,
-    int? resolutionHeight,
-    String? preset,
-    int? crf,
-    bool? enableFastStart,
-    List<String>? extraFlags,
-    bool? useGpu,
-    String? detectedEncoder,
-    String? selectedEncoder,
     int? concurrencyLimit,
+    int? audioLoopCount,
   }) {
     return SwalokaProject(
       name: name ?? this.name,
@@ -136,16 +93,8 @@ class SwalokaProject {
       title: title ?? this.title,
       author: author ?? this.author,
       comment: comment ?? this.comment,
-      resolutionWidth: resolutionWidth ?? this.resolutionWidth,
-      resolutionHeight: resolutionHeight ?? this.resolutionHeight,
-      preset: preset ?? this.preset,
-      crf: crf ?? this.crf,
-      enableFastStart: enableFastStart ?? this.enableFastStart,
-      extraFlags: extraFlags ?? this.extraFlags,
-      useGpu: useGpu ?? this.useGpu,
-      detectedEncoder: detectedEncoder ?? this.detectedEncoder,
-      selectedEncoder: selectedEncoder ?? this.selectedEncoder,
       concurrencyLimit: concurrencyLimit ?? this.concurrencyLimit,
+      audioLoopCount: audioLoopCount ?? this.audioLoopCount,
     );
   }
 }
@@ -254,7 +203,6 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     await Directory('$rootPath/logs').create(recursive: true);
 
     state = project;
-    await _detectHardwareEncoder(); // Detect on new project
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastProjectPathKey, rootPath);
@@ -267,8 +215,6 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     if (await file.exists()) {
       final json = jsonDecode(await file.readAsString());
       state = SwalokaProject.fromJson(json);
-
-      await _detectHardwareEncoder(); // Detect on load
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_lastProjectPathKey, rootPath);
@@ -283,16 +229,8 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     String? title,
     String? author,
     String? comment,
-    int? resolutionWidth,
-    int? resolutionHeight,
-    String? preset,
-    int? crf,
-    bool? enableFastStart,
-    List<String>? extraFlags,
-    bool? useGpu,
-    String? detectedEncoder,
-    String? selectedEncoder,
     int? concurrencyLimit,
+    int? audioLoopCount,
   }) async {
     if (state == null) return;
     final newState = state!.copyWith(
@@ -301,28 +239,11 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
       title: title,
       author: author,
       comment: comment,
-      resolutionWidth: resolutionWidth,
-      resolutionHeight: resolutionHeight,
-      preset: preset,
-      crf: crf,
-      enableFastStart: enableFastStart,
-      extraFlags: extraFlags,
-      useGpu: useGpu,
-      detectedEncoder: detectedEncoder,
-      selectedEncoder: selectedEncoder,
       concurrencyLimit: concurrencyLimit,
+      audioLoopCount: audioLoopCount,
     );
     state = newState;
     await _saveProjectToFile(newState);
-  }
-
-  Future<void> _detectHardwareEncoder() async {
-    if (state == null) return;
-    final hardwareService = ref.read(hardwareServiceProvider);
-    final encoder = await hardwareService.detectBestEncoder();
-    if (encoder != null && state!.detectedEncoder != encoder) {
-      await updateSettings(detectedEncoder: encoder);
-    }
   }
 
   Future<void> setBackgroundVideo(String? path) async {
@@ -441,6 +362,8 @@ class ProcessingState {
   final String? error;
   final String? outputPath;
   final DateTime? startTime;
+  final Map<String, int>
+  outputLoopCounts; // Track loop count for each output file
 
   ProcessingState({
     required this.isProcessing,
@@ -449,10 +372,16 @@ class ProcessingState {
     this.error,
     this.outputPath,
     this.startTime,
+    this.outputLoopCounts = const {},
   });
 
   factory ProcessingState.idle() =>
-      ProcessingState(isProcessing: false, progress: 0.0, logs: []);
+      ProcessingState(
+    isProcessing: false,
+    progress: 0.0,
+    logs: [],
+    outputLoopCounts: const {},
+  );
 
   ProcessingState copyWith({
     bool? isProcessing,
@@ -478,17 +407,6 @@ class VideoMergerPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.listen(activeProjectProvider, (previous, next) {
-      if (previous == null && next != null) {
-        // Project just opened, show donate dialog after a short delay
-        Future.delayed(const Duration(milliseconds: 800), () {
-          if (context.mounted) {
-            _showDonateDialog(context);
-          }
-        });
-      }
-    });
-
     final project = ref.watch(activeProjectProvider);
     final processingState = ref.watch(processingStateProvider);
     final projectFiles = ref.watch(projectFilesProvider);
@@ -1062,14 +980,14 @@ class VideoMergerPage extends ConsumerWidget {
         _buildTimelineHeader(
           context,
           ref,
-          'ADVANCED ENCODING SETTINGS (Optional)',
+          'ADVANCED ENCODING SETTINGS',
           Icons.tune,
         ),
         if (!collapsedSections.contains(
-          'ADVANCED ENCODING SETTINGS (Optional)',
+          'ADVANCED ENCODING SETTINGS',
         )) ...[
           const SizedBox(height: 12),
-          _buildAdvancedSettings(context, ref, project),
+          _buildAdvancedEncodingSettings(context, ref, project),
         ],
         const SizedBox(height: 48),
 
@@ -1219,25 +1137,15 @@ class VideoMergerPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildAdvancedSettings(
+  Widget _buildAdvancedEncodingSettings(
     BuildContext context,
     WidgetRef ref,
     SwalokaProject project,
   ) {
-    final presets = [
-      {
-        'name': 'Ultrafast',
-        'val': 'ultrafast',
-        'desc': 'Fastest, largest file',
-      },
-      {'name': 'Superfast', 'val': 'superfast', 'desc': 'Very fast'},
-      {'name': 'Veryfast', 'val': 'veryfast', 'desc': 'Optimized for speed'},
-      {'name': 'Faster', 'val': 'faster', 'desc': 'Good balance'},
-      {'name': 'Fast', 'val': 'fast', 'desc': 'Slightly better quality'},
-      {'name': 'Medium', 'val': 'medium', 'desc': 'Default balance'},
-      {'name': 'Slow', 'val': 'slow', 'desc': 'Better compression'},
-      {'name': 'Slower', 'val': 'slower', 'desc': 'Highest compression'},
-    ];
+    final systemCpuInfo = SystemInfoService.getCpuInfo();
+    final recommendedConcurrency =
+        SystemInfoService.getRecommendedConcurrency();
+    final maxSafeConcurrency = SystemInfoService.maxSafeConcurrency;
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -1249,17 +1157,31 @@ class VideoMergerPage extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // System Info Section
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Presets
+              Icon(Icons.memory_outlined, size: 16, color: Colors.grey[600]),
+              const SizedBox(width: 8),
+              Text(
+                systemCpuInfo,
+                style: TextStyle(
+                  fontSize: 11, color: Colors.grey[500]),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Concurrency Setting
+          Row(
+            children: [
+              const SizedBox(width: 24),
               Expanded(
-                flex: 2,
+                flex: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'ENCODER PRESET',
+                      'PARALLEL PROCESSING TASKS',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -1267,736 +1189,89 @@ class VideoMergerPage extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      initialValue: project.preset,
-                      isExpanded: true,
-                      itemHeight: 64,
-                      selectedItemBuilder: (context) {
-                        return presets.map((p) {
-                          return Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              p['name'] as String,
-                              style: const TextStyle(fontSize: 13),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            initialValue: recommendedConcurrency.toString(),
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              hintText: '$recommendedConcurrency',
+                              helperText: 'Default: $recommendedConcurrency',
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              filled: true,
+                              fillColor: Colors.black26,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide.none,
+                              ),
                             ),
-                          );
-                        }).toList();
-                      },
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.white,
+                            ),
+                            onChanged: (val) {
+                              final concurrency = int.tryParse(val);
+                              if (concurrency != null &&
+                                  concurrency >= 1 &&
+                                  concurrency <= maxSafeConcurrency) {
+                                ref
+                                    .read(activeProjectProvider.notifier)
+                                    .updateSettings(
+                                      concurrencyLimit: concurrency,
+                                    );
+                              }
+                            },
+                          ),
                         ),
-                        filled: true,
-                        fillColor: Colors.black26,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      dropdownColor: const Color(0xFF1A1A1A),
-                      items: presets.map((p) {
-                        return DropdownMenuItem<String>(
-                          value: p['val'] as String,
+                        const SizedBox(width: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.deepPurple.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.deepPurple.withValues(alpha: 0.3),
+                            ),
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                p['name'] as String,
+                                'Recommended: $recommendedConcurrency',
                                 style: const TextStyle(
-                                  fontSize: 13,
+                                  fontSize: 10,
                                   fontWeight: FontWeight.bold,
+                                  color: Colors.deepPurple,
                                 ),
                               ),
                               Text(
-                                p['desc'] as String,
+                                'Max safe: $maxSafeConcurrency',
                                 style: TextStyle(
-                                  fontSize: 10,
+                                  fontSize: 9,
                                   color: Colors.grey[600],
                                 ),
                               ),
                             ],
                           ),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          ref
-                              .read(activeProjectProvider.notifier)
-                              .updateSettings(preset: val);
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 24),
-              // CRF
-              Expanded(
-                flex: 1,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'QUALITY (CRF)',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<int>(
-                      initialValue: project.crf,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
                         ),
-                        filled: true,
-                        fillColor: Colors.black26,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      dropdownColor: const Color(0xFF1A1A1A),
-                      items:
-                          [
-                            {'name': 'Highest', 'val': 12},
-                            {'name': 'Very High', 'val': 18},
-                            {'name': 'High (Default)', 'val': 23},
-                            {'name': 'Medium', 'val': 28},
-                            {'name': 'Low', 'val': 35},
-                          ].map((c) {
-                            return DropdownMenuItem<int>(
-                              value: c['val'] as int,
-                              child: Text(
-                                c['name'] as String,
-                                style: const TextStyle(fontSize: 13),
-                              ),
-                            );
-                          }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          ref
-                              .read(activeProjectProvider.notifier)
-                              .updateSettings(crf: val);
-                        }
-                      },
+                      ],
                     ),
                     const SizedBox(height: 4),
-                    const Text(
-                      'Lower = Better',
-                      style: TextStyle(fontSize: 10, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 24),
-              // FastStart
-              Expanded(
-                flex: 1,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'OPTIMIZATION',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      value: project.enableFastStart,
-                      onChanged: (val) {
-                        ref
-                            .read(activeProjectProvider.notifier)
-                            .updateSettings(enableFastStart: val);
-                      },
-                      title: const Text(
-                        'FastStart',
-                        style: TextStyle(fontSize: 13),
-                      ),
-                      subtitle: const Text(
-                        'For YouTube/Web',
-                        style: TextStyle(fontSize: 10),
-                      ),
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      activeThumbColor: Colors.deepPurple,
-                      activeTrackColor: Colors.deepPurple.withValues(
-                        alpha: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 24),
-              // Concurrency Limit
-              Expanded(
-                flex: 1,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'AUDIO PARALLELISM',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<int>(
-                      initialValue: project.concurrencyLimit,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        filled: true,
-                        fillColor: Colors.black26,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      dropdownColor: const Color(0xFF1A1A1A),
-                      items: () {
-                        final cores = Platform.numberOfProcessors;
-                        final recommended = cores <= 4
-                            ? 2
-                            : (cores <= 8 ? 4 : 8);
-
-                        return [
-                          {'name': '1 (Slowest / Safest)', 'val': 1},
-                          {'name': '2 (Conservative)', 'val': 2},
-                          {'name': '4 (Standard)', 'val': 4},
-                          {'name': '8 (Aggressive)', 'val': 8},
-                          {'name': '16 (Extreme)', 'val': 16},
-                        ].map((c) {
-                          final val = c['val'] as int;
-                          final isRec = val == recommended;
-                          return DropdownMenuItem<int>(
-                            value: val,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    c['name'] as String,
-                                    style: const TextStyle(fontSize: 13),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (isRec) ...[
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.greenAccent.withValues(
-                                        alpha: 0.1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(
-                                        color: Colors.greenAccent.withValues(
-                                          alpha: 0.3,
-                                        ),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'REC',
-                                      style: TextStyle(
-                                        fontSize: 8,
-                                        color: Colors.greenAccent,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          );
-                        }).toList();
-                      }(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          ref
-                              .read(activeProjectProvider.notifier)
-                              .updateSettings(concurrencyLimit: val);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 6),
                     Text(
-                      'Detected CPU Cores: ${Platform.numberOfProcessors}',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.white38,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Higher values speed up audio prep but increase CPU heat and may cause system lag during export.',
+                      'Number of audio files to process in parallel. Higher values may use more CPU but process faster.',
                       style: TextStyle(fontSize: 10, color: Colors.grey),
                     ),
                   ],
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 24),
-          // Extra Flags
-          const Text(
-            'EXTRA FFMPEG FLAGS',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  initialValue: project.extraFlags.join(' '),
-                  decoration: InputDecoration(
-                    hintText: '-vf "vignette" -af "volume=1.5"',
-                    hintStyle: TextStyle(color: Colors.grey[700], fontSize: 13),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    filled: true,
-                    fillColor: Colors.black26,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                    color: Colors.lightBlueAccent,
-                  ),
-                  onChanged: (val) {
-                    final flags = val
-                        .split(' ')
-                        .where((s) => s.isNotEmpty)
-                        .toList();
-                    ref
-                        .read(activeProjectProvider.notifier)
-                        .updateSettings(extraFlags: flags);
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Separate flags with spaces. Use with caution.',
-            style: TextStyle(fontSize: 10, color: Colors.grey),
-          ),
-          const SizedBox(height: 24),
-          // Hardware Acceleration Info
-          ref
-              .watch(hardwareInfoProvider)
-              .when(
-                data: (hw) {
-                  final isWindows = Platform.isWindows;
-                  final showSetupHint = isWindows && !hw.isFfmpegInstalled;
-                  final currentEncoder = project.effectiveEncoder;
-
-                  return Column(
-                    children: [
-                      // GPU/Encoder Selection (Windows only)
-                      if (isWindows) ...[
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.black38,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: Colors.blueAccent.withValues(alpha: 0.2),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.settings_input_component,
-                                    color: Colors.blueAccent,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Text(
-                                    'GPU / Encoder Selection',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      initialValue: currentEncoder,
-                                      decoration: InputDecoration(
-                                        labelText: 'Hardware Encoder',
-                                        hintText: 'Select encoder',
-                                        hintStyle: TextStyle(
-                                          color: Colors.grey[600],
-                                        ),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            6,
-                                          ),
-                                        ),
-                                        filled: true,
-                                        fillColor: Colors.grey[850],
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 8,
-                                            ),
-                                      ),
-                                      dropdownColor: Colors.grey[900],
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                      ),
-                                      items: [
-                                        DropdownMenuItem(
-                                          value: 'h264_nvenc',
-                                          child: Row(
-                                            children: const [
-                                              Icon(
-                                                Icons.bolt,
-                                                size: 16,
-                                                color: Colors.green,
-                                              ),
-                                              SizedBox(width: 8),
-                                              Text('NVIDIA NVENC'),
-                                            ],
-                                          ),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'h264_amf',
-                                          child: Row(
-                                            children: const [
-                                              Icon(
-                                                Icons.memory,
-                                                size: 16,
-                                                color: Colors.red,
-                                              ),
-                                              SizedBox(width: 8),
-                                              Text('AMD AMF'),
-                                            ],
-                                          ),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'h264_qsv',
-                                          child: Row(
-                                            children: const [
-                                              Icon(
-                                                Icons.memory,
-                                                size: 16,
-                                                color: Colors.blue,
-                                              ),
-                                              SizedBox(width: 8),
-                                              Text('Intel Quick Sync'),
-                                            ],
-                                          ),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'libx264',
-                                          child: Row(
-                                            children: const [
-                                              Icon(
-                                                Icons.computer,
-                                                size: 16,
-                                                color: Colors.orange,
-                                              ),
-                                              SizedBox(width: 8),
-                                              Text('Software (CPU)'),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                      onChanged: (value) {
-                                        if (value != null) {
-                                          ref
-                                              .read(
-                                                activeProjectProvider.notifier,
-                                              )
-                                              .updateSettings(
-                                                selectedEncoder: value,
-                                                useGpu: value != 'libx264',
-                                              );
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                  if (project.detectedEncoder != null &&
-                                      currentEncoder ==
-                                          project.detectedEncoder) ...[
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.greenAccent.withValues(
-                                          alpha: 0.2,
-                                        ),
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(
-                                          color: Colors.greenAccent.withValues(
-                                            alpha: 0.4,
-                                          ),
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.check_circle,
-                                            size: 12,
-                                            color: Colors.greenAccent,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          const Text(
-                                            'Auto-detected',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.greenAccent,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              if (currentEncoder != project.detectedEncoder &&
-                                  currentEncoder != null) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Using $currentEncoder (${hw.gpuName})',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: currentEncoder == 'libx264'
-                                        ? Colors.orangeAccent
-                                        : Colors.blueAccent,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.black38,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color:
-                                project.effectiveEncoder != null &&
-                                    project.effectiveEncoder != 'libx264'
-                                ? Colors.greenAccent.withValues(alpha: 0.1)
-                                : Colors.orangeAccent.withValues(alpha: 0.1),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              project.effectiveEncoder != null &&
-                                      project.effectiveEncoder != 'libx264'
-                                  ? Icons.bolt
-                                  : Icons.memory,
-                              color:
-                                  project.effectiveEncoder != null &&
-                                      project.effectiveEncoder != 'libx264'
-                                  ? Colors.greenAccent
-                                  : Colors.orangeAccent,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    project.effectiveEncoder != null &&
-                                            project.effectiveEncoder !=
-                                                'libx264'
-                                        ? 'GPU Acceleration Active'
-                                        : 'CPU Encoding Active',
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    project.effectiveEncoder != null &&
-                                            project.effectiveEncoder !=
-                                                'libx264'
-                                        ? 'Using ${project.effectiveEncoder} on ${hw.gpuName} for faster rendering.'
-                                        : 'Using CPU for processing.',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey[500],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Switch(
-                              value:
-                                  project.effectiveEncoder != null &&
-                                  project.effectiveEncoder != 'libx264',
-                              activeTrackColor: Colors.greenAccent.withValues(
-                                alpha: 0.5,
-                              ),
-                              thumbColor:
-                                  WidgetStateProperty.resolveWith<Color?>((
-                                    states,
-                                  ) {
-                                    if (states.contains(WidgetState.selected)) {
-                                      return Colors.greenAccent;
-                                    }
-                                    if (states.contains(WidgetState.disabled)) {
-                                      return Colors.grey[800];
-                                    }
-                                    return null; // Use default
-                                  }),
-                              onChanged: (val) {
-                                final encoder = val
-                                    ? project.detectedEncoder
-                                    : 'libx264';
-                                if (encoder != null) {
-                                  ref
-                                      .read(activeProjectProvider.notifier)
-                                      .updateSettings(
-                                        selectedEncoder: encoder,
-                                        useGpu: val,
-                                      );
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (showSetupHint) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.redAccent.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: Colors.redAccent.withValues(alpha: 0.2),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Row(
-                                children: [
-                                  Icon(
-                                    Icons.warning_amber_rounded,
-                                    color: Colors.redAccent,
-                                    size: 18,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'FFmpeg Not Found',
-                                    style: TextStyle(
-                                      color: Colors.redAccent,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                'FFmpeg is required for video processing on Windows. Please install it and add it to your System PATH.',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  ElevatedButton.icon(
-                                    onPressed: () => launchUrl(
-                                      Uri.parse(
-                                        'https://ffmpeg.org/download.html',
-                                      ),
-                                    ),
-                                    icon: const Icon(Icons.download, size: 14),
-                                    label: const Text('Download FFmpeg'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.redAccent,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 8,
-                                      ),
-                                      textStyle: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  TextButton(
-                                    onPressed: () {
-                                      // Refresh hardware info
-                                      ref.invalidate(hardwareInfoProvider);
-                                    },
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: Colors.grey,
-                                      textStyle: const TextStyle(fontSize: 11),
-                                    ),
-                                    child: const Text(
-                                      'I installed it, check again',
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  );
-                },
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, s) => const SizedBox.shrink(),
           ),
         ],
       ),
@@ -2133,68 +1408,8 @@ class VideoMergerPage extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                flex: 1,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'RESOLUTION',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      initialValue:
-                          '${project.resolutionWidth}x${project.resolutionHeight}',
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        filled: true,
-                        fillColor: Colors.black26,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      dropdownColor: const Color(0xFF1A1A1A),
-                      items:
-                          [
-                            {'name': '1080p (FHD)', 'w': 1920, 'h': 1080},
-                            {'name': '720p (HD)', 'w': 1280, 'h': 720},
-                            {'name': '4K (UHD)', 'w': 3840, 'h': 2160},
-                            {'name': 'Shorts (Vertical)', 'w': 1080, 'h': 1920},
-                          ].map((res) {
-                            return DropdownMenuItem<String>(
-                              value: '${res['w']}x${res['h']}',
-                              child: Text(
-                                res['name'] as String,
-                                style: const TextStyle(fontSize: 13),
-                              ),
-                            );
-                          }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          final parts = val.split('x');
-                          ref
-                              .read(activeProjectProvider.notifier)
-                              .updateSettings(
-                                resolutionWidth: int.parse(parts[0]),
-                                resolutionHeight: int.parse(parts[1]),
-                              );
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(width: 24),
               Expanded(
                 flex: 3,
@@ -2248,6 +1463,60 @@ class VideoMergerPage extends ConsumerWidget {
                           ],
                         ),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              const SizedBox(width: 24),
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'AUDIO LOOP COUNT',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      initialValue: "1",
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        hintText: '1 (1-Infinity)',
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        filled: true,
+                        fillColor: Colors.black26,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      style: const TextStyle(fontSize: 13, color: Colors.white),
+                      onChanged: (val) {
+                        final count = int.tryParse(val);
+                        if (count != null && count >= 1) {
+                          ref
+                              .read(activeProjectProvider.notifier)
+                              .updateSettings(audioLoopCount: count);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Range: 1-Infinity. Each loop randomizes audio order.',
+                      style: TextStyle(fontSize: 10, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -2748,8 +2017,11 @@ class VideoMergerPage extends ConsumerWidget {
         RegExp(r'[^a-zA-Z0-9\s]'),
         '',
       );
+      final loopPrefix = project.audioLoopCount > 1
+          ? 'loop_${project.audioLoopCount}x_'
+          : '';
       final outputFileName =
-          '${sanitizedTitle.replaceAll(' ', '_')}_$timestamp.mp4';
+          '${sanitizedTitle.replaceAll(' ', '_')}_${loopPrefix}$timestamp.mp4';
       final outputPath = '$outputDir/$outputFileName';
       logFilePath = '${project.rootPath}/logs/ffmpeg_log_$timestamp.log';
 
@@ -2763,15 +2035,8 @@ class VideoMergerPage extends ConsumerWidget {
         title: project.title,
         author: project.author,
         comment: project.comment,
-        width: project.resolutionWidth,
-        height: project.resolutionHeight,
-        preset: project.preset,
-        crf: project.crf,
-        enableFastStart: project.enableFastStart,
-        useGpu: project.useGpu,
-        selectedEncoder: project.selectedEncoder,
         concurrencyLimit: project.concurrencyLimit,
-        extraFlags: project.extraFlags,
+        audioLoopCount: project.audioLoopCount,
         onProgress: (progress) =>
             ref.read(processingStateProvider.notifier).updateProgress(progress),
         onLog: (log) => ref.read(processingStateProvider.notifier).addLog(log),

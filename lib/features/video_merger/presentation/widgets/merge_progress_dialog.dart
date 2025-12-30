@@ -57,6 +57,26 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
   Widget build(BuildContext context) {
     final processingState = ref.watch(processingStateProvider);
 
+    // Determine if there's an error
+    final hasError = processingState.error != null;
+    final isProcessing = processingState.isProcessing;
+    final isCompleted = !isProcessing && processingState.outputPath != null;
+
+    // Status text and icon
+    String statusText;
+    IconData? statusIcon;
+
+    if (hasError) {
+      statusText = 'Export Failed!';
+      statusIcon = Icons.error_outline;
+    } else if (isCompleted) {
+      statusText = 'Export Successful!';
+      statusIcon = Icons.check_circle_outline;
+    } else {
+      statusText = 'Generating Video Output...';
+      statusIcon = null; // No icon when processing
+    }
+
     // Auto-scroll to bottom when new logs arrive
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
