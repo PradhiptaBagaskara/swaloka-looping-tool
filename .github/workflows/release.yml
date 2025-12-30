@@ -2,8 +2,13 @@ name: Build and Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
 
 jobs:
   build-macos:
@@ -17,6 +22,16 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            **/.dart_tool/pub
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
 
       - name: Install dependencies
         run: flutter pub get
@@ -49,6 +64,16 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            **/.dart_tool/pub
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -67,6 +92,7 @@ jobs:
           path: Swaloka_Looping_Tool_Windows_Installer.exe
 
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     permissions:

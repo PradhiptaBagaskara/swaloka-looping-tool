@@ -55,6 +55,7 @@ dependencies:
   ffmpeg_kit_flutter_new: ^4.1.0
   video_player: ^2.10.1
   desktop_drop: ^0.7.0
+  device_info_plus: ^12.3.0
 
 dev_dependencies:
   flutter_test:

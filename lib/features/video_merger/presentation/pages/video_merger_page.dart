@@ -9,6 +9,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:video_player/video_player.dart';
 import 'package:swaloka_looping_tool/core/constants/app_constants.dart';
 import '../../domain/video_merger_service.dart';
+import '../../domain/hardware_service.dart';
 import '../widgets/merge_progress_dialog.dart';
 
 // Models
@@ -306,8 +307,8 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
 
   Future<void> _detectHardwareEncoder() async {
     if (state == null) return;
-    final service = ref.read(videoMergerServiceProvider);
-    final encoder = await service.getBestAvailableHardwareEncoder();
+    final hardwareService = ref.read(hardwareServiceProvider);
+    final encoder = await hardwareService.detectBestEncoder();
     if (encoder != null && state!.detectedEncoder != encoder) {
       await updateSettings(detectedEncoder: encoder);
     }
@@ -1599,79 +1600,188 @@ class VideoMergerPage extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
           // Hardware Acceleration Info
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.black38,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: project.detectedEncoder != null
-                    ? Colors.greenAccent.withValues(alpha: 0.1)
-                    : Colors.orangeAccent.withValues(alpha: 0.1),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  project.detectedEncoder != null
-                      ? (project.useGpu ? Icons.bolt : Icons.memory)
-                      : Icons.developer_board,
-                  color: project.detectedEncoder != null
-                      ? (project.useGpu ? Colors.greenAccent : Colors.white70)
-                      : Colors.orangeAccent,
-                  size: 20,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          ref
+              .watch(hardwareInfoProvider)
+              .when(
+                data: (hw) {
+                  final isWindows = Platform.isWindows;
+                  final showSetupHint = isWindows && !hw.isFfmpegInstalled;
+
+                  return Column(
                     children: [
-                      Text(
-                        project.detectedEncoder != null
-                            ? (project.useGpu
-                                  ? 'GPU Acceleration Active'
-                                  : 'CPU Encoding Active')
-                            : 'CPU Encoding (Default)',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.black38,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: project.detectedEncoder != null
+                                ? Colors.greenAccent.withValues(alpha: 0.1)
+                                : Colors.orangeAccent.withValues(alpha: 0.1),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              project.detectedEncoder != null
+                                  ? (project.useGpu ? Icons.bolt : Icons.memory)
+                                  : Icons.developer_board,
+                              color: project.detectedEncoder != null
+                                  ? (project.useGpu
+                                        ? Colors.greenAccent
+                                        : Colors.white70)
+                                  : Colors.orangeAccent,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    project.detectedEncoder != null
+                                        ? (project.useGpu
+                                              ? 'GPU Acceleration Active'
+                                              : 'CPU Encoding Active')
+                                        : 'CPU Encoding (Default)',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    project.detectedEncoder != null
+                                        ? (project.useGpu
+                                              ? 'Using ${project.detectedEncoder} on ${hw.gpuName} for faster rendering.'
+                                              : 'Hardware found but using CPU for encoding.')
+                                        : 'No compatible GPU found. Using CPU for processing.',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value:
+                                  project.detectedEncoder != null &&
+                                  project.useGpu,
+                              activeTrackColor: Colors.greenAccent.withValues(
+                                alpha: 0.5,
+                              ),
+                              thumbColor:
+                                  WidgetStateProperty.resolveWith<Color?>((
+                                    states,
+                                  ) {
+                                    if (states.contains(WidgetState.selected)) {
+                                      return Colors.greenAccent;
+                                    }
+                                    if (states.contains(WidgetState.disabled)) {
+                                      return Colors.grey[800];
+                                    }
+                                    return null; // Use default
+                                  }),
+                              onChanged: project.detectedEncoder != null
+                                  ? (val) {
+                                      ref
+                                          .read(activeProjectProvider.notifier)
+                                          .updateSettings(useGpu: val);
+                                    }
+                                  : null,
+                            ),
+                          ],
                         ),
                       ),
-                      Text(
-                        project.detectedEncoder != null
-                            ? (project.useGpu
-                                  ? 'Using ${project.detectedEncoder} for faster rendering.'
-                                  : 'Hardware found but using CPU for encoding.')
-                            : 'No compatible GPU found. Using CPU for processing.',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                      ),
+                      if (showSetupHint) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.redAccent.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(
+                                    Icons.warning_amber_rounded,
+                                    color: Colors.redAccent,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'FFmpeg Not Found',
+                                    style: TextStyle(
+                                      color: Colors.redAccent,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'FFmpeg is required for video processing on Windows. Please install it and add it to your System PATH.',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: () => launchUrl(
+                                      Uri.parse(
+                                        'https://ffmpeg.org/download.html',
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.download, size: 14),
+                                    label: const Text('Download FFmpeg'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.redAccent,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                      textStyle: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  TextButton(
+                                    onPressed: () {
+                                      // Refresh hardware info
+                                      ref.invalidate(hardwareInfoProvider);
+                                    },
+                                    child: const Text(
+                                      'I installed it, check again',
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.grey,
+                                      textStyle: const TextStyle(fontSize: 11),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
-                  ),
-                ),
-                Switch(
-                  // The switch represents "GPU Acceleration"
-                  // It should be ON only if a GPU is detected AND useGpu is true.
-                  value: project.detectedEncoder != null && project.useGpu,
-                  activeTrackColor: Colors.greenAccent.withValues(alpha: 0.5),
-                  thumbColor: WidgetStateProperty.resolveWith<Color?>((states) {
-                    if (states.contains(WidgetState.selected)) {
-                      return Colors.greenAccent;
-                    }
-                    if (states.contains(WidgetState.disabled)) {
-                      return Colors.grey[800];
-                    }
-                    return null; // Use default
-                  }),
-                  onChanged: project.detectedEncoder != null
-                      ? (val) {
-                          ref
-                              .read(activeProjectProvider.notifier)
-                              .updateSettings(useGpu: val);
-                        }
-                      : null,
-                ),
-              ],
-            ),
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, s) => const SizedBox.shrink(),
           ),
         ],
       ),
