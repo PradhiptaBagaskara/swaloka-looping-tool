@@ -2787,6 +2787,7 @@ class VideoMergerPage extends ConsumerWidget {
       builder: (context) => const MergeProgressDialog(),
     );
 
+    String? logFilePath;
     try {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final sanitizedTitle = (project.title ?? 'video').replaceAll(
@@ -2796,7 +2797,7 @@ class VideoMergerPage extends ConsumerWidget {
       final outputFileName =
           '${sanitizedTitle.replaceAll(' ', '_')}_$timestamp.mp4';
       final outputPath = '$outputDir/$outputFileName';
-      final logFilePath = '${project.rootPath}/logs/ffmpeg_log_$timestamp.log';
+      logFilePath = '${project.rootPath}/logs/ffmpeg_log_$timestamp.log';
 
       ref.read(processingStateProvider.notifier).startProcessing();
       final service = ref.read(videoMergerServiceProvider);
@@ -2822,14 +2823,19 @@ class VideoMergerPage extends ConsumerWidget {
         onLog: (log) => ref.read(processingStateProvider.notifier).addLog(log),
       );
 
-      final logs = ref.read(processingStateProvider).logs;
-      final logFile = File(logFilePath);
-      await logFile.writeAsString(logs.join('\n'));
-
       ref.read(processingStateProvider.notifier).setSuccess(outputPath);
       ref.read(projectFilesProvider.notifier).refresh();
     } catch (e) {
       ref.read(processingStateProvider.notifier).setError(e.toString());
+    } finally {
+      // Save logs regardless of success or failure
+      if (logFilePath != null) {
+        final logs = ref.read(processingStateProvider).logs;
+        if (logs.isNotEmpty) {
+          final logFile = File(logFilePath);
+          await logFile.writeAsString(logs.join('\n'));
+        }
+      }
     }
   }
 }

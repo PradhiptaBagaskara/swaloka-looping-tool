@@ -281,8 +281,7 @@ class VideoMergerService {
         '-c:v',
         encoder,
         ...qParam.split(' '),
-        '-preset',
-        mappedPreset,
+        if (mappedPreset.isNotEmpty) ...['-preset', mappedPreset],
         '-c:a',
         'aac',
         '-b:a',
@@ -394,7 +393,12 @@ class VideoMergerService {
   }
 
   /// Map standard libx264 presets to encoder-specific presets
+  /// Returns empty string if encoder doesn't support preset flag
   String _mapPresetForEncoder(String standardPreset, String encoder) {
+    // h264_videotoolbox (macOS) - doesn't support preset flag
+    // Uses only -q:v for quality control
+    if (encoder == 'h264_videotoolbox') return '';
+
     // libx264 presets - use as-is
     if (encoder == 'libx264') return standardPreset;
 
@@ -642,9 +646,12 @@ class VideoMergerService {
     }
 
     final mappedPreset = _mapPresetForEncoder(preset, encoder);
-    final optimizationFlags =
-        '-vf "scale=$width:$height:force_original_aspect_ratio=decrease,pad=$width:$height:(ow-iw)/2:(oh-ih)/2" '
-        '-c:v $encoder $qualityParam -preset $mappedPreset -c:a aac -b:a 192k $fastStartFlag $extraFlagsStr';
+    final optimizationFlags = [
+      '-vf "scale=$width:$height:force_original_aspect_ratio=decrease,pad=$width:$height:(ow-iw)/2:(oh-ih)/2"',
+      '-c:v $encoder $qualityParam',
+      if (mappedPreset.isNotEmpty) '-preset $mappedPreset',
+      '-c:a aac -b:a 192k $fastStartFlag $extraFlagsStr',
+    ].where((flag) => flag.isNotEmpty).join(' ');
 
     if (audioDuration > videoDuration) {
       // Audio is longer - loop the video to match audio duration
