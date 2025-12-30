@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:path_provider/path_provider.dart';
@@ -124,6 +125,31 @@ Future<String> _mergeVideoWithAudio({
   void Function(double progress)? onProgress,
   void Function(String log)? onLog,
 }) async {
+  /// Helper function to run FFmpeg command and stream output to onLog
+  Future<void> runFFmpegWithLogging(
+    List<String> command, {
+    String? errorMessage,
+  }) async {
+    onLog?.call('Command: ffmpeg ${command.join(" ")}');
+
+    final process = await Process.start('ffmpeg', command);
+
+    // Stream stdout
+    process.stdout.transform(utf8.decoder).listen((line) {
+      onLog?.call(line.trim());
+    });
+
+    // Stream stderr (FFmpeg uses stderr for progress/info)
+    process.stderr.transform(utf8.decoder).listen((line) {
+      onLog?.call(line.trim());
+    });
+
+    final exitCode = await process.exitCode;
+
+    if (exitCode != 0) {
+      throw Exception(errorMessage ?? 'FFmpeg command failed');
+    }
+  }
   // 1. Verify ffmpeg exists
   try {
     final check = await Process.run('ffmpeg', ['-version']);
@@ -155,26 +181,23 @@ Future<String> _mergeVideoWithAudio({
         batch.asMap().entries.map((entry) async {
           final idx = i + entry.key;
           final inputPath = entry.value;
-          final outPath = '${tempAudioDir.path}/part_$idx.wav';
+          final outPath = '${tempAudioDir.path}/part_$idx.aac';
 
-          onLog?.call('Extracting audio from: $inputPath');
-          final result = await Process.run('ffmpeg', [
+          await runFFmpegWithLogging([
             '-y',
             '-i',
             inputPath,
             '-vn',
             '-acodec',
-            'pcm_s16le',
+            'aac',
             '-ar',
             '44100',
             '-ac',
             '2',
+            '-b:a',
+            '192k',
             outPath,
-          ]);
-
-          if (result.exitCode != 0) {
-            throw Exception('Failed to extract audio from $inputPath');
-          }
+          ], errorMessage: 'Failed to extract audio from $inputPath');
           extractedFiles.add(outPath);
         }),
       );
@@ -205,9 +228,9 @@ Future<String> _mergeVideoWithAudio({
           .join('\n');
     await File(concatFilePath).writeAsString(concatContent);
 
-    final mergedAudioPath = '${tempAudioDir.path}/merged.wav';
+    final mergedAudioPath = '${tempAudioDir.path}/merged.aac';
     onLog?.call('Merging audio tracks...');
-    final concatResult = await Process.run('ffmpeg', [
+    await runFFmpegWithLogging([
       '-y',
       '-f',
       'concat',
@@ -218,11 +241,7 @@ Future<String> _mergeVideoWithAudio({
       '-c',
       'copy',
       mergedAudioPath,
-    ]);
-
-    if (concatResult.exitCode != 0) {
-      throw Exception('Failed to merge audio tracks');
-    }
+    ], errorMessage: 'Failed to merge audio tracks');
     onProgress?.call(0.5);
 
     // 5. Build metadata flags if provided
@@ -257,23 +276,16 @@ Future<String> _mergeVideoWithAudio({
       '-c:v',
       'copy',
       '-c:a',
-      'aac',
-      '-b:a',
-      '192k',
+      'copy',
       '-shortest',
       ...metadataFlags,
       outputPath,
       '-y',
     ];
 
-    onLog?.call('Command: ffmpeg ${command.join(" ")}');
+    onLog?.call('Starting fast merge...');
 
-    final result = await Process.run('ffmpeg', command);
-
-    if (result.exitCode != 0) {
-      final stderr = result.stderr.toString();
-      throw Exception('Failed to merge video: $stderr');
-    }
+    await runFFmpegWithLogging(command, errorMessage: 'Failed to merge video');
 
     onProgress?.call(1.0);
     onLog?.call('Process complete! Output: $outputPath');

@@ -2,6 +2,16 @@ import 'dart:io';
 
 /// Service for detecting system hardware capabilities
 class SystemInfoService {
+  /// Check if FFmpeg is installed and available
+  static Future<bool> isFFmpegAvailable() async {
+    try {
+      final result = await Process.run('ffmpeg', ['-version']);
+      return result.exitCode == 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /// Get the number of CPU cores available
   static int get cpuCores {
     try {

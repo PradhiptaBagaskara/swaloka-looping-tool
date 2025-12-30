@@ -348,7 +348,7 @@ class ProcessingStateNotifier extends Notifier<ProcessingState> {
     isProcessing: false,
     progress: 0.0,
     error: error,
-    logs: state.logs,
+    logs: [...state.logs, 'ERROR: $error'],
     startTime: state.startTime,
   );
 
@@ -1488,7 +1488,7 @@ class VideoMergerPage extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
-                      initialValue: "1",
+                      initialValue: project.audioLoopCount.toString(),
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         hintText: '1 (1-Infinity)',
@@ -2001,6 +2001,10 @@ class VideoMergerPage extends ConsumerWidget {
     final backgroundVideo = project.backgroundVideo;
     final audioFiles = project.audioFiles;
     final outputDir = project.effectiveOutputPath;
+
+    print(
+      '[DEBUG] _mergeVideos called with audioLoopCount: ${project.audioLoopCount}',
+    );
 
     if (backgroundVideo == null || audioFiles.isEmpty) return;
 

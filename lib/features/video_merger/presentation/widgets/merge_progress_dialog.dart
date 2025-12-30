@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../pages/video_merger_page.dart';
 
@@ -12,6 +13,7 @@ class MergeProgressDialog extends ConsumerStatefulWidget {
 
 class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
   final ScrollController _scrollController = ScrollController();
+  final ScrollController _textScrollController = ScrollController();
   late Timer _timer;
   Duration _elapsed = Duration.zero;
 
@@ -32,6 +34,7 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _textScrollController.dispose();
     _timer.cancel();
     super.dispose();
   }
@@ -40,6 +43,13 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    }
+    if (_textScrollController.hasClients) {
+      _textScrollController.animateTo(
+        _textScrollController.position.maxScrollExtent,
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
       );
@@ -56,26 +66,6 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
   @override
   Widget build(BuildContext context) {
     final processingState = ref.watch(processingStateProvider);
-
-    // Determine if there's an error
-    final hasError = processingState.error != null;
-    final isProcessing = processingState.isProcessing;
-    final isCompleted = !isProcessing && processingState.outputPath != null;
-
-    // Status text and icon
-    String statusText;
-    IconData? statusIcon;
-
-    if (hasError) {
-      statusText = 'Export Failed!';
-      statusIcon = Icons.error_outline;
-    } else if (isCompleted) {
-      statusText = 'Export Successful!';
-      statusIcon = Icons.check_circle_outline;
-    } else {
-      statusText = 'Generating Video Output...';
-      statusIcon = null; // No icon when processing
-    }
 
     // Auto-scroll to bottom when new logs arrive
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
@@ -170,14 +160,45 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
               ],
             ),
             const SizedBox(height: 24),
-            Text(
-              'FFMPEG LOGS',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[600],
-                letterSpacing: 1.2,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'FFMPEG LOGS',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[600],
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                if (processingState.logs.isNotEmpty)
+                  TextButton.icon(
+                    onPressed: () {
+                      final allLogs = processingState.logs.join('\n');
+                      Clipboard.setData(ClipboardData(text: allLogs));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Logs copied to clipboard'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.copy, size: 14),
+                    label: const Text(
+                      'Copy All',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
             Container(
@@ -192,24 +213,32 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
               child: Theme(
                 data: ThemeData.dark(),
                 child: Scrollbar(
-                  controller: _scrollController,
+                  controller: _textScrollController,
                   thumbVisibility: true,
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    itemCount: processingState.logs.length,
-                    itemBuilder: (context, index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 2),
-                        child: Text(
-                          processingState.logs[index],
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 11,
-                            color: Color(0xFFCCCCCC),
-                          ),
+                  child: SingleChildScrollView(
+                    controller: _textScrollController,
+                    child: SelectableText.rich(
+                      TextSpan(
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          color: Color(0xFFCCCCCC),
                         ),
-                      );
-                    },
+                        children: processingState.logs.map((log) {
+                          final isError =
+                              log.startsWith('ERROR:') ||
+                              log.startsWith('Failed to');
+                          return TextSpan(
+                            text: '$log\n',
+                            style: TextStyle(
+                              color: isError
+                                  ? Colors.redAccent
+                                  : const Color(0xFFCCCCCC),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
                   ),
                 ),
               ),
