@@ -42,6 +42,7 @@ class VideoMergerService {
     int crf = 18,
     bool enableFastStart = true,
     bool useGpu = true,
+    String? selectedEncoder,
     int concurrencyLimit = 4,
     List<String> extraFlags = const [],
     void Function(double progress)? onProgress,
@@ -62,6 +63,7 @@ class VideoMergerService {
           crf: crf,
           enableFastStart: enableFastStart,
           useGpu: useGpu,
+          selectedEncoder: selectedEncoder,
           concurrencyLimit: concurrencyLimit,
           extraFlags: extraFlags,
           onProgress: onProgress,
@@ -110,6 +112,7 @@ class VideoMergerService {
         crf: crf,
         enableFastStart: enableFastStart,
         useGpu: useGpu,
+        selectedEncoder: selectedEncoder,
         extraFlags: extraFlags,
         onProgress: (progress) =>
             onProgress?.call(0.5 + (progress * 0.5)), // Last 50% of progress
@@ -151,6 +154,7 @@ class VideoMergerService {
     int crf = 18,
     bool enableFastStart = true,
     bool useGpu = true,
+    String? selectedEncoder,
     int concurrencyLimit = 4,
     List<String> extraFlags = const [],
     void Function(double progress)? onProgress,
@@ -244,24 +248,17 @@ class VideoMergerService {
       final audioDur = await _getDurationWindows(mergedAudioPath);
       final videoDur = await _getDurationWindows(backgroundVideoPath);
 
-      // 6. Final Merge
-      final encoder = await _getBestEncoderWindows(useGpu);
+      // 6. Final Merge - Use selected encoder if provided, otherwise auto-detect
+      final encoder = selectedEncoder ?? await _getBestEncoderWindows(useGpu);
       final qParam = encoder.contains('nvenc') || encoder.contains('qsv')
           ? '-q:v ${((51 - crf) / 51 * 100).toInt()}'
           : '-crf $crf';
 
-      final metadata = [
-        if (title?.isNotEmpty ?? false) '-metadata',
-        'title=$title',
-        if (author?.isNotEmpty ?? false) ...[
-          '-metadata',
-          'artist=$author',
-          '-metadata',
-          'author=$author',
-        ],
-        if (comment?.isNotEmpty ?? false) '-metadata',
-        'comment=$comment',
-      ];
+      final metadata = _buildMetadataFlagsList(
+        title: title,
+        author: author,
+        comment: comment,
+      );
 
       final loopArgs = audioDur > videoDur
           ? [
@@ -326,6 +323,59 @@ class VideoMergerService {
       path,
     ]);
     return double.tryParse(result.stdout.toString().trim()) ?? 0.0;
+  }
+
+  /// Build FFmpeg metadata flags as a list from title, author, and comment.
+  /// Returns a list of command line arguments (for Windows Process.run).
+  List<String> _buildMetadataFlagsList({
+    String? title,
+    String? author,
+    String? comment,
+  }) {
+    return [
+      if (title != null && title.isNotEmpty) ...['-metadata', 'title=$title'],
+      if (author != null && author.isNotEmpty) ...[
+        '-metadata',
+        'artist=$author',
+        '-metadata',
+        'author=$author',
+        '-metadata',
+        'creator=$author',
+        '-metadata',
+        'publisher=$author',
+      ],
+      if (comment != null && comment.isNotEmpty) ...[
+        '-metadata',
+        'comment=$comment',
+      ],
+    ];
+  }
+
+  /// Build FFmpeg metadata flags as a string from title, author, and comment.
+  /// Returns a joined string (for macOS/Linux FFmpegKit.execute).
+  String _buildMetadataFlagsString({
+    String? title,
+    String? author,
+    String? comment,
+  }) {
+    final flags = _buildMetadataFlagsList(
+      title: title,
+      author: author,
+      comment: comment,
+    );
+
+    // Build the string with quotes around values for FFmpegKit
+    final result = <String>[];
+    for (var i = 0; i < flags.length; i += 2) {
+      if (i + 1 < flags.length) {
+        final key = flags[i];
+        final value = flags[i + 1];
+        // Add quotes around values for FFmpegKit
+        result.add('$key "$value"');
+      }
+    }
+
+    return result.join(' ');
   }
 
   Future<String> _getBestEncoderWindows(bool useGpu) async {
@@ -481,21 +531,16 @@ class VideoMergerService {
     int crf = 18,
     bool enableFastStart = true,
     bool useGpu = true,
+    String? selectedEncoder,
     List<String> extraFlags = const [],
     void Function(double progress)? onProgress,
   }) async {
     String command;
-    final metadataFlags = [
-      if (title != null && title.isNotEmpty) '-metadata title="$title"',
-      if (author != null && author.isNotEmpty) ...[
-        '-metadata artist="$author"',
-        '-metadata author="$author"',
-        '-metadata composer="$author"',
-        '-metadata creator="$author"',
-        '-metadata publisher="$author"',
-      ],
-      if (comment != null && comment.isNotEmpty) '-metadata comment="$comment"',
-    ].join(' ');
+    final metadataFlags = _buildMetadataFlagsString(
+      title: title,
+      author: author,
+      comment: comment,
+    );
 
     // Optimization flags:
     // -vf scale: Scale to target resolution, using force_original_aspect_ratio to avoid stretching
@@ -506,10 +551,12 @@ class VideoMergerService {
     final extraFlagsStr = extraFlags.join(' ');
 
     // Determine best encoder based on platform and user preference
-    String encoder = 'libx264';
+    // Use selected encoder if provided, otherwise auto-detect
+    String encoder = selectedEncoder ?? 'libx264';
     String qualityParam = '-crf $crf';
 
-    if (useGpu) {
+    // If no selected encoder, auto-detect based on platform
+    if (selectedEncoder == null && useGpu) {
       if (Platform.isMacOS) {
         encoder = 'h264_videotoolbox';
         final qValue = ((51 - crf) / 51 * 100).clamp(30, 90).toInt();

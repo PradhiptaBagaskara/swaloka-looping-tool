@@ -7,13 +7,18 @@ class HardwareInfo {
   final bool isFfmpegInstalled;
   final String? cpuName;
   final String? bestEncoder;
+  final String? selectedEncoder; // User-selected encoder for manual override
 
   HardwareInfo({
     required this.gpuName,
     required this.isFfmpegInstalled,
     this.cpuName,
     this.bestEncoder,
+    this.selectedEncoder,
   });
+
+  /// Get the encoder to use (selected encoder if set, otherwise best detected)
+  String? get effectiveEncoder => selectedEncoder ?? bestEncoder;
 }
 
 class HardwareService {
@@ -30,19 +35,14 @@ class HardwareService {
         final windowsInfo = await _deviceInfo.windowsInfo;
         cpuName = windowsInfo.computerName;
 
-        // Better GPU detection on Windows using WMIC
+        // Better GPU detection on Windows using PowerShell
         try {
-          final result = await Process.run('wmic', [
-            'path',
-            'win32_VideoController',
-            'get',
-            'name',
+          final result = await Process.run('powershell', [
+            '-Command',
+            'Get-CimInstance -ClassName Win32_VideoController | Select-Object -ExpandProperty Name',
           ]);
           if (result.exitCode == 0) {
-            final lines = result.stdout.toString().split('\n');
-            if (lines.length > 1) {
-              gpuName = lines[1].trim();
-            }
+            gpuName = result.stdout.toString().trim();
           }
         } catch (_) {}
 

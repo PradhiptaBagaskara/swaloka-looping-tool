@@ -30,6 +30,7 @@ class SwalokaProject {
   final List<String> extraFlags;
   final bool useGpu;
   final String? detectedEncoder;
+  final String? selectedEncoder;
   final int concurrencyLimit;
 
   SwalokaProject({
@@ -49,6 +50,7 @@ class SwalokaProject {
     this.extraFlags = const [],
     this.useGpu = true,
     this.detectedEncoder,
+    this.selectedEncoder,
     this.concurrencyLimit = 4,
   });
 
@@ -69,6 +71,7 @@ class SwalokaProject {
     'extraFlags': extraFlags,
     'useGpu': useGpu,
     'detectedEncoder': detectedEncoder,
+    'selectedEncoder': selectedEncoder,
     'concurrencyLimit': concurrencyLimit,
   };
 
@@ -89,10 +92,14 @@ class SwalokaProject {
     extraFlags: List<String>.from(json['extraFlags'] ?? []),
     useGpu: json['useGpu'] ?? true,
     detectedEncoder: json['detectedEncoder'],
+    selectedEncoder: json['selectedEncoder'],
     concurrencyLimit: json['concurrencyLimit'] ?? 4,
   );
 
   String get effectiveOutputPath => customOutputPath ?? '$rootPath/outputs';
+
+  /// Get the encoder to use (selected encoder if set, otherwise detected)
+  String? get effectiveEncoder => selectedEncoder ?? detectedEncoder;
 
   SwalokaProject copyWith({
     String? name,
@@ -113,6 +120,7 @@ class SwalokaProject {
     List<String>? extraFlags,
     bool? useGpu,
     String? detectedEncoder,
+    String? selectedEncoder,
     int? concurrencyLimit,
   }) {
     return SwalokaProject(
@@ -136,6 +144,7 @@ class SwalokaProject {
       extraFlags: extraFlags ?? this.extraFlags,
       useGpu: useGpu ?? this.useGpu,
       detectedEncoder: detectedEncoder ?? this.detectedEncoder,
+      selectedEncoder: selectedEncoder ?? this.selectedEncoder,
       concurrencyLimit: concurrencyLimit ?? this.concurrencyLimit,
     );
   }
@@ -282,6 +291,7 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     List<String>? extraFlags,
     bool? useGpu,
     String? detectedEncoder,
+    String? selectedEncoder,
     int? concurrencyLimit,
   }) async {
     if (state == null) return;
@@ -299,6 +309,7 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
       extraFlags: extraFlags,
       useGpu: useGpu,
       detectedEncoder: detectedEncoder,
+      selectedEncoder: selectedEncoder,
       concurrencyLimit: concurrencyLimit,
     );
     state = newState;
@@ -1606,16 +1617,213 @@ class VideoMergerPage extends ConsumerWidget {
                 data: (hw) {
                   final isWindows = Platform.isWindows;
                   final showSetupHint = isWindows && !hw.isFfmpegInstalled;
+                  final currentEncoder = project.effectiveEncoder;
 
                   return Column(
                     children: [
+                      // GPU/Encoder Selection (Windows only)
+                      if (isWindows) ...[
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.black38,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.blueAccent.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.settings_input_component,
+                                    color: Colors.blueAccent,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'GPU / Encoder Selection',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      initialValue: currentEncoder,
+                                      decoration: InputDecoration(
+                                        labelText: 'Hardware Encoder',
+                                        hintText: 'Select encoder',
+                                        hintStyle: TextStyle(
+                                          color: Colors.grey[600],
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.grey[850],
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 8,
+                                            ),
+                                      ),
+                                      dropdownColor: Colors.grey[900],
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                      items: [
+                                        DropdownMenuItem(
+                                          value: 'h264_nvenc',
+                                          child: Row(
+                                            children: const [
+                                              Icon(
+                                                Icons.bolt,
+                                                size: 16,
+                                                color: Colors.green,
+                                              ),
+                                              SizedBox(width: 8),
+                                              Text('NVIDIA NVENC'),
+                                            ],
+                                          ),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'h264_amf',
+                                          child: Row(
+                                            children: const [
+                                              Icon(
+                                                Icons.memory,
+                                                size: 16,
+                                                color: Colors.red,
+                                              ),
+                                              SizedBox(width: 8),
+                                              Text('AMD AMF'),
+                                            ],
+                                          ),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'h264_qsv',
+                                          child: Row(
+                                            children: const [
+                                              Icon(
+                                                Icons.memory,
+                                                size: 16,
+                                                color: Colors.blue,
+                                              ),
+                                              SizedBox(width: 8),
+                                              Text('Intel Quick Sync'),
+                                            ],
+                                          ),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'libx264',
+                                          child: Row(
+                                            children: const [
+                                              Icon(
+                                                Icons.computer,
+                                                size: 16,
+                                                color: Colors.orange,
+                                              ),
+                                              SizedBox(width: 8),
+                                              Text('Software (CPU)'),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          ref
+                                              .read(
+                                                activeProjectProvider.notifier,
+                                              )
+                                              .updateSettings(
+                                                selectedEncoder: value,
+                                                useGpu: value != 'libx264',
+                                              );
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                  if (project.detectedEncoder != null &&
+                                      currentEncoder ==
+                                          project.detectedEncoder) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.greenAccent.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                          color: Colors.greenAccent.withValues(
+                                            alpha: 0.4,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.check_circle,
+                                            size: 12,
+                                            color: Colors.greenAccent,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          const Text(
+                                            'Auto-detected',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.greenAccent,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              if (currentEncoder != project.detectedEncoder &&
+                                  currentEncoder != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Using $currentEncoder (${hw.gpuName})',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: currentEncoder == 'libx264'
+                                        ? Colors.orangeAccent
+                                        : Colors.blueAccent,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: Colors.black38,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: project.detectedEncoder != null
+                            color:
+                                project.effectiveEncoder != null &&
+                                    project.effectiveEncoder != 'libx264'
                                 ? Colors.greenAccent.withValues(alpha: 0.1)
                                 : Colors.orangeAccent.withValues(alpha: 0.1),
                           ),
@@ -1623,13 +1831,14 @@ class VideoMergerPage extends ConsumerWidget {
                         child: Row(
                           children: [
                             Icon(
-                              project.detectedEncoder != null
-                                  ? (project.useGpu ? Icons.bolt : Icons.memory)
-                                  : Icons.developer_board,
-                              color: project.detectedEncoder != null
-                                  ? (project.useGpu
-                                        ? Colors.greenAccent
-                                        : Colors.white70)
+                              project.effectiveEncoder != null &&
+                                      project.effectiveEncoder != 'libx264'
+                                  ? Icons.bolt
+                                  : Icons.memory,
+                              color:
+                                  project.effectiveEncoder != null &&
+                                      project.effectiveEncoder != 'libx264'
+                                  ? Colors.greenAccent
                                   : Colors.orangeAccent,
                               size: 20,
                             ),
@@ -1639,22 +1848,22 @@ class VideoMergerPage extends ConsumerWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    project.detectedEncoder != null
-                                        ? (project.useGpu
-                                              ? 'GPU Acceleration Active'
-                                              : 'CPU Encoding Active')
-                                        : 'CPU Encoding (Default)',
+                                    project.effectiveEncoder != null &&
+                                            project.effectiveEncoder !=
+                                                'libx264'
+                                        ? 'GPU Acceleration Active'
+                                        : 'CPU Encoding Active',
                                     style: const TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                   Text(
-                                    project.detectedEncoder != null
-                                        ? (project.useGpu
-                                              ? 'Using ${project.detectedEncoder} on ${hw.gpuName} for faster rendering.'
-                                              : 'Hardware found but using CPU for encoding.')
-                                        : 'No compatible GPU found. Using CPU for processing.',
+                                    project.effectiveEncoder != null &&
+                                            project.effectiveEncoder !=
+                                                'libx264'
+                                        ? 'Using ${project.effectiveEncoder} on ${hw.gpuName} for faster rendering.'
+                                        : 'Using CPU for processing.',
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: Colors.grey[500],
@@ -1665,8 +1874,8 @@ class VideoMergerPage extends ConsumerWidget {
                             ),
                             Switch(
                               value:
-                                  project.detectedEncoder != null &&
-                                  project.useGpu,
+                                  project.effectiveEncoder != null &&
+                                  project.effectiveEncoder != 'libx264',
                               activeTrackColor: Colors.greenAccent.withValues(
                                 alpha: 0.5,
                               ),
@@ -1682,13 +1891,19 @@ class VideoMergerPage extends ConsumerWidget {
                                     }
                                     return null; // Use default
                                   }),
-                              onChanged: project.detectedEncoder != null
-                                  ? (val) {
-                                      ref
-                                          .read(activeProjectProvider.notifier)
-                                          .updateSettings(useGpu: val);
-                                    }
-                                  : null,
+                              onChanged: (val) {
+                                final encoder = val
+                                    ? project.detectedEncoder
+                                    : 'libx264';
+                                if (encoder != null) {
+                                  ref
+                                      .read(activeProjectProvider.notifier)
+                                      .updateSettings(
+                                        selectedEncoder: encoder,
+                                        useGpu: val,
+                                      );
+                                }
+                              },
                             ),
                           ],
                         ),
@@ -2599,6 +2814,7 @@ class VideoMergerPage extends ConsumerWidget {
         crf: project.crf,
         enableFastStart: project.enableFastStart,
         useGpu: project.useGpu,
+        selectedEncoder: project.selectedEncoder,
         concurrencyLimit: project.concurrencyLimit,
         extraFlags: project.extraFlags,
         onProgress: (progress) =>

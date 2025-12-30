@@ -30,6 +30,32 @@ class HardwareService {
     return {'cores': Platform.numberOfProcessors};
   }
 
+  /// Detect the GPU type on Windows using PowerShell.
+  ///
+  /// Returns 'nvidia', 'amd', 'intel', or null if unknown.
+  Future<String?> _detectGpuTypeWindows() async {
+    try {
+      final result = await Process.run('powershell', [
+        '-Command',
+        'Get-CimInstance -ClassName Win32_VideoController | Select-Object -ExpandProperty Name',
+      ]);
+
+      if (result.exitCode == 0) {
+        final gpuName = result.stdout.toString().toLowerCase();
+        if (gpuName.contains('nvidia')) {
+          return 'nvidia';
+        } else if (gpuName.contains('amd') || gpuName.contains('radeon')) {
+          return 'amd';
+        } else if (gpuName.contains('intel')) {
+          return 'intel';
+        }
+      }
+    } catch (e) {
+      // PowerShell command failed, fallback to FFmpeg detection
+    }
+    return null;
+  }
+
   /// Detect the best available hardware encoder for the current system.
   ///
   /// Returns the encoder name (e.g., 'h264_videotoolbox', 'h264_nvenc')
@@ -40,8 +66,19 @@ class HardwareService {
     }
 
     if (Platform.isWindows) {
-      // For Windows, we check FFmpeg's reported encoders directly.
-      // This is the most reliable way to know what FFmpeg can actually use.
+      // First, detect GPU type using PowerShell
+      final gpuType = await _detectGpuTypeWindows();
+
+      // Map GPU type to encoder
+      if (gpuType == 'nvidia') {
+        return 'h264_nvenc';
+      } else if (gpuType == 'amd') {
+        return 'h264_amf';
+      } else if (gpuType == 'intel') {
+        return 'h264_qsv';
+      }
+
+      // Fallback: check FFmpeg's reported encoders if GPU detection failed
       try {
         final result = await Process.run('ffmpeg', ['-encoders']);
         final output = result.stdout.toString();
@@ -55,5 +92,23 @@ class HardwareService {
     }
 
     return null; // Fallback to CPU (libx264)
+  }
+
+  /// Get list of available GPU/encoder options for manual selection.
+  ///
+  /// Returns a map of encoder names to their display names.
+  Map<String, String> getEncoderOptions() {
+    if (Platform.isWindows) {
+      return {
+        'h264_nvenc': 'NVIDIA NVENC',
+        'h264_amf': 'AMD AMF',
+        'h264_qsv': 'Intel Quick Sync',
+        'libx264': 'Software (CPU)',
+      };
+    }
+    return {
+      'h264_videotoolbox': 'VideoToolbox (macOS)',
+      'libx264': 'Software (CPU)',
+    };
   }
 }
