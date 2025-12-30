@@ -2533,26 +2533,38 @@ class VideoMergerPage extends ConsumerWidget {
               'If you find this tool helpful, consider supporting the developer!',
               style: TextStyle(color: Colors.grey, fontSize: 13),
             ),
-            const SizedBox(height: 24),
-            _buildDonateOption(
-              context,
-              'OVO',
-              AppConstants.ovoAccount,
-              Colors.deepPurple,
+            const SizedBox(height: 20),
+            Center(
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  launchUrl(Uri.parse(AppConstants.saweriaAccount));
+                  Navigator.pop(context);
+                },
+                icon: const Icon(Icons.volunteer_activism, color: Colors.white),
+                label: const Text(
+                  'Donate via Saweria',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 12),
-            _buildDonateOption(
-              context,
-              'DANA',
-              AppConstants.danaAccount,
-              Colors.blue,
-            ),
-            const SizedBox(height: 12),
-            _buildDonateOption(
-              context,
-              'GOPAY',
-              AppConstants.gopayAccount,
-              Colors.green,
+            Center(
+              child: Text(
+                AppConstants.saweriaAccount,
+                style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                textAlign: TextAlign.center,
+              ),
             ),
           ],
         ),
@@ -2560,64 +2572,6 @@ class VideoMergerPage extends ConsumerWidget {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close', style: TextStyle(color: Colors.grey)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDonateOption(
-    BuildContext context,
-    String name,
-    String account,
-    Color color,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.black26,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              name,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(
-              account,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 14,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.copy, size: 16, color: Colors.grey),
-            onPressed: () {
-              // Copy to clipboard logic could go here
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('$name account copied'),
-                  duration: const Duration(seconds: 1),
-                ),
-              );
-            },
           ),
         ],
       ),

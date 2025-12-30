@@ -25,9 +25,5 @@ class AppConstants {
   static const double spacingLg = 24.0;
   static const double spacingXl = 32.0;
 
-  // Donation accounts
-  static const String eWalletAccount = '085655082415';
-  static const String ovoAccount = eWalletAccount;
-  static const String danaAccount = eWalletAccount;
-  static const String gopayAccount = eWalletAccount;
+  static const String saweriaAccount = 'https://saweria.co/masimas';
 }
