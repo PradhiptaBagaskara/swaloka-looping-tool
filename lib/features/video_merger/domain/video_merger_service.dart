@@ -250,6 +250,7 @@ class VideoMergerService {
 
       // 6. Final Merge - Use selected encoder if provided, otherwise auto-detect
       final encoder = selectedEncoder ?? await _getBestEncoderWindows(useGpu);
+      final mappedPreset = _mapPresetForEncoder(preset, encoder);
       final qParam = encoder.contains('nvenc') || encoder.contains('qsv')
           ? '-q:v ${((51 - crf) / 51 * 100).toInt()}'
           : '-crf $crf';
@@ -281,7 +282,7 @@ class VideoMergerService {
         encoder,
         ...qParam.split(' '),
         '-preset',
-        preset,
+        mappedPreset,
         '-c:a',
         'aac',
         '-b:a',
@@ -390,6 +391,75 @@ class VideoMergerService {
       // ffmpeg not in path
     }
     return 'libx264';
+  }
+
+  /// Map standard libx264 presets to encoder-specific presets
+  String _mapPresetForEncoder(String standardPreset, String encoder) {
+    // libx264 presets - use as-is
+    if (encoder == 'libx264') return standardPreset;
+
+    // h264_amf (AMD) presets
+    if (encoder == 'h264_amf') {
+      switch (standardPreset.toLowerCase()) {
+        case 'ultrafast':
+        case 'superfast':
+        case 'veryfast':
+          return 'speed';
+        case 'faster':
+        case 'fast':
+          return 'balanced';
+        case 'medium':
+        case 'slow':
+        case 'slower':
+        case 'veryslow':
+          return 'quality';
+        default:
+          return 'balanced';
+      }
+    }
+
+    // h264_nvenc (NVIDIA) presets
+    if (encoder == 'h264_nvenc') {
+      switch (standardPreset.toLowerCase()) {
+        case 'ultrafast':
+        case 'superfast':
+          return 'p1';
+        case 'veryfast':
+          return 'p4';
+        case 'faster':
+          return 'p5';
+        case 'fast':
+          return 'p6';
+        case 'medium':
+        case 'slow':
+        case 'slower':
+        case 'veryslow':
+          return 'p7';
+        default:
+          return 'p6';
+      }
+    }
+
+    // h264_qsv (Intel) - supports standard presets
+    if (encoder == 'h264_qsv') {
+      // h264_qsv supports most standard presets
+      final validQsvPresets = [
+        'veryfast',
+        'faster',
+        'fast',
+        'medium',
+        'slow',
+        'slower',
+        'veryslow',
+      ];
+      if (validQsvPresets.contains(standardPreset.toLowerCase())) {
+        return standardPreset;
+      }
+      return 'medium';
+    }
+
+    // Default fallback
+    return standardPreset;
   }
 
 
@@ -571,9 +641,10 @@ class VideoMergerService {
       }
     }
 
+    final mappedPreset = _mapPresetForEncoder(preset, encoder);
     final optimizationFlags =
         '-vf "scale=$width:$height:force_original_aspect_ratio=decrease,pad=$width:$height:(ow-iw)/2:(oh-ih)/2" '
-        '-c:v $encoder $qualityParam -preset $preset -c:a aac -b:a 192k $fastStartFlag $extraFlagsStr';
+        '-c:v $encoder $qualityParam -preset $mappedPreset -c:a aac -b:a 192k $fastStartFlag $extraFlagsStr';
 
     if (audioDuration > videoDuration) {
       // Audio is longer - loop the video to match audio duration
