@@ -13,8 +13,6 @@ on:
       - 'LICENSE'
       - '.gitignore'
       - 'CHANGELOG.md'
-      - 'scripts/**'
-      - '.github/**'
 
 jobs:
   version-bump:
