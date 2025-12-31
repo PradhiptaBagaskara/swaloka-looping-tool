@@ -2,7 +2,7 @@
 
 # Automated Semantic Versioning Script
 # Bumps version based on commit messages following Conventional Commits
-# Usage: ./scripts/bump_version.sh [major|minor|patch|auto]
+# Usage: ./scripts/bump_version.sh
 
 set -e
 
@@ -68,20 +68,16 @@ detect_bump_type() {
     echo "skip"
 }
 
-# Determine bump type
-BUMP_TYPE="${1:-auto}"
+# Determine bump type (always auto-detect)
+BUMP_TYPE=$(detect_bump_type)
 
-if [ "$BUMP_TYPE" = "auto" ]; then
-    BUMP_TYPE=$(detect_bump_type)
-
-    if [ "$BUMP_TYPE" = "skip" ]; then
-        echo -e "${YELLOW}⏭️  Only docs/test changes detected - skipping version bump${NC}"
-        echo -e "${BLUE}ℹ️  No version bump needed for documentation or test-only changes${NC}"
-        exit 0
-    fi
-
-    echo -e "${YELLOW}🔍 Auto-detected bump type: ${BUMP_TYPE}${NC}"
+if [ "$BUMP_TYPE" = "skip" ]; then
+    echo -e "${YELLOW}⏭️  Only docs/test changes detected - skipping version bump${NC}"
+    echo -e "${BLUE}ℹ️  No version bump needed for documentation or test-only changes${NC}"
+    exit 0
 fi
+
+echo -e "${YELLOW}🔍 Auto-detected bump type: ${BUMP_TYPE}${NC}"
 
 # Bump version based on type
 case "$BUMP_TYPE" in
@@ -113,14 +109,6 @@ NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
 NEW_VERSION_FULL="${NEW_VERSION}+${NEW_BUILD}"
 
 echo -e "${BLUE}📦 New version: ${NEW_VERSION_FULL}${NC}"
-
-# Ask for confirmation
-read -p "$(echo -e ${YELLOW}Continue with version bump? [y/N]:${NC} )" -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${RED}❌ Version bump cancelled${NC}"
-    exit 0
-fi
 
 # Update pubspec.yaml
 echo -e "${BLUE}📝 Updating pubspec.yaml...${NC}"

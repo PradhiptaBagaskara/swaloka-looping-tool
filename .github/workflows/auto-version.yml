@@ -21,6 +21,10 @@ jobs:
     name: Auto Bump Version
     runs-on: ubuntu-latest
 
+    # Grant permissions for pushing commits and tags
+    permissions:
+      contents: write
+
     # Skip if commit message contains [skip-version] or starts with 'chore: bump version'
     if: "!contains(github.event.head_commit.message, '[skip-version]') && !startsWith(github.event.head_commit.message, 'chore: bump version')"
 
@@ -64,7 +68,7 @@ jobs:
         if: steps.check_bump.outputs.needs_bump == 'true'
         run: |
           chmod +x scripts/bump_version.sh
-          ./scripts/bump_version.sh auto
+          ./scripts/bump_version.sh
 
       - name: Push changes and tag
         if: steps.check_bump.outputs.needs_bump == 'true'
