@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
 ### 🎉 Major Features Added
 
 #### Hierarchical Logging System
@@ -250,6 +251,12 @@ lib/features/video_merger/
 
 
 
+
+
+## [3.1.2] - 2025-12-31
+
+### Changes
+- chore: update release workflow to create EXE installer with Inno Setup and adjust artifact handling (6ad704c)
 
 ## [3.1.1] - 2025-12-31
 
