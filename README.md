@@ -190,12 +190,26 @@ sudo pacman -S ffmpeg
 
 **The app will detect if FFmpeg is missing and guide you through installation.**
 
-### 3️⃣ **First-Time macOS Setup**
-If you see a security warning:
-1. Click **"Done"** (don't move to trash)
-2. Go to **System Settings** → **Privacy & Security**
-3. Click **"Open Anyway"** next to Swaloka message
-4. Done! Won't see this again
+### 3️⃣ **First-Time macOS Setup (Important!)**
+
+**⚠️ If the app won't open or crashes immediately:**
+
+macOS security blocks unsigned apps by default. Here's how to open it:
+
+**Method 1: Right-Click to Open (Easiest)**
+1. **Right-click** (or Control+click) on the app → Choose **"Open"**
+2. Click **"Open"** in the dialog that appears
+3. App opens! ✅ (Only needed first time)
+
+**Method 2: System Settings**
+1. Try to open the app (it will show security warning)
+2. Click **"Done"** (don't move to trash!)
+3. Go to **System Settings** → **Privacy & Security**
+4. Scroll down, find Swaloka Looping Tool message
+5. Click **"Open Anyway"** → Click **"Open"** again
+6. Done! Won't see this again ✅
+
+**Why this happens:** The app is not notarized with Apple (requires $99/year developer account). This is normal for open-source software.
 
 ---
 
@@ -375,14 +389,18 @@ If you see a security warning:
 - Check that audio files are high bitrate
 - Avoid re-encoding already compressed videos
 
-### App Won't Open (macOS)
-**Issue:** Security warning or app won't start
+### App Won't Open or Crashes Immediately (macOS)
+**Issue:** macOS security blocks the app or it crashes on launch
 
 **Solution:**
-1. Don't move to trash
-2. System Settings → Privacy & Security
-3. Click "Open Anyway"
-4. See [installation section](#-installation--setup) for details
+1. **Right-click** the app → Choose **"Open"** (not double-click!)
+2. Click **"Open"** in the security dialog
+3. If still blocked: System Settings → Privacy & Security → **"Open Anyway"**
+4. See [installation section](#-installation--setup) for detailed steps
+
+**Why:** The app is not notarized (requires $99/year Apple developer account). This is normal for free/open-source software.
+
+**Alternative:** If it still crashes, check Console.app for crash logs and report the issue on GitHub.
 
 ### Out of Disk Space
 **Issue:** "Not enough space" error

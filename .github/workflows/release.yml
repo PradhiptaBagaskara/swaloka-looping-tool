@@ -93,6 +93,14 @@ jobs:
       - name: Build macOS app
         run: flutter build macos --release
 
+      - name: Ad-hoc code sign (basic security)
+        run: |
+          echo "🔐 Applying ad-hoc signature to app bundle..."
+          codesign --force --deep --sign - "build/macos/Build/Products/Release/swaloka_looping_tool.app"
+
+          echo "✅ Verifying signature..."
+          codesign -dv --verbose=4 "build/macos/Build/Products/Release/swaloka_looping_tool.app"
+
       - name: Create DMG
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
