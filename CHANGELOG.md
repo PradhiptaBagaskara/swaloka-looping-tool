@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
 ### 🎉 Major Features Added
 
 #### Hierarchical Logging System
@@ -234,6 +235,13 @@ lib/features/video_merger/
 **Note:** This changelog documents the major refactoring and feature additions completed in the recent development cycle. Version numbers will be assigned when the first official release is tagged.
 
 
+
+
+## [3.0.2] - 2025-12-31
+
+### Changes
+- chore: remove outdated text from VideoMergerPage (32364ae)
+- chore: trigger release build for v3.0.2 (9e775e4)
 
 ## [3.0.1] - 2025-12-31
 
