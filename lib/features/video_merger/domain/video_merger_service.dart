@@ -1,175 +1,146 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'package:path_provider/path_provider.dart';
-
-/// Media information extracted from ffprobe
-class MediaInfo {
-  final int width;
-  final int height;
-  final String? videoCodec;
-  final String? audioCodec;
-  final int? audioBitrate;
-  final int? audioSampleRate;
-
-  MediaInfo({
-    required this.width,
-    required this.height,
-    this.videoCodec,
-    this.audioCodec,
-    this.audioBitrate,
-    this.audioSampleRate,
-  });
-
-  /// Check if video needs re-encoding for given parameters
-  bool needsVideoEncoding({
-    required int targetWidth,
-    required int targetHeight,
-    required bool needsScaleOrPad,
-  }) {
-    // Re-encode if resolution changes or if scaling/padding is needed
-    if (width != targetWidth || height != targetHeight) return true;
-    if (needsScaleOrPad) return true;
-    return false;
-  }
-
-  /// Check if audio needs re-encoding
-  bool needsAudioEncoding({
-    required int targetBitrate,
-    required int targetSampleRate,
-    required bool isSingleFile,
-  }) {
-    // If single file, check if matches target
-    if (isSingleFile) {
-      final matchesCodec = audioCodec?.toLowerCase() == 'aac';
-      final matchesBitrate =
-          (audioBitrate ?? 0) >= targetBitrate * 900; // Allow some tolerance
-      final matchesSampleRate = (audioSampleRate ?? 0) == targetSampleRate;
-      return !(matchesCodec && matchesBitrate && matchesSampleRate);
-    }
-    // Multiple files always need encoding (merging)
-    return true;
-  }
-}
+import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
+import 'package:swaloka_looping_tool/core/services/log_service.dart';
 
 /// Service for merging background video with sequential audio files
 class VideoMergerService {
-  /// Merge background video with multiple audio files
-  ///
-  /// [backgroundVideoPath] - Path to background video file
-  /// [audioFiles] - List of audio/video file paths (audio will be extracted from videos)
-  /// [outputPath] - Path where final merged video will be saved
-  /// [title] - Video title metadata
-  /// [author] - Video author metadata
-  /// [comment] - Video comment metadata
-  /// [useGpu] - Whether to use GPU acceleration
-  /// [selectedEncoder] - Specific encoder to use (null for auto-detect)
-  /// [avoidReencoding] - If true, skip re-encoding when not needed (faster, no quality loss)
-  /// [concurrencyLimit] - Maximum number of parallel audio processing tasks
-  /// [audioLoopCount] - Number of times to loop and randomize audio
-  /// [onProgress] - Callback for progress updates (0.0 to 1.0)
-  /// [onLog] - Callback for real-time FFmpeg logs
-  /// [loopCount] - Loop count to use for output filename prefix
-  ///
-  /// Returns: path to merged video file
-  Future<String> mergeVideoWithAudio({
-    required String backgroundVideoPath,
-    required List<String> audioFiles,
-    required String outputPath,
-    String? title,
-    String? author,
-    String? comment,
-    bool useGpu = true,
-    String? selectedEncoder,
-    bool avoidReencoding = true,
-    int concurrencyLimit = 4,
-    int audioLoopCount = 1,
-    List<String> extraFlags = const [],
-    void Function(double progress)? onProgress,
-    void Function(String log)? onLog,
-  }) async {
-    try {
-      // Use system FFmpeg CLI on all platforms for consistent behavior
-      return _mergeVideoWithAudio(
-        backgroundVideoPath: backgroundVideoPath,
-        audioFiles: audioFiles,
-        outputPath: outputPath,
-        title: title,
-        author: author,
-        comment: comment,
-        concurrencyLimit: concurrencyLimit,
-        audioLoopCount: audioLoopCount,
-        extraFlags: extraFlags,
-        onProgress: onProgress,
-        onLog: onLog,
-      );
-    } catch (e) {
-      throw Exception('Failed to merge video: $e');
-    }
-  }
-}
 
-/// Implementation using FFmpeg CLI directly - works on all platforms
-/// Always uses fast mode: copy video stream, infinite loop, -shortest
-/// If audioLoopCount > 1, shuffles audio order for each loop iteration
-Future<String> _mergeVideoWithAudio({
-  required String backgroundVideoPath,
-  required List<String> audioFiles,
-  required String outputPath,
-  String? title,
-  String? author,
-  String? comment,
-  int concurrencyLimit = 4,
-  int audioLoopCount = 1,
-  List<String> extraFlags = const [],
-  void Function(double progress)? onProgress,
-  void Function(String log)? onLog,
-}) async {
-  /// Helper function to run FFmpeg command and stream output to onLog
+  /// Helper function to run FFmpeg command with hierarchical logging
   Future<void> runFFmpegWithLogging(
     List<String> command, {
     String? errorMessage,
+    void Function(LogEntry log)? onLog,
   }) async {
-    onLog?.call('Command: ffmpeg ${command.join(" ")}');
+    // Create and show command log immediately
+    final commandLog = LogEntry.info('Command: ffmpeg ${command.join(" ")}');
+    onLog?.call(commandLog);
 
+    final startTime = DateTime.now();
     final process = await Process.start('ffmpeg', command);
+
+    // Collect stdout and stderr lines as sub-logs
+    final stdoutLogs = <LogEntry>[];
+    final stderrLogs = <LogEntry>[];
 
     // Stream stdout
     process.stdout.transform(utf8.decoder).listen((line) {
-      onLog?.call(line.trim());
+      final trimmedLine = line.trim();
+      if (trimmedLine.isNotEmpty) {
+        stdoutLogs.add(LogEntry.simple(LogLevel.info, trimmedLine));
+      }
     });
 
     // Stream stderr (FFmpeg uses stderr for progress/info)
     process.stderr.transform(utf8.decoder).listen((line) {
-      onLog?.call(line.trim());
+      final trimmedLine = line.trim();
+      if (trimmedLine.isNotEmpty) {
+        stderrLogs.add(LogEntry.simple(LogLevel.info, trimmedLine));
+      }
     });
 
+    // Wait for process to complete
     final exitCode = await process.exitCode;
+    final executionDuration = DateTime.now().difference(startTime);
+
+    // Format duration nicely
+    String formatDuration(Duration duration) {
+      if (duration.inSeconds == 0) {
+        return '${duration.inMilliseconds}ms';
+      } else if (duration.inSeconds < 60) {
+        final seconds = duration.inMilliseconds / 1000;
+        return '${seconds.toStringAsFixed(1)}s';
+      } else {
+        final minutes = duration.inMinutes;
+        final seconds = duration.inSeconds % 60;
+        return '${minutes}m ${seconds}s';
+      }
+    }
+
+    // Create execution log with stdout and stderr as sub-logs
+    final executionSubLogs = <LogEntry>[];
+
+    if (stdoutLogs.isNotEmpty) {
+      executionSubLogs.add(
+        LogEntry.withSubLogs(
+          LogLevel.info,
+          'stdout (${stdoutLogs.length} lines)',
+          stdoutLogs,
+        ),
+      );
+    }
+
+    if (stderrLogs.isNotEmpty) {
+      executionSubLogs.add(
+        LogEntry.withSubLogs(
+          LogLevel.info,
+          'stderr (${stderrLogs.length} lines)',
+          stderrLogs,
+        ),
+      );
+    }
+
+    // Add execution details as sublog
+    if (executionSubLogs.isNotEmpty) {
+      final executionLog = LogEntry.withSubLogs(
+        LogLevel.info,
+        'Running FFmpeg command',
+        executionSubLogs,
+      );
+      commandLog.addSubLog(executionLog);
+    }
+
+    // Add duration as sublog
+    final durationLog = LogEntry.success(
+      'FFmpeg command completed in ${formatDuration(executionDuration)}',
+    );
+    commandLog.addSubLog(durationLog);
 
     if (exitCode != 0) {
+      final errorLog = LogEntry.error(
+        'FFmpeg command failed with exit code $exitCode',
+      );
+      onLog?.call(errorLog);
       throw Exception(errorMessage ?? 'FFmpeg command failed');
     }
   }
-  // 1. Verify ffmpeg exists
-  try {
-    final check = await Process.run('ffmpeg', ['-version']);
-    if (check.exitCode != 0) throw Exception('FFmpeg not found');
-  } catch (e) {
-    throw Exception(
-      'FFmpeg CLI not found. Please install FFmpeg and add it to your System PATH.',
-    );
+
+  // Check if ffmpeg exists in system path
+  Future<void> verifyFFmpegInstallation(
+    void Function(LogEntry log)? onLog,
+  ) async {
+    onLog?.call(LogEntry.info('Checking if ffmpeg exists in system path...'));
+    await SystemInfoService.isFFmpegAvailable(raiseException: true);
+    onLog?.call(LogEntry.success('FFmpeg CLI found in system path.'));
   }
 
-  onLog?.call('Using FFmpeg CLI for all platforms');
+  // create temp directory in project folder
+  Future<Directory> _createTempDirectory(
+    String projectRootPath,
+    void Function(LogEntry log)? onLog,
+  ) async {
+    onLog?.call(LogEntry.info('Creating temp directory...'));
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final tempDir = Directory('$projectRootPath/temp/swaloka_temp_$timestamp');
+    await tempDir.create(recursive: true);
+    onLog?.call(LogEntry.success('Temp directory created: ${tempDir.path}'));
+    return tempDir;
+  }
 
-  // 2. Prepare temp directory
-  final tempDir = await getTemporaryDirectory();
-  final timestamp = DateTime.now().millisecondsSinceEpoch;
-  final tempAudioDir = Directory('${tempDir.path}/swaloka_temp_$timestamp');
-  await tempAudioDir.create(recursive: true);
+  // Concat audio files
+  Future<String> _concatAudioFiles(
+    List<String> audioFiles,
+    Directory tempDir,
+    int audioLoopCount,
+    int concurrencyLimit,
+    void Function(LogEntry log)? onLog,
+  ) async {
+    final processLog = LogEntry.info(
+      'Processing ${audioFiles.length} audio file(s)...',
+    );
+    onLog?.call(processLog);
 
-  try {
-    // 3. Extract audio from each file in parallel
     final extractedFiles = <String>[];
     for (int i = 0; i < audioFiles.length; i += concurrencyLimit) {
       final end = (i + concurrencyLimit < audioFiles.length)
@@ -177,89 +148,131 @@ Future<String> _mergeVideoWithAudio({
           : audioFiles.length;
       final batch = audioFiles.sublist(i, end);
 
+      final batchLog = LogEntry.info(
+        'Extracting audio batch ${(i ~/ concurrencyLimit) + 1}...',
+      );
+      processLog.addSubLog(batchLog);
+
       await Future.wait(
         batch.asMap().entries.map((entry) async {
           final idx = i + entry.key;
           final inputPath = entry.value;
-          final outPath = '${tempAudioDir.path}/part_$idx.aac';
+          final outPath = '${tempDir.path}/audio_part_$idx.aac';
 
-          await runFFmpegWithLogging([
-            '-y',
-            '-i',
-            inputPath,
-            '-vn',
-            '-acodec',
-            'aac',
-            '-ar',
-            '44100',
-            '-ac',
-            '2',
-            '-b:a',
-            '192k',
-            outPath,
-          ], errorMessage: 'Failed to extract audio from $inputPath');
+          await runFFmpegWithLogging(
+            [
+              '-y',
+              '-i',
+              inputPath,
+              '-vn',
+              '-acodec',
+              'aac',
+              '-ar',
+              '44100',
+              '-ac',
+              '2',
+              '-b:a',
+              '192k',
+              outPath,
+            ],
+            errorMessage: 'Failed to extract audio from $inputPath',
+            onLog: (log) => batchLog.addSubLog(log),
+          );
           extractedFiles.add(outPath);
         }),
       );
-      onProgress?.call((i / audioFiles.length) * 0.4);
     }
-
-    // 4. Concat audio files (with looping support)
-    final concatFilePath = '${tempAudioDir.path}/concat.txt';
+    final concatFilePath = '${tempDir.path}/audio_concat.txt';
     final concatFiles = <String>[];
 
-    if (audioLoopCount == 1) {
-      // Single pass - use files as-is
-      concatFiles.addAll(extractedFiles);
-    } else {
-      // Multiple passes - shuffle for each iteration
-      for (int loop = 0; loop < audioLoopCount; loop++) {
+    // First iteration: Always use original order from UI
+    // This ensures the first play through matches the user's intended sequence
+    concatFiles.addAll(extractedFiles);
+
+    if (audioLoopCount > 1) {
+      // Subsequent iterations: Shuffle each time for variety
+      // Example with 3 files and loopCount=3:
+      //   Loop 1: [file1, file2, file3] <- original order
+      //   Loop 2: [file2, file3, file1] <- shuffled
+      //   Loop 3: [file3, file1, file2] <- shuffled again
+      for (int loop = 1; loop < audioLoopCount; loop++) {
         final filesToConcat = List<String>.from(extractedFiles);
         filesToConcat.shuffle(Random());
         concatFiles.addAll(filesToConcat);
       }
-      onLog?.call(
-        'Looping audio $audioLoopCount times with randomized order per loop',
+
+      // Add looping info as sublog
+      processLog.addSubLog(
+        LogEntry.info(
+          'Looping audio $audioLoopCount times (first loop: original order, subsequent loops: randomized)',
+        ),
       );
     }
 
     final concatContent = concatFiles
-          .map((f) => "file '${f.replaceAll("'", "'\\''")}'")
-          .join('\n');
+        .map((f) => "file '${f.replaceAll("'", "'\\''")}'")
+        .join('\n');
     await File(concatFilePath).writeAsString(concatContent);
 
-    final mergedAudioPath = '${tempAudioDir.path}/merged.aac';
-    onLog?.call('Merging audio tracks...');
-    await runFFmpegWithLogging([
-      '-y',
-      '-f',
-      'concat',
-      '-safe',
-      '0',
-      '-i',
-      concatFilePath,
-      '-c',
-      'copy',
-      mergedAudioPath,
-    ], errorMessage: 'Failed to merge audio tracks');
-    onProgress?.call(0.5);
+    // Mark processing as complete
+    processLog.addSubLog(LogEntry.success('Audio processing completed'));
 
-    // 5. Build metadata flags if provided
-    final metadataFlags = <String>[];
-    if (title != null) {
-      metadataFlags.addAll(['-metadata', 'title=$title']);
-    }
-    if (author != null) {
-      metadataFlags.addAll(['-metadata', 'artist=$author']);
-    }
-    if (comment != null) {
-      metadataFlags.addAll(['-metadata', 'comment=$comment']);
-    }
+    return concatFilePath;
+  }
 
+  // Merge audio files
+  Future<String> _mergeAudioFiles(
+    Directory tempDir,
+    String concatFilePath,
+    void Function(LogEntry log)? onLog,
+  ) async {
+    final mergedAudioPath = '${tempDir.path}/audio_merged.aac';
+
+    // Create parent log for merging operation
+    final mergeLog = LogEntry.info('Merging audio tracks...');
+    onLog?.call(mergeLog);
+
+    await runFFmpegWithLogging(
+      [
+        '-y',
+        '-f',
+        'concat',
+        '-safe',
+        '0',
+        '-i',
+        concatFilePath,
+        '-c',
+        'copy',
+        mergedAudioPath,
+      ],
+      errorMessage: 'Failed to merge audio tracks',
+      onLog: (log) => mergeLog.addSubLog(log),
+    );
+
+    // Mark merge as complete
+    mergeLog.addSubLog(
+      LogEntry.success('Audio tracks merged successfully: $mergedAudioPath'),
+    );
+
+    return mergedAudioPath;
+    // end of _mergeAudioFiles
+  }
+
+  // Process audio files
+  Future<String> _mergeVideoWithAudioFiles(
+    String backgroundVideoPath,
+    String outputPath,
+    String mergedAudioPath,
+    List<String> metadataFlags,
+    void Function(LogEntry log)? onLog,
+  ) async {
     // 6. Fast mode: Loop video to match audio duration
     // -stream_loop -1 applies to next input (background video)
     // -shortest ensures we stop when audio ends
-    onLog?.call('Starting fast merge...');
+
+    // Create parent log for video merge operation
+    final videoMergeLog = LogEntry.info('Merging video with audio...');
+    onLog?.call(videoMergeLog);
 
     // Build optimized FFmpeg command
     final command = [
@@ -283,17 +296,90 @@ Future<String> _mergeVideoWithAudio({
       '-y',
     ];
 
-    onLog?.call('Starting fast merge...');
+    await runFFmpegWithLogging(
+      command,
+      errorMessage: 'Failed to merge video',
+      onLog: (log) => videoMergeLog.addSubLog(log),
+    );
 
-    await runFFmpegWithLogging(command, errorMessage: 'Failed to merge video');
+    // Mark merge as complete
+    videoMergeLog.addSubLog(
+      LogEntry.success('Video merge complete! Output: $outputPath'),
+    );
 
-    onProgress?.call(1.0);
-    onLog?.call('Process complete! Output: $outputPath');
     return outputPath;
-  } finally {
-    // Cleanup
-    if (await tempAudioDir.exists()) {
-      await tempAudioDir.delete(recursive: true);
+    // end of _mergeVideoWithAudioFiles
+  }
+
+  Future<String> processVideoWithAudio({
+    required String backgroundVideoPath,
+    required List<String> audioFiles,
+    required String outputPath,
+    required String projectRootPath,
+    String? title,
+    String? author,
+    String? comment,
+    int concurrencyLimit = 4,
+    int audioLoopCount = 1,
+    void Function(double progress)? onProgress,
+    void Function(LogEntry log)? onLog,
+  }) async {
+    await verifyFFmpegInstallation(onLog);
+    onProgress?.call(0.2);
+    final tempDir = await _createTempDirectory(projectRootPath, onLog);
+    try {
+      final concatFilePath = await _concatAudioFiles(
+        audioFiles,
+        tempDir,
+        audioLoopCount,
+        concurrencyLimit,
+        onLog,
+      );
+      onProgress?.call(0.4);
+      final mergedAudioPath = await _mergeAudioFiles(
+        tempDir,
+        concatFilePath,
+        onLog,
+      );
+      onProgress?.call(0.6);
+      final metadataFlags = _buildMetadataFlags(title, author, comment);
+      await _mergeVideoWithAudioFiles(
+        backgroundVideoPath,
+        outputPath,
+        mergedAudioPath,
+        metadataFlags,
+        onLog,
+      );
+      onProgress?.call(1.0);
+      return outputPath;
+    } finally {
+      // Cleanup
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
     }
   }
+
+  // Build metadata flags
+  List<String> _buildMetadataFlags(
+    String? title,
+    String? author,
+    String? comment,
+  ) {
+    final metadataFlags = <String>[];
+    if (title != null) {
+      metadataFlags.addAll(['-metadata', 'title=$title']);
+    }
+    if (author != null) {
+      // depending on the platform/ffmpeg installation it might accept artist or author. So we add both.
+      metadataFlags.addAll(['-metadata', 'artist=$author']);
+      metadataFlags.addAll(['-metadata', 'author=$author']);
+    }
+    if (comment != null) {
+      metadataFlags.addAll(['-metadata', 'comment=$comment']);
+    }
+    return metadataFlags;
+  }
+
+  // end close of class VideoMergerService
 }

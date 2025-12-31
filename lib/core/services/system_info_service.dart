@@ -3,11 +3,14 @@ import 'dart:io';
 /// Service for detecting system hardware capabilities
 class SystemInfoService {
   /// Check if FFmpeg is installed and available
-  static Future<bool> isFFmpegAvailable() async {
+  static Future<bool> isFFmpegAvailable({bool raiseException = false}) async {
     try {
       final result = await Process.run('ffmpeg', ['-version']);
       return result.exitCode == 0;
     } catch (e) {
+      if (raiseException) {
+        throw Exception('FFmpeg is not installed');
+      }
       return false;
     }
   }

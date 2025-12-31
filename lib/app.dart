@@ -62,7 +62,7 @@ class _LoadingPage extends StatelessWidget {
 }
 
 /// Error page shown when FFmpeg is not installed
-class FFmpegErrorPage extends StatelessWidget {
+class FFmpegErrorPage extends ConsumerWidget {
   final String? error;
 
   const FFmpegErrorPage({super.key, this.error});
@@ -108,8 +108,71 @@ class FFmpegErrorPage extends StatelessWidget {
     }
   }
 
+  static Widget _buildTroubleshootingStep(
+    String number,
+    String title,
+    String description,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.deepPurple.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                number,
+                style: const TextStyle(
+                  color: Colors.deepPurple,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    color: Colors.grey,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
       body: SafeArea(
@@ -212,33 +275,112 @@ class FFmpegErrorPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
-                    onPressed: () {
-                      // Attempt to restart the app to re-check
-                      // In a real app, you might want to show a dialog
-                      // instructing the user to restart the app manually
+                    onPressed: () async {
+                      // Show checking dialog
                       showDialog(
                         context: context,
-                        builder: (context) => AlertDialog(
-                          backgroundColor: const Color(0xFF1E1E1E),
-                          title: const Text(
-                            'Restart Required',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                          content: const Text(
-                            'After installing FFmpeg, please restart this application.',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              child: const Text(
-                                'OK',
-                                style: TextStyle(color: Colors.deepPurple),
-                              ),
+                        barrierDismissible: false,
+                        builder: (context) => const AlertDialog(
+                          backgroundColor: Color(0xFF1E1E1E),
+                          content: Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: Row(
+                              children: [
+                                CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.deepPurple,
+                                  ),
+                                ),
+                                SizedBox(width: 20),
+                                Text(
+                                  'Checking FFmpeg...',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       );
+
+                      // Wait a moment for the dialog to show
+                      await Future.delayed(const Duration(milliseconds: 300));
+
+                      // Perform the actual check
+                      final isAvailable =
+                          await SystemInfoService.isFFmpegAvailable();
+
+                      // Close the checking dialog
+                      if (context.mounted) {
+                        Navigator.of(context).pop();
+                      }
+
+                      if (!isAvailable && context.mounted) {
+                        // Still not found, show helpful troubleshooting dialog
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            backgroundColor: const Color(0xFF1E1E1E),
+                            title: const Row(
+                              children: [
+                                Icon(Icons.warning, color: Colors.orange),
+                                SizedBox(width: 8),
+                                Text(
+                                  'FFmpeg Still Not Found',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                            content: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'FFmpeg is still not detected. Please try the following:',
+                                    style: TextStyle(color: Colors.grey),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildTroubleshootingStep(
+                                    '1',
+                                    'Verify FFmpeg is installed',
+                                    'Open your terminal and run:\nffmpeg -version',
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildTroubleshootingStep(
+                                    '2',
+                                    'Check System PATH',
+                                    'Make sure FFmpeg is added to your system PATH environment variable.',
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildTroubleshootingStep(
+                                    '3',
+                                    'Restart Terminal/Shell',
+                                    'If you just installed FFmpeg, restart your terminal or shell session.',
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildTroubleshootingStep(
+                                    '4',
+                                    'Restart This App',
+                                    'If the above steps don\'t work, try restarting this application.',
+                                  ),
+                                ],
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text(
+                                  'OK',
+                                  style: TextStyle(color: Colors.deepPurple),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      } else if (isAvailable) {
+                        // FFmpeg found! Invalidate provider to navigate to main app
+                        ref.invalidate(ffmpegCheckProvider);
+                      }
                     },
                     icon: const Icon(Icons.refresh),
                     label: const Text('Re-check Installation'),
