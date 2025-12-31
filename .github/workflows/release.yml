@@ -10,6 +10,9 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -64,6 +67,9 @@ jobs:
     name: Build macOS App
     runs-on: macos-latest
     needs: create-release
+
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
@@ -120,6 +126,9 @@ jobs:
     name: Build Windows App
     runs-on: windows-latest
     needs: create-release
+
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
