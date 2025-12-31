@@ -24,7 +24,14 @@ class VideoMergerService {
     final startTime = DateTime.now();
 
     // Run FFmpeg with extended PATH environment
-    final result = await Process.run(ffmpegPath, command, environment: env);
+    // Windows: use simple 'ffmpeg' command (relies on PATH)
+    // macOS/Linux: use resolved path with extended environment (for release builds)
+    final ProcessResult result;
+    if (Platform.isWindows) {
+      result = await Process.run('ffmpeg', command);
+    } else {
+      result = await Process.run(ffmpegPath, command, environment: env);
+    }
 
     final exitCode = result.exitCode;
 

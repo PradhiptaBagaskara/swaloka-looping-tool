@@ -40,6 +40,13 @@ class SystemInfoService {
 
     try {
       // Try with extended PATH
+      if (Platform.isWindows) {
+        final result = await Process.run('where', ['ffmpeg']);
+        if (result.exitCode == 0) {
+          _ffmpegPath = (result.stdout as String).trim().split('\n').first;
+          return _ffmpegPath;
+        }
+      }
       final result = await Process.run('ffmpeg', [
         '-version',
       ],
