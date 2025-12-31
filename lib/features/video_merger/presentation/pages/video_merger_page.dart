@@ -7,18 +7,13 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:swaloka_looping_tool/core/constants/app_constants.dart';
 import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
 import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
+import 'package:swaloka_looping_tool/app.dart';
 import '../../domain/models/swaloka_project.dart';
 import '../providers/video_merger_providers.dart';
 import '../state/processing_state.dart';
 import '../widgets/drop_zone_widget.dart';
 import '../widgets/media_preview_player.dart';
 import '../widgets/merge_progress_dialog.dart';
-
-// NOTE: Models, State, and Providers have been moved to separate files
-// - Models: lib/features/video_merger/domain/models/
-// - State: lib/features/video_merger/presentation/state/
-// - Providers: lib/features/video_merger/presentation/providers/
-// - Widgets: lib/features/video_merger/presentation/widgets/
 
 class VideoMergerPage extends ConsumerWidget {
   const VideoMergerPage({super.key});
@@ -62,7 +57,7 @@ class VideoMergerPage extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildSidebarHeader(context),
+                      _buildSidebarHeader(context, ref),
                       Expanded(
                         child: ListView(
                           padding: const EdgeInsets.symmetric(
@@ -471,7 +466,9 @@ class VideoMergerPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildSidebarHeader(BuildContext context) {
+  Widget _buildSidebarHeader(BuildContext context, WidgetRef ref) {
+    final appVersion = ref.watch(appVersionProvider);
+
     return Container(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -502,13 +499,41 @@ class VideoMergerPage extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Text(
-            'LOOPING TOOL',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.5,
-            ),
+          Row(
+            children: [
+              Text(
+                'LOOPING TOOL',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const SizedBox(width: 8),
+              appVersion.when(
+                data: (version) => Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    version,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[400],
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+              ),
+            ],
           ),
         ],
       ),

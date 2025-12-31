@@ -9,6 +9,7 @@ on:
       - 'docs/**'
       - 'test/**'
       - 'tests/**'
+      - 'scripts/**'
       - '**_test.dart'
       - 'LICENSE'
       - '.gitignore'
