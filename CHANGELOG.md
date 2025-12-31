@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
 ### 🎉 Major Features Added
 
 #### Hierarchical Logging System
@@ -244,6 +245,12 @@ lib/features/video_merger/
 
 
 
+
+
+## [3.0.7] - 2025-12-31
+
+### Changes
+- chore: improve app bundle handling in release workflow by dynamically locating the app path (2804075)
 
 ## [3.0.6] - 2025-12-31
 
