@@ -33,15 +33,23 @@ jobs:
 
       - name: Ad-hoc code sign (basic security)
         run: |
+          echo "🔐 Finding app bundle..."
+          APP_PATH=$(find build/macos/Build/Products/Release -name "*.app" -type d -maxdepth 1 | head -n 1)
+          echo "Found app at: $APP_PATH"
+
           echo "🔐 Applying ad-hoc signature to app bundle..."
-          codesign --force --deep --sign - "build/macos/Build/Products/Release/swaloka_looping_tool.app"
+          codesign --force --deep --sign - "$APP_PATH"
 
           echo "✅ Verifying signature..."
-          codesign -dv --verbose=4 "build/macos/Build/Products/Release/swaloka_looping_tool.app"
+          codesign -dv --verbose=4 "$APP_PATH"
 
       - name: Create DMG
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
+
+          # Find the app bundle
+          APP_PATH=$(find build/macos/Build/Products/Release -name "*.app" -type d -maxdepth 1 | head -n 1)
+          echo "Using app at: $APP_PATH"
 
           # Install create-dmg
           brew install create-dmg
@@ -54,7 +62,7 @@ jobs:
             --icon-size 100 \
             --app-drop-link 600 185 \
             "build/Swaloka-Looping-Tool-${VERSION}-macos-installer.dmg" \
-            "build/macos/Build/Products/Release/swaloka_looping_tool.app" || true
+            "$APP_PATH" || true
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
