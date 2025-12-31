@@ -216,11 +216,6 @@ class VideoMergerPage extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    'Creative Video Automation',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey[500], letterSpacing: 2),
-                  ),
                   const SizedBox(height: 48),
                   Row(
                     mainAxisSize: MainAxisSize.min,
