@@ -1,406 +1,24 @@
 import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:desktop_drop/desktop_drop.dart';
-import 'package:video_player/video_player.dart';
 import 'package:swaloka_looping_tool/core/constants/app_constants.dart';
 import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
-import '../../domain/video_merger_service.dart';
+import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
+import '../../domain/models/swaloka_project.dart';
+import '../providers/video_merger_providers.dart';
+import '../state/processing_state.dart';
+import '../widgets/drop_zone_widget.dart';
+import '../widgets/media_preview_player.dart';
 import '../widgets/merge_progress_dialog.dart';
 
-// Models
-class SwalokaProject {
-  final String name;
-  final String rootPath;
-  final String? customOutputPath;
-  final List<String> audioFiles;
-  final String? backgroundVideo;
-  final String? title;
-  final String? author;
-  final String? comment;
-  final int concurrencyLimit;
-  final int audioLoopCount;
-
-  SwalokaProject({
-    required this.name,
-    required this.rootPath,
-    this.customOutputPath,
-    this.audioFiles = const [],
-    this.backgroundVideo,
-    this.title,
-    this.author,
-    this.comment,
-    this.concurrencyLimit = 4,
-    this.audioLoopCount = 1,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'name': name,
-    'rootPath': rootPath,
-    'customOutputPath': customOutputPath,
-    'audioFiles': audioFiles,
-    'backgroundVideo': backgroundVideo,
-    'title': title,
-    'author': author,
-    'comment': comment,
-    'concurrencyLimit': concurrencyLimit,
-    'audioLoopCount': audioLoopCount,
-  };
-
-  factory SwalokaProject.fromJson(Map<String, dynamic> json) => SwalokaProject(
-    name: json['name'],
-    rootPath: json['rootPath'],
-    customOutputPath: json['customOutputPath'],
-    audioFiles: List<String>.from(json['audioFiles'] ?? []),
-    backgroundVideo: json['backgroundVideo'],
-    title: json['title'],
-    author: json['author'],
-    comment: json['comment'],
-    concurrencyLimit: json['concurrencyLimit'] ?? 4,
-    audioLoopCount: json['audioLoopCount'] ?? 1,
-  );
-
-  String get effectiveOutputPath => customOutputPath ?? '$rootPath/outputs';
-
-  SwalokaProject copyWith({
-    String? name,
-    String? rootPath,
-    String? customOutputPath,
-    bool clearCustomOutputPath = false,
-    List<String>? audioFiles,
-    String? backgroundVideo,
-    bool clearBackgroundVideo = false,
-    String? title,
-    String? author,
-    String? comment,
-    int? concurrencyLimit,
-    int? audioLoopCount,
-  }) {
-    return SwalokaProject(
-      name: name ?? this.name,
-      rootPath: rootPath ?? this.rootPath,
-      customOutputPath: clearCustomOutputPath
-          ? null
-          : (customOutputPath ?? this.customOutputPath),
-      audioFiles: audioFiles ?? this.audioFiles,
-      backgroundVideo: clearBackgroundVideo
-          ? null
-          : (backgroundVideo ?? this.backgroundVideo),
-      title: title ?? this.title,
-      author: author ?? this.author,
-      comment: comment ?? this.comment,
-      concurrencyLimit: concurrencyLimit ?? this.concurrencyLimit,
-      audioLoopCount: audioLoopCount ?? this.audioLoopCount,
-    );
-  }
-}
-
-// Providers
-final videoMergerServiceProvider = Provider<VideoMergerService>(
-  (ref) => VideoMergerService(),
-);
-
-final activeProjectProvider =
-    NotifierProvider<ActiveProjectNotifier, SwalokaProject?>(
-      () => ActiveProjectNotifier(),
-    );
-
-final projectFilesProvider =
-    NotifierProvider<ProjectFilesNotifier, List<FileSystemEntity>>(
-      () => ProjectFilesNotifier(),
-    );
-
-final processingStateProvider =
-    NotifierProvider<ProcessingStateNotifier, ProcessingState>(
-      () => ProcessingStateNotifier(),
-    );
-
-class CollapsedSectionsNotifier extends Notifier<Set<String>> {
-  @override
-  Set<String> build() => {};
-
-  void toggle(String title) {
-    if (state.contains(title)) {
-      state = state.where((t) => t != title).toSet();
-    } else {
-      state = {...state, title};
-    }
-  }
-}
-
-final collapsedSectionsProvider =
-    NotifierProvider<CollapsedSectionsNotifier, Set<String>>(
-      () => CollapsedSectionsNotifier(),
-    );
-
-class RecentProjectsNotifier extends Notifier<List<String>> {
-  static const _recentProjectsKey = 'recent_projects';
-
-  @override
-  List<String> build() {
-    _loadRecentProjects();
-    return [];
-  }
-
-  Future<void> _loadRecentProjects() async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList(_recentProjectsKey) ?? [];
-    state = list;
-  }
-
-  Future<void> addProject(String path) async {
-    final prefs = await SharedPreferences.getInstance();
-    final current = List<String>.from(state);
-    current.remove(path); // Remove if exists to move to top
-    current.insert(0, path);
-    if (current.length > 5) current.removeLast(); // Keep last 5
-
-    state = current;
-    await prefs.setStringList(_recentProjectsKey, current);
-  }
-
-  Future<void> removeProject(String path) async {
-    final prefs = await SharedPreferences.getInstance();
-    final current = List<String>.from(state);
-    current.remove(path);
-    state = current;
-    await prefs.setStringList(_recentProjectsKey, current);
-  }
-}
-
-final recentProjectsProvider =
-    NotifierProvider<RecentProjectsNotifier, List<String>>(
-      () => RecentProjectsNotifier(),
-    );
-
-class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
-  static const _lastProjectPathKey = 'last_project_path';
-
-  @override
-  SwalokaProject? build() {
-    _loadLastProject();
-    return null;
-  }
-
-  Future<void> _loadLastProject() async {
-    final prefs = await SharedPreferences.getInstance();
-    final path = prefs.getString(_lastProjectPathKey);
-    if (path != null) {
-      await loadProject(path);
-    }
-  }
-
-  Future<void> createProject(String rootPath, String name) async {
-    final project = SwalokaProject(name: name, rootPath: rootPath);
-    await _saveProjectToFile(project);
-
-    // Ensure directories
-    await Directory('$rootPath/outputs').create(recursive: true);
-    await Directory('$rootPath/logs').create(recursive: true);
-
-    state = project;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastProjectPathKey, rootPath);
-    ref.read(recentProjectsProvider.notifier).addProject(rootPath);
-    ref.read(projectFilesProvider.notifier).refresh();
-  }
-
-  Future<void> loadProject(String rootPath) async {
-    final file = File('$rootPath/project.swaloka');
-    if (await file.exists()) {
-      final json = jsonDecode(await file.readAsString());
-      state = SwalokaProject.fromJson(json);
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_lastProjectPathKey, rootPath);
-      ref.read(recentProjectsProvider.notifier).addProject(rootPath);
-      ref.read(projectFilesProvider.notifier).refresh();
-    }
-  }
-
-  Future<void> updateSettings({
-    String? customOutputPath,
-    bool clearCustomOutputPath = false,
-    String? title,
-    String? author,
-    String? comment,
-    int? concurrencyLimit,
-    int? audioLoopCount,
-  }) async {
-    if (state == null) return;
-    final newState = state!.copyWith(
-      customOutputPath: customOutputPath,
-      clearCustomOutputPath: clearCustomOutputPath,
-      title: title,
-      author: author,
-      comment: comment,
-      concurrencyLimit: concurrencyLimit,
-      audioLoopCount: audioLoopCount,
-    );
-    state = newState;
-    await _saveProjectToFile(newState);
-  }
-
-  Future<void> setBackgroundVideo(String? path) async {
-    if (state == null) return;
-    final newState = state!.copyWith(
-      backgroundVideo: path,
-      clearBackgroundVideo: path == null,
-    );
-    state = newState;
-    await _saveProjectToFile(newState);
-  }
-
-  Future<void> setAudioFiles(List<String> files) async {
-    if (state == null) return;
-    final newState = state!.copyWith(audioFiles: files);
-    state = newState;
-    await _saveProjectToFile(newState);
-  }
-
-  Future<void> removeAudioAt(int index) async {
-    if (state == null) return;
-    final newList = List<String>.from(state!.audioFiles);
-    newList.removeAt(index);
-    final newState = state!.copyWith(audioFiles: newList);
-    state = newState;
-    await _saveProjectToFile(newState);
-  }
-
-  Future<void> removeAllAudios() async {
-    if (state == null) return;
-    final newState = state!.copyWith(audioFiles: []);
-    state = newState;
-    await _saveProjectToFile(newState);
-  }
-
-  Future<void> _saveProjectToFile(SwalokaProject project) async {
-    final file = File('${project.rootPath}/project.swaloka');
-    await file.writeAsString(jsonEncode(project.toJson()));
-  }
-
-  void closeProject() async {
-    state = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_lastProjectPathKey);
-  }
-}
-
-class ProjectFilesNotifier extends Notifier<List<FileSystemEntity>> {
-  @override
-  List<FileSystemEntity> build() => [];
-
-  void refresh() {
-    final project = ref.read(activeProjectProvider);
-    if (project == null) {
-      state = [];
-      return;
-    }
-
-    final outputsDir = Directory(project.effectiveOutputPath);
-    if (outputsDir.existsSync()) {
-      state =
-          outputsDir
-              .listSync()
-              .where((file) => file.path.endsWith('.mp4'))
-              .toList()
-            ..sort(
-              (a, b) => b.statSync().modified.compareTo(a.statSync().modified),
-            );
-    }
-  }
-}
-
-class ProcessingStateNotifier extends Notifier<ProcessingState> {
-  @override
-  ProcessingState build() => ProcessingState.idle();
-
-  void startProcessing() {
-    state = ProcessingState(
-      isProcessing: true,
-      progress: 0.0,
-      logs: [],
-      startTime: DateTime.now(),
-    );
-  }
-
-  void updateProgress(double progress) =>
-      state = state.copyWith(isProcessing: true, progress: progress);
-
-  void addLog(String log) {
-    state = state.copyWith(isProcessing: true, logs: [...state.logs, log]);
-  }
-
-  void setSuccess(String outputPath) => state = ProcessingState(
-    isProcessing: false,
-    progress: 1.0,
-    outputPath: outputPath,
-    logs: state.logs,
-    startTime: state.startTime,
-  );
-
-  void setError(String error) => state = ProcessingState(
-    isProcessing: false,
-    progress: 0.0,
-    error: error,
-    logs: [...state.logs, 'ERROR: $error'],
-    startTime: state.startTime,
-  );
-
-  void reset() => state = ProcessingState.idle();
-}
-
-class ProcessingState {
-  final bool isProcessing;
-  final double progress;
-  final List<String> logs;
-  final String? error;
-  final String? outputPath;
-  final DateTime? startTime;
-  final Map<String, int>
-  outputLoopCounts; // Track loop count for each output file
-
-  ProcessingState({
-    required this.isProcessing,
-    required this.progress,
-    required this.logs,
-    this.error,
-    this.outputPath,
-    this.startTime,
-    this.outputLoopCounts = const {},
-  });
-
-  factory ProcessingState.idle() =>
-      ProcessingState(
-    isProcessing: false,
-    progress: 0.0,
-    logs: [],
-    outputLoopCounts: const {},
-  );
-
-  ProcessingState copyWith({
-    bool? isProcessing,
-    double? progress,
-    List<String>? logs,
-    String? error,
-    String? outputPath,
-    DateTime? startTime,
-  }) {
-    return ProcessingState(
-      isProcessing: isProcessing ?? this.isProcessing,
-      progress: progress ?? this.progress,
-      logs: logs ?? this.logs,
-      error: error ?? this.error,
-      outputPath: outputPath ?? this.outputPath,
-      startTime: startTime ?? this.startTime,
-    );
-  }
-}
+// NOTE: Models, State, and Providers have been moved to separate files
+// - Models: lib/features/video_merger/domain/models/
+// - State: lib/features/video_merger/presentation/state/
+// - Providers: lib/features/video_merger/presentation/providers/
+// - Widgets: lib/features/video_merger/presentation/widgets/
 
 class VideoMergerPage extends ConsumerWidget {
   const VideoMergerPage({super.key});
@@ -679,8 +297,21 @@ class VideoMergerPage extends ConsumerWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () =>
-              ref.read(activeProjectProvider.notifier).loadProject(path),
+          onTap: () => ref
+              .read(activeProjectProvider.notifier)
+              .loadProject(
+                path,
+                onProjectAdded: (p) =>
+                    ref.read(recentProjectsProvider.notifier).addProject(p),
+                onFilesRefresh: () {
+                  final project = ref.read(activeProjectProvider);
+                  if (project != null) {
+                    ref
+                        .read(projectFilesProvider.notifier)
+                        .refresh(project.effectiveOutputPath);
+                  }
+                },
+              ),
           onSecondaryTapDown: (details) {
             // Show a context menu to remove from list
             final overlay =
@@ -1891,7 +1522,21 @@ class VideoMergerPage extends ConsumerWidget {
                 if (nameController.text.isNotEmpty) {
                   ref
                       .read(activeProjectProvider.notifier)
-                      .createProject(result, nameController.text);
+                      .createProject(
+                        result,
+                        nameController.text,
+                        onProjectAdded: (p) => ref
+                            .read(recentProjectsProvider.notifier)
+                            .addProject(p),
+                        onFilesRefresh: () {
+                          final project = ref.read(activeProjectProvider);
+                          if (project != null) {
+                            ref
+                                .read(projectFilesProvider.notifier)
+                                .refresh(project.effectiveOutputPath);
+                          }
+                        },
+                      );
                   Navigator.pop(context);
                 }
               },
@@ -1913,7 +1558,21 @@ class VideoMergerPage extends ConsumerWidget {
     if (dir != null) {
       final projectFile = File('$dir/project.swaloka');
       if (await projectFile.exists()) {
-        ref.read(activeProjectProvider.notifier).loadProject(dir);
+        ref
+            .read(activeProjectProvider.notifier)
+            .loadProject(
+              dir,
+              onProjectAdded: (p) =>
+                  ref.read(recentProjectsProvider.notifier).addProject(p),
+              onFilesRefresh: () {
+                final project = ref.read(activeProjectProvider);
+                if (project != null) {
+                  ref
+                      .read(projectFilesProvider.notifier)
+                      .refresh(project.effectiveOutputPath);
+                }
+              },
+            );
       } else {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1936,7 +1595,21 @@ class VideoMergerPage extends ConsumerWidget {
       if (result != null && result.files.single.path != null) {
         final file = File(result.files.single.path!);
         final projectDir = file.parent.path;
-        ref.read(activeProjectProvider.notifier).loadProject(projectDir);
+        ref
+            .read(activeProjectProvider.notifier)
+            .loadProject(
+              projectDir,
+              onProjectAdded: (p) =>
+                  ref.read(recentProjectsProvider.notifier).addProject(p),
+              onFilesRefresh: () {
+                final project = ref.read(activeProjectProvider);
+                if (project != null) {
+                  ref
+                      .read(projectFilesProvider.notifier)
+                      .refresh(project.effectiveOutputPath);
+                }
+              },
+            );
       }
     }
   }
@@ -1946,9 +1619,11 @@ class VideoMergerPage extends ConsumerWidget {
     WidgetRef ref,
   ) async {
     try {
+      final project = ref.read(activeProjectProvider);
       final result = await FilePicker.platform.pickFiles(
         type: FileType.video,
         allowMultiple: false,
+        initialDirectory: project?.rootPath,
       );
       if (result != null && result.files.single.path != null) {
         ref
@@ -1963,10 +1638,12 @@ class VideoMergerPage extends ConsumerWidget {
 
   Future<void> _selectAudioFiles(BuildContext context, WidgetRef ref) async {
     try {
+      final project = ref.read(activeProjectProvider);
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'],
         allowMultiple: true,
+        initialDirectory: project?.rootPath,
       );
       if (result != null && result.paths.isNotEmpty) {
         final selectedFiles = result.paths
@@ -2002,10 +1679,6 @@ class VideoMergerPage extends ConsumerWidget {
     final audioFiles = project.audioFiles;
     final outputDir = project.effectiveOutputPath;
 
-    print(
-      '[DEBUG] _mergeVideos called with audioLoopCount: ${project.audioLoopCount}',
-    );
-
     if (backgroundVideo == null || audioFiles.isEmpty) return;
 
     showDialog(
@@ -2025,17 +1698,18 @@ class VideoMergerPage extends ConsumerWidget {
           ? 'loop_${project.audioLoopCount}x_'
           : '';
       final outputFileName =
-          '${sanitizedTitle.replaceAll(' ', '_')}_${loopPrefix}$timestamp.mp4';
+          '${sanitizedTitle.replaceAll(' ', '_')}_$loopPrefix$timestamp.mp4';
       final outputPath = '$outputDir/$outputFileName';
       logFilePath = '${project.rootPath}/logs/ffmpeg_log_$timestamp.log';
 
       ref.read(processingStateProvider.notifier).startProcessing();
       final service = ref.read(videoMergerServiceProvider);
 
-      await service.mergeVideoWithAudio(
+      await service.processVideoWithAudio(
         backgroundVideoPath: backgroundVideo,
         audioFiles: audioFiles,
         outputPath: outputPath,
+        projectRootPath: project.rootPath,
         title: project.title,
         author: project.author,
         comment: project.comment,
@@ -2047,7 +1721,9 @@ class VideoMergerPage extends ConsumerWidget {
       );
 
       ref.read(processingStateProvider.notifier).setSuccess(outputPath);
-      ref.read(projectFilesProvider.notifier).refresh();
+      ref
+          .read(projectFilesProvider.notifier)
+          .refresh(project.effectiveOutputPath);
     } catch (e) {
       ref.read(processingStateProvider.notifier).setError(e.toString());
     } finally {
@@ -2056,304 +1732,12 @@ class VideoMergerPage extends ConsumerWidget {
         final logs = ref.read(processingStateProvider).logs;
         if (logs.isNotEmpty) {
           final logFile = File(logFilePath);
-          await logFile.writeAsString(logs.join('\n'));
+          // Convert LogEntry objects to string format
+          final logLines = LogFormatter.formatLogEntries(logs);
+          await logFile.writeAsString(logLines);
         }
       }
     }
   }
 }
 
-class DropZoneWidget extends StatefulWidget {
-  final String label;
-  final IconData icon;
-  final Function(List<DropItem>) onFilesDropped;
-  final VoidCallback onTap;
-
-  const DropZoneWidget({
-    super.key,
-    required this.label,
-    required this.icon,
-    required this.onFilesDropped,
-    required this.onTap,
-  });
-
-  @override
-  State<DropZoneWidget> createState() => _DropZoneWidgetState();
-}
-
-class _DropZoneWidgetState extends State<DropZoneWidget> {
-  bool _isDragging = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return DropTarget(
-      onDragDone: (details) {
-        debugPrint('DND: Dropped ${details.files.length} files');
-        for (var f in details.files) {
-          debugPrint('DND: File path: ${f.path}');
-        }
-        setState(() => _isDragging = false);
-        widget.onFilesDropped(details.files);
-      },
-      onDragEntered: (details) {
-        debugPrint('DND: Drag entered');
-        setState(() => _isDragging = true);
-      },
-      onDragExited: (details) {
-        debugPrint('DND: Drag exited');
-        setState(() => _isDragging = false);
-      },
-      onDragUpdated: (details) {
-        // debugPrint('DND: Drag updated at ${details.localPosition}');
-      },
-      child: InkWell(
-        onTap: widget.onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          height: 100,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: _isDragging
-                ? Colors.deepPurple.withValues(alpha: 0.15)
-                : Colors.black26,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: _isDragging
-                  ? Colors.deepPurpleAccent
-                  : const Color(0xFF333333),
-              width: _isDragging ? 2 : 1,
-              style: BorderStyle.solid,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AnimatedScale(
-                scale: _isDragging ? 1.2 : 1.0,
-                duration: const Duration(milliseconds: 200),
-                child: Icon(
-                  widget.icon,
-                  color: _isDragging
-                      ? Colors.deepPurpleAccent
-                      : Colors.grey[600],
-                  size: 32,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                widget.label,
-                style: TextStyle(
-                  color: _isDragging ? Colors.white : Colors.grey[600],
-                  fontSize: 13,
-                  fontWeight: _isDragging ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class MediaPreviewPlayer extends StatefulWidget {
-  final String path;
-  final bool isVideo;
-
-  const MediaPreviewPlayer({
-    super.key,
-    required this.path,
-    this.isVideo = false,
-  });
-
-  @override
-  State<MediaPreviewPlayer> createState() => _MediaPreviewPlayerState();
-}
-
-class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
-  late VideoPlayerController _controller;
-  bool _initialized = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _initController();
-  }
-
-  @override
-  void didUpdateWidget(MediaPreviewPlayer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.path != widget.path) {
-      _controller.dispose();
-      _initialized = false;
-      _initController();
-    }
-  }
-
-  void _initController() {
-    _controller = VideoPlayerController.file(File(widget.path));
-    _controller
-        .initialize()
-        .then((_) {
-          if (mounted) {
-            setState(() {
-              _initialized = true;
-            });
-          }
-        })
-        .catchError((error) {
-          if (mounted) {
-            setState(() {
-              _error = error.toString();
-            });
-          }
-        });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    if (duration.inHours > 0) {
-      return '${twoDigits(duration.inHours)}:$minutes:$seconds';
-    }
-    return '$minutes:$seconds';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_error != null) {
-      return Container(
-        width: 120,
-        height: 68,
-        decoration: BoxDecoration(
-          color: Colors.black45,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: const Icon(
-          Icons.error_outline,
-          size: 20,
-          color: Colors.redAccent,
-        ),
-      );
-    }
-
-    if (!_initialized) {
-      return Container(
-        width: 120,
-        height: 68,
-        decoration: BoxDecoration(
-          color: Colors.black45,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: const Center(
-          child: SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
-      );
-    }
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        width: 120,
-        height: 68,
-        color: Colors.black,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            if (widget.isVideo)
-              AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: VideoPlayer(_controller),
-              )
-            else
-              const Icon(
-                Icons.audiotrack,
-                color: Colors.deepPurpleAccent,
-                size: 30,
-              ),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  setState(() {
-                    _controller.value.isPlaying
-                        ? _controller.pause()
-                        : _controller.play();
-                  });
-                },
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.black38,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: Icon(
-                      _controller.value.isPlaying
-                          ? Icons.pause
-                          : Icons.play_arrow,
-                      size: 20,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (_initialized)
-              Positioned(
-                bottom: 4,
-                right: 4,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black87,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                  child: Text(
-                    _formatDuration(_controller.value.duration),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: VideoProgressIndicator(
-                _controller,
-                allowScrubbing: true,
-                padding: EdgeInsets.zero,
-                colors: VideoProgressColors(
-                  playedColor: widget.isVideo ? Colors.blue : Colors.deepPurple,
-                  bufferedColor: Colors.white24,
-                  backgroundColor: Colors.transparent,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

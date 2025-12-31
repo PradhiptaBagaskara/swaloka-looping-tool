@@ -2,7 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../pages/video_merger_page.dart';
+import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
+import '../providers/video_merger_providers.dart';
+import 'log_entry_widget.dart';
+import 'media_preview_player.dart';
 
 class MergeProgressDialog extends ConsumerStatefulWidget {
   const MergeProgressDialog({super.key});
@@ -175,7 +178,9 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                 if (processingState.logs.isNotEmpty)
                   TextButton.icon(
                     onPressed: () {
-                      final allLogs = processingState.logs.join('\n');
+                      final allLogs = LogFormatter.formatLogEntries(
+                        processingState.logs,
+                      );
                       Clipboard.setData(ClipboardData(text: allLogs));
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -215,30 +220,12 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                 child: Scrollbar(
                   controller: _textScrollController,
                   thumbVisibility: true,
-                  child: SingleChildScrollView(
+                  child: ListView.builder(
                     controller: _textScrollController,
-                    child: SelectableText.rich(
-                      TextSpan(
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 11,
-                          color: Color(0xFFCCCCCC),
-                        ),
-                        children: processingState.logs.map((log) {
-                          final isError =
-                              log.startsWith('ERROR:') ||
-                              log.startsWith('Failed to');
-                          return TextSpan(
-                            text: '$log\n',
-                            style: TextStyle(
-                              color: isError
-                                  ? Colors.redAccent
-                                  : const Color(0xFFCCCCCC),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
+                    itemCount: processingState.logs.length,
+                    itemBuilder: (context, index) {
+                      return LogEntryWidget(entry: processingState.logs[index]);
+                    },
                   ),
                 ),
               ),
