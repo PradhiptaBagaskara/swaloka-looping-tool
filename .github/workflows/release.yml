@@ -77,24 +77,27 @@ jobs:
       - name: Build Windows app
         run: flutter build windows --release
 
-      - name: Create ZIP archive
+      - name: Create EXE installer with Inno Setup
         run: |
           $VERSION = "${{ github.ref }}".Replace("refs/tags/v", "")
 
-          # Create distribution folder
-          New-Item -ItemType Directory -Force -Path "dist"
+          # Update version in installer script
+          $issContent = Get-Content "windows/installer_script.iss" -Raw
+          $issContent = $issContent -replace "AppVersion=.*", "AppVersion=$VERSION"
+          $issContent = $issContent -replace "OutputBaseFilename=.*", "OutputBaseFilename=Swaloka-Looping-Tool-$VERSION-windows-installer"
+          Set-Content "windows/installer_script.iss" $issContent
 
-          # Copy built app
-          Copy-Item -Path "build/windows/x64/runner/Release/*" -Destination "dist/" -Recurse
+          # Build installer using Inno Setup
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "windows\installer_script.iss"
 
-          # Create ZIP
-          Compress-Archive -Path "dist/*" -DestinationPath "build/Swaloka-Looping-Tool-${VERSION}-windows-installer.zip"
+          # Move installer to build folder
+          Move-Item "Swaloka-Looping-Tool-$VERSION-windows-installer.exe" "build/"
 
-      - name: Upload ZIP artifact
+      - name: Upload EXE installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-zip
-          path: build/Swaloka-Looping-Tool-*-windows-installer.zip
+          name: windows-installer
+          path: build/Swaloka-Looping-Tool-*-windows-installer.exe
           retention-days: 1
 
   create-release:
@@ -138,10 +141,10 @@ jobs:
           name: macos-zip
           path: ./artifacts
 
-      - name: Download Windows ZIP
+      - name: Download Windows installer
         uses: actions/download-artifact@v4
         with:
-          name: windows-zip
+          name: windows-installer
           path: ./artifacts
 
       - name: Create Release with all files
