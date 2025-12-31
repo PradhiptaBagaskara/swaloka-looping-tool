@@ -42,7 +42,11 @@ class SystemInfoService {
       // Try with extended PATH
       final result = await Process.run('ffmpeg', [
         '-version',
-      ], environment: extendedEnvironment);
+      ],
+        environment: extendedEnvironment,
+        // runInShell: true needed for macOS release build compatibility, on startup check
+        runInShell: true,
+      );
       if (result.exitCode == 0) {
         // Find the actual path using 'which' (Unix) or 'where' (Windows)
         final whichCmd = Platform.isWindows ? 'where' : 'which';

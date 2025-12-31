@@ -3,26 +3,31 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
 import 'package:swaloka_looping_tool/core/services/app_logger.dart';
 
-/// State notifier to track FFmpeg status (manual check only, no auto-check on startup)
+/// State notifier to track FFmpeg status with auto-check on startup
 class FFmpegStatusNotifier extends Notifier<bool?> {
   @override
-  bool? build() => null; // null = not checked, true = available, false = not available
+  bool? build() {
+    // Auto-check FFmpeg on startup (async, non-blocking)
+    Future.microtask(() => checkFFmpeg());
+    return null; // null = checking, true = available, false = not available
+  }
 
   void setStatus(bool status) {
     state = status;
   }
 
-  /// Check FFmpeg and update status (call this explicitly, not on startup)
+  /// Check FFmpeg and update status
   Future<bool> checkFFmpeg() async {
     try {
-      log.i('🎬 Manually checking FFmpeg installation...');
+      log.i('🎬 Checking FFmpeg installation...');
       final isAvailable = await SystemInfoService.isFFmpegAvailable();
       state = isAvailable;
 
       if (isAvailable) {
-        log.i('✅ FFmpeg found and available');
+        final path = SystemInfoService.ffmpegPath;
+        log.i('✅ FFmpeg found: $path');
       } else {
-        log.w('⚠️  FFmpeg not found or not in PATH');
+        log.w('⚠️  FFmpeg not found');
       }
       return isAvailable;
     } catch (e, stack) {
@@ -30,6 +35,12 @@ class FFmpegStatusNotifier extends Notifier<bool?> {
       state = false;
       return false;
     }
+  }
+
+  /// Force re-check FFmpeg (e.g., after user installs it)
+  Future<bool> recheckFFmpeg() async {
+    state = null; // Reset to "checking" state
+    return checkFFmpeg();
   }
 }
 

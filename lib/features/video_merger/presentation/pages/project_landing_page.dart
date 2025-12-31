@@ -28,8 +28,11 @@ class ProjectLandingPage extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // FFmpeg warning banner
-                  if (ffmpegStatus == false) _buildFFmpegWarning(context),
+                  // FFmpeg status banner
+                  if (ffmpegStatus == null)
+                    _buildFFmpegCheckingBanner(context)
+                  else if (ffmpegStatus == false)
+                    _buildFFmpegWarning(context, ref),
 
                   // Logo
                   Container(
@@ -117,7 +120,37 @@ class ProjectLandingPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildFFmpegWarning(BuildContext context) {
+  Widget _buildFFmpegCheckingBanner(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.withValues(alpha: 0.3), width: 2),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.blue,
+            ),
+          ),
+          SizedBox(width: 16),
+          Text(
+            'Checking FFmpeg installation...',
+            style: TextStyle(color: Colors.blue, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFFmpegWarning(BuildContext context, WidgetRef ref) {
     return Container(
       margin: const EdgeInsets.only(bottom: 24),
       padding: const EdgeInsets.all(16),
@@ -157,19 +190,31 @@ class ProjectLandingPage extends ConsumerWidget {
                   style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
                 const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const FFmpegErrorPage(),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const FFmpegErrorPage(),
+                          ),
+                        );
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.orange,
+                        side: const BorderSide(color: Colors.orange),
                       ),
-                    );
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.orange,
-                    side: const BorderSide(color: Colors.orange),
-                  ),
-                  child: const Text('Installation Guide'),
+                      child: const Text('Installation Guide'),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () {
+                        ref.read(ffmpegStatusProvider.notifier).recheckFFmpeg();
+                      },
+                      child: const Text('Re-check'),
+                    ),
+                  ],
                 ),
               ],
             ),
