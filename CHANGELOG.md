@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
 ### 🎉 Major Features Added
 
 #### Hierarchical Logging System
@@ -248,6 +249,12 @@ lib/features/video_merger/
 
 
 
+
+
+## [3.1.1] - 2025-12-31
+
+### Changes
+- fix: enhance FFmpeg status handling with auto-check on startup and improved UI feedback (641b40f)
 
 ## [3.1.0] - 2025-12-31
 
