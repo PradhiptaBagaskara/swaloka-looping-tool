@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
 ### 🎉 Major Features Added
 
 #### Hierarchical Logging System
@@ -252,6 +253,12 @@ lib/features/video_merger/
 
 
 
+
+
+## [3.1.3] - 2025-12-31
+
+### Changes
+- fix: add Windows support for FFmpeg path resolution and adjust command execution (9097f91)
 
 ## [3.1.2] - 2025-12-31
 
