@@ -27,11 +27,16 @@ jobs:
     if: "!contains(github.event.head_commit.message, '[skip-version]') && !startsWith(github.event.head_commit.message, 'chore: bump version')"
 
     steps:
+      - name: Setup SSH for git operations
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Need full history for version detection
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
 
       - name: Configure git
         run: |
@@ -77,10 +82,12 @@ jobs:
           echo "📦 New version: $NEW_TAG"
 
           # Push the commit
-          git push origin main
+          echo "Pushing commit to main..."
+          git push origin main || { echo "❌ Failed to push commit"; exit 1; }
 
           # Push the tag (this will trigger the release workflow)
-          git push origin "$NEW_TAG"
+          echo "Pushing tag $NEW_TAG..."
+          git push origin "$NEW_TAG" || { echo "❌ Failed to push tag"; exit 1; }
 
           echo "✅ Pushed version bump and tag to trigger release"
 
