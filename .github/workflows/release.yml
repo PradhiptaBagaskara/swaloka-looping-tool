@@ -31,44 +31,25 @@ jobs:
       - name: Build macOS app
         run: flutter build macos --release
 
-      - name: Ad-hoc code sign (basic security)
-        run: |
-          echo "🔐 Finding app bundle..."
-          APP_PATH=$(find build/macos/Build/Products/Release -name "*.app" -type d -maxdepth 1 | head -n 1)
-          echo "Found app at: $APP_PATH"
-
-          echo "🔐 Applying ad-hoc signature to app bundle..."
-          codesign --force --deep --sign - "$APP_PATH"
-
-          echo "✅ Verifying signature..."
-          codesign -dv --verbose=4 "$APP_PATH"
-
-      - name: Create DMG
+      - name: Create ZIP
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
 
           # Find the app bundle
           APP_PATH=$(find build/macos/Build/Products/Release -name "*.app" -type d -maxdepth 1 | head -n 1)
+          APP_NAME=$(basename "$APP_PATH")
           echo "Using app at: $APP_PATH"
 
-          # Install create-dmg
-          brew install create-dmg
+          # Create ZIP from app bundle
+          cd "$(dirname "$APP_PATH")"
+          zip -r "Swaloka-Looping-Tool-${VERSION}-macos.zip" "$APP_NAME"
+          mv "Swaloka-Looping-Tool-${VERSION}-macos.zip" "${GITHUB_WORKSPACE}/build/"
 
-          # Create DMG from app bundle
-          create-dmg \
-            --volname "Swaloka Looping Tool" \
-            --window-pos 200 120 \
-            --window-size 800 400 \
-            --icon-size 100 \
-            --app-drop-link 600 185 \
-            "build/Swaloka-Looping-Tool-${VERSION}-macos-installer.dmg" \
-            "$APP_PATH" || true
-
-      - name: Upload DMG artifact
+      - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-dmg
-          path: build/Swaloka-Looping-Tool-*-macos-installer.dmg
+          name: macos-zip
+          path: build/Swaloka-Looping-Tool-*-macos.zip
           retention-days: 1
 
   build-windows:
@@ -151,10 +132,10 @@ jobs:
           # Save to file for multiline content
           echo "$CHANGELOG" > changelog_content.md
 
-      - name: Download macOS DMG
+      - name: Download macOS ZIP
         uses: actions/download-artifact@v4
         with:
-          name: macos-dmg
+          name: macos-zip
           path: ./artifacts
 
       - name: Download Windows ZIP

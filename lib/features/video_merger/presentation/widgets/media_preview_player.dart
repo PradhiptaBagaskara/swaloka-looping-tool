@@ -10,7 +10,7 @@ class MediaPreviewPlayer extends StatefulWidget {
   const MediaPreviewPlayer({
     super.key,
     required this.path,
-    this.isVideo = false,
+    this.isVideo = true,
   });
 
   @override
@@ -47,6 +47,8 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
             setState(() {
               _initialized = true;
             });
+            // Auto-play when preview opens
+            _controller.play();
           }
         })
         .catchError((error) {
@@ -78,128 +80,180 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
   Widget build(BuildContext context) {
     if (_error != null) {
       return Container(
-        width: 120,
-        height: 68,
-        decoration: BoxDecoration(
-          color: Colors.black45,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: const Icon(
-          Icons.error_outline,
-          size: 20,
-          color: Colors.redAccent,
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+            const SizedBox(height: 16),
+            Text(
+              'Unable to play this file',
+              style: TextStyle(color: Colors.grey[400]),
+            ),
+          ],
         ),
       );
     }
 
     if (!_initialized) {
       return Container(
-        width: 120,
-        height: 68,
-        decoration: BoxDecoration(
-          color: Colors.black45,
-          borderRadius: BorderRadius.circular(4),
-        ),
+        padding: const EdgeInsets.all(32),
         child: const Center(
-          child: SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
+          child: CircularProgressIndicator(strokeWidth: 2),
         ),
       );
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        width: 120,
-        height: 68,
-        color: Colors.black,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            if (widget.isVideo)
-              AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: VideoPlayer(_controller),
-              )
-            else
-              const Icon(
-                Icons.audiotrack,
-                color: Colors.deepPurpleAccent,
-                size: 30,
-              ),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  setState(() {
-                    _controller.value.isPlaying
-                        ? _controller.pause()
-                        : _controller.play();
-                  });
-                },
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.black38,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: Icon(
-                      _controller.value.isPlaying
-                          ? Icons.pause
-                          : Icons.play_arrow,
-                      size: 20,
-                      color: Colors.white,
-                    ),
+    // Audio player - compact view
+    if (!widget.isVideo) {
+      return ValueListenableBuilder<VideoPlayerValue>(
+        valueListenable: _controller,
+        builder: (context, value, child) {
+          final position = _formatDuration(value.position);
+          final duration = _formatDuration(value.duration);
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Row(
+              children: [
+                // Play/Pause button
+                IconButton(
+                  iconSize: 48,
+                  icon: Icon(
+                    value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                    color: Colors.green,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      value.isPlaying ? _controller.pause() : _controller.play();
+                    });
+                  },
+                ),
+                const SizedBox(width: 12),
+                // Progress bar and time
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                          trackHeight: 4,
+                        ),
+                        child: Slider(
+                          value: value.position.inMilliseconds.toDouble(),
+                          max: value.duration.inMilliseconds.toDouble().clamp(1, double.infinity),
+                          activeColor: Colors.green,
+                          inactiveColor: Colors.grey[700],
+                          onChanged: (v) {
+                            _controller.seekTo(Duration(milliseconds: v.toInt()));
+                          },
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(position, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                            Text(duration, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
+              ],
             ),
-            if (_initialized)
-              Positioned(
-                bottom: 4,
-                right: 4,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black87,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                  child: Text(
-                    _formatDuration(_controller.value.duration),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
+          );
+        },
+      );
+    }
+
+    // Video player - full view
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: AspectRatio(
+            aspectRatio: _controller.value.aspectRatio,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                VideoPlayer(_controller),
+                // Play/Pause overlay
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      setState(() {
+                        _controller.value.isPlaying ? _controller.pause() : _controller.play();
+                      });
+                    },
+                    child: AnimatedOpacity(
+                      opacity: _controller.value.isPlaying ? 0.0 : 1.0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: const BoxDecoration(
+                          color: Colors.black38,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.play_arrow, size: 48, color: Colors.white),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: VideoProgressIndicator(
-                _controller,
-                allowScrubbing: true,
-                padding: EdgeInsets.zero,
-                colors: VideoProgressColors(
-                  playedColor: widget.isVideo ? Colors.blue : Colors.deepPurple,
-                  bufferedColor: Colors.white24,
-                  backgroundColor: Colors.transparent,
-                ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+        // Controls
+        Container(
+          padding: const EdgeInsets.all(12),
+          color: Colors.black,
+          child: ValueListenableBuilder<VideoPlayerValue>(
+            valueListenable: _controller,
+            builder: (context, value, child) {
+              final position = _formatDuration(value.position);
+              final duration = _formatDuration(value.duration);
+              return Row(
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      value.isPlaying ? Icons.pause : Icons.play_arrow,
+                      color: Colors.white,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        value.isPlaying ? _controller.pause() : _controller.play();
+                      });
+                    },
+                  ),
+                  Text(position, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                        trackHeight: 3,
+                      ),
+                      child: Slider(
+                        value: value.position.inMilliseconds.toDouble(),
+                        max: value.duration.inMilliseconds.toDouble().clamp(1, double.infinity),
+                        activeColor: Colors.blue,
+                        inactiveColor: Colors.grey[700],
+                        onChanged: (v) {
+                          _controller.seekTo(Duration(milliseconds: v.toInt()));
+                        },
+                      ),
+                    ),
+                  ),
+                  Text(duration, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

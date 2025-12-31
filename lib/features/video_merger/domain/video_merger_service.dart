@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
@@ -6,42 +5,52 @@ import 'package:swaloka_looping_tool/core/services/log_service.dart';
 
 /// Service for merging background video with sequential audio files
 class VideoMergerService {
-
   /// Helper function to run FFmpeg command with hierarchical logging
   Future<void> runFFmpegWithLogging(
     List<String> command, {
     String? errorMessage,
     void Function(LogEntry log)? onLog,
   }) async {
+    // Get FFmpeg path and extended environment
+    final ffmpegPath = SystemInfoService.ffmpegPath;
+    final env = SystemInfoService.extendedEnvironment;
+
     // Create and show command log immediately
-    final commandLog = LogEntry.info('Command: ffmpeg ${command.join(" ")}');
+    final commandLog = LogEntry.info(
+      'Command: $ffmpegPath ${command.join(" ")}',
+    );
     onLog?.call(commandLog);
 
     final startTime = DateTime.now();
-    final process = await Process.start('ffmpeg', command);
 
-    // Collect stdout and stderr lines as sub-logs
+    // Run FFmpeg with extended PATH environment
+    final result = await Process.run(ffmpegPath, command, environment: env);
+
+    final exitCode = result.exitCode;
+
+    // Parse stdout and stderr into log entries
     final stdoutLogs = <LogEntry>[];
     final stderrLogs = <LogEntry>[];
 
-    // Stream stdout
-    process.stdout.transform(utf8.decoder).listen((line) {
-      final trimmedLine = line.trim();
-      if (trimmedLine.isNotEmpty) {
-        stdoutLogs.add(LogEntry.simple(LogLevel.info, trimmedLine));
+    final stdoutStr = result.stdout as String;
+    if (stdoutStr.isNotEmpty) {
+      for (final line in stdoutStr.split('\n')) {
+        final trimmed = line.trim();
+        if (trimmed.isNotEmpty) {
+          stdoutLogs.add(LogEntry.simple(LogLevel.info, trimmed));
+        }
       }
-    });
+    }
 
-    // Stream stderr (FFmpeg uses stderr for progress/info)
-    process.stderr.transform(utf8.decoder).listen((line) {
-      final trimmedLine = line.trim();
-      if (trimmedLine.isNotEmpty) {
-        stderrLogs.add(LogEntry.simple(LogLevel.info, trimmedLine));
+    final stderrStr = result.stderr as String;
+    if (stderrStr.isNotEmpty) {
+      for (final line in stderrStr.split('\n')) {
+        final trimmed = line.trim();
+        if (trimmed.isNotEmpty) {
+          stderrLogs.add(LogEntry.simple(LogLevel.info, trimmed));
+        }
       }
-    });
-
-    // Wait for process to complete
-    final exitCode = await process.exitCode;
+    }
     final executionDuration = DateTime.now().difference(startTime);
 
     // Format duration nicely
@@ -351,6 +360,9 @@ class VideoMergerService {
         onLog,
       );
       onProgress?.call(1.0);
+      onLog?.call(
+        LogEntry.success('Video merge complete! Output: $outputPath'),
+      );
       return outputPath;
     } finally {
       // Cleanup
