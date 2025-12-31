@@ -65,7 +65,7 @@ class VideoMergerPage extends ConsumerWidget {
                             vertical: 10,
                           ),
                           children: [
-                            _buildSectionTitle(context, 'Active Project'),
+                            _buildSectionTitle(context, 'Current Project'),
                             const SizedBox(height: 12),
                             Container(
                               padding: const EdgeInsets.all(12),
@@ -101,14 +101,14 @@ class VideoMergerPage extends ConsumerWidget {
                               ),
                             ),
                             const SizedBox(height: 32),
-                            _buildSectionTitle(context, 'Actions'),
+                            _buildSectionTitle(context, 'Quick Actions'),
                             const SizedBox(height: 16),
                             ElevatedButton.icon(
                               onPressed: canMerge
                                   ? () => _mergeVideos(context, ref)
                                   : null,
                               icon: const Icon(Icons.auto_fix_high),
-                              label: const Text('Export Video'),
+                              label: const Text('Generate Video'),
                               style: ElevatedButton.styleFrom(
                                 minimumSize: const Size(double.infinity, 50),
                               ),
@@ -138,7 +138,7 @@ class VideoMergerPage extends ConsumerWidget {
                             ],
                             const SizedBox(height: 32),
                             if (projectFiles.isNotEmpty) ...[
-                              _buildSectionTitle(context, 'Recent Outputs'),
+                              _buildSectionTitle(context, 'Generated Videos'),
                               const SizedBox(height: 12),
                               ...projectFiles
                                   .take(5)
@@ -227,16 +227,16 @@ class VideoMergerPage extends ConsumerWidget {
                     children: [
                       _buildLandingCard(
                         context,
-                        title: 'New Project',
-                        description: 'Start a fresh video creation',
+                        title: 'Create New Project',
+                        description: 'Start a new video project from scratch',
                         icon: Icons.add_to_photos_outlined,
                         onTap: () => _createNewProject(context, ref),
                       ),
                       const SizedBox(width: 24),
                       _buildLandingCard(
                         context,
-                        title: 'Open Project',
-                        description: 'Continue working on existing',
+                        title: 'Open Existing Project',
+                        description: 'Continue working on a saved project',
                         icon: Icons.folder_open_outlined,
                         onTap: () => _openProject(context, ref),
                       ),
@@ -252,7 +252,7 @@ class VideoMergerPage extends ConsumerWidget {
                           Padding(
                             padding: const EdgeInsets.only(left: 8, bottom: 16),
                             child: Text(
-                              'RECENT PROJECTS',
+                              'Recent Projects',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
@@ -594,7 +594,7 @@ class VideoMergerPage extends ConsumerWidget {
             onPressed: () => _showDonateDialog(context),
             icon: const Icon(Icons.favorite, size: 14, color: Colors.redAccent),
             label: const Text(
-              'SUPPORT',
+              'Support Us',
               style: TextStyle(
                 fontSize: 10,
                 color: Colors.white70,
@@ -651,10 +651,10 @@ class VideoMergerPage extends ConsumerWidget {
         _buildTimelineHeader(
           context,
           ref,
-          'VIDEO TRACK (Background)',
+          'Background Video',
           Icons.movie_outlined,
         ),
-        if (!collapsedSections.contains('VIDEO TRACK (Background)')) ...[
+        if (!collapsedSections.contains('Background Video')) ...[
           const SizedBox(height: 12),
           if (project.backgroundVideo != null)
             _buildMediaItem(
@@ -669,7 +669,7 @@ class VideoMergerPage extends ConsumerWidget {
           else
             _buildDropZone(
               context,
-              label: 'Drop background video here or click to browse',
+              label: 'Add your background video (drag & drop or click)',
               icon: Icons.video_call,
               onFilesDropped: (files) {
                 if (files.isNotEmpty) {
@@ -681,7 +681,9 @@ class VideoMergerPage extends ConsumerWidget {
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Please drop a valid video file'),
+                        content: Text(
+                          'Please select a video file (MP4, MOV, AVI, etc.)',
+                        ),
                         backgroundColor: Colors.orange,
                       ),
                     );
@@ -697,7 +699,7 @@ class VideoMergerPage extends ConsumerWidget {
         _buildTimelineHeader(
           context,
           ref,
-          'AUDIO TRACKS (Sequential)',
+          'Audio Tracks (Play in Order)',
           Icons.audiotrack_outlined,
           trailing: project.audioFiles.isNotEmpty
               ? TextButton.icon(
@@ -725,11 +727,11 @@ class VideoMergerPage extends ConsumerWidget {
                 )
               : null,
         ),
-        if (!collapsedSections.contains('AUDIO TRACKS (Sequential)')) ...[
+        if (!collapsedSections.contains('Audio Tracks (Play in Order)')) ...[
           const SizedBox(height: 12),
           _buildDropZone(
             context,
-            label: 'Drop audio files here or click to add',
+            label: 'Add audio files (drag & drop or click to select multiple)',
             icon: Icons.library_music,
             onFilesDropped: (files) {
               final audioPaths = files
@@ -746,7 +748,7 @@ class VideoMergerPage extends ConsumerWidget {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text(
-                      'Some files were ignored. Only audio files are allowed.',
+                      'Only audio files were added. Other file types were ignored.',
                     ),
                     backgroundColor: Colors.orange,
                   ),
@@ -765,7 +767,7 @@ class VideoMergerPage extends ConsumerWidget {
                   e.value,
                   Icons.audiotrack,
                   index: e.key + 1,
-                  label: 'Audio file',
+                  label: 'Audio',
                   onRemove: () => ref
                       .read(activeProjectProvider.notifier)
                       .removeAudioAt(e.key),
@@ -837,7 +839,7 @@ class VideoMergerPage extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'PARALLEL PROCESSING TASKS',
+                      'Parallel Processing Cores',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -853,7 +855,8 @@ class VideoMergerPage extends ConsumerWidget {
                             keyboardType: TextInputType.number,
                             decoration: InputDecoration(
                               hintText: '$recommendedConcurrency',
-                              helperText: 'Default: $recommendedConcurrency',
+                              helperText:
+                                  'Recommended: $recommendedConcurrency',
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 16,
                                 vertical: 12,
@@ -956,7 +959,7 @@ class VideoMergerPage extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'VIDEO TITLE *',
+                      'Video Title *',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -970,7 +973,7 @@ class VideoMergerPage extends ConsumerWidget {
                           .read(activeProjectProvider.notifier)
                           .updateSettings(title: val),
                       decoration: InputDecoration(
-                        hintText: 'My YouTube Video',
+                        hintText: 'e.g., Relaxing Music Mix',
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,
@@ -993,7 +996,7 @@ class VideoMergerPage extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'AUTHOR / CHANNEL *',
+                      'Creator / Channel Name *',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -1007,7 +1010,7 @@ class VideoMergerPage extends ConsumerWidget {
                           .read(activeProjectProvider.notifier)
                           .updateSettings(author: val),
                       decoration: InputDecoration(
-                        hintText: 'Swaloka Looping Tool',
+                        hintText: 'e.g., Your Channel Name',
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,
@@ -1030,7 +1033,7 @@ class VideoMergerPage extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'COMMENT',
+                      'Comment (Optional)',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -1044,7 +1047,7 @@ class VideoMergerPage extends ConsumerWidget {
                           .read(activeProjectProvider.notifier)
                           .updateSettings(comment: val),
                       decoration: InputDecoration(
-                        hintText: 'Produced with Swaloka',
+                        hintText: 'e.g., Made with Swaloka',
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,
@@ -1073,7 +1076,7 @@ class VideoMergerPage extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'OUTPUT DIRECTORY',
+                      'Save Location',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -1135,7 +1138,7 @@ class VideoMergerPage extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'AUDIO LOOP COUNT',
+                      'Number of Times to Loop Audios',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -1147,7 +1150,7 @@ class VideoMergerPage extends ConsumerWidget {
                       initialValue: project.audioLoopCount.toString(),
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        hintText: '1 (1-Infinity)',
+                        hintText: '1 (minimum)',
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,
@@ -1171,7 +1174,7 @@ class VideoMergerPage extends ConsumerWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Range: 1-Infinity. Each loop randomizes audio order.',
+                      'How many times to repeat your audio sequence. Audio order shuffles after first loop.',
                       style: TextStyle(fontSize: 10, color: Colors.grey),
                     ),
                   ],
@@ -1414,7 +1417,7 @@ class VideoMergerPage extends ConsumerWidget {
                   const Icon(Icons.favorite, size: 18, color: Colors.redAccent),
                   const SizedBox(width: 12),
                   Text(
-                    'Donate',
+                    'Support Us',
                     style: TextStyle(color: Colors.grey[400], fontSize: 14),
                   ),
                 ],
@@ -1422,10 +1425,6 @@ class VideoMergerPage extends ConsumerWidget {
             ),
           ),
           const Spacer(),
-          Text(
-            'v1.0.0',
-            style: TextStyle(color: Colors.grey[800], fontSize: 10),
-          ),
         ],
       ),
     );

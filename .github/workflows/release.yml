@@ -87,6 +87,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
+
       - name: Build macOS app
         run: flutter build macos --release
 
@@ -131,6 +134,9 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
 
       - name: Build Windows app
         run: flutter build windows --release

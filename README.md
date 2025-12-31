@@ -2,12 +2,12 @@
 
 > **Automate Your Video Production in Minutes, Not Hours**
 
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)]()
 [![Built with Flutter](https://img.shields.io/badge/Built%20with-Flutter-02569B?logo=flutter)]()
 [![FFmpeg](https://img.shields.io/badge/Powered%20by-FFmpeg-green)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 
-**Swaloka Looping Tool** is a professional desktop video automation tool that helps content creators, podcasters, and video producers automatically merge background videos with multiple audio tracks. Stop wasting hours on manual video editing—automate your entire workflow.
+**Swaloka Looping Tool** is a professional desktop video automation application that helps content creators, podcasters, and video producers automatically merge background videos with multiple audio tracks. Stop wasting hours on manual video editing—automate your entire workflow.
 
 **Perfect for:** Music Channels • Podcasts • Meditation Videos • Audiobooks • Educational Content • Gaming Commentary
 
@@ -135,7 +135,8 @@ Ready to upload to your favorite video platform!
 
 ### ✅ **Supported Platforms**
 - **Windows 10/11** (64-bit)
-- **macOS 11+** (Intel & Apple Silicon/M1/M2/M3)
+- **macOS 11+** (Intel & Apple Silicon/M1/M2/M3/M4)
+- **Linux** (Most distributions)
 
 ### 📋 **Requirements**
 - **RAM:** 4GB minimum (8GB recommended)
@@ -173,6 +174,18 @@ choco install ffmpeg
 scoop install ffmpeg
 
 # Or download from https://www.gyan.dev/ffmpeg/builds/
+```
+
+#### **Linux:**
+```bash
+# Ubuntu/Debian
+sudo apt update && sudo apt install ffmpeg
+
+# Fedora
+sudo dnf install ffmpeg
+
+# Arch Linux
+sudo pacman -S ffmpeg
 ```
 
 **The app will detect if FFmpeg is missing and guide you through installation.**
