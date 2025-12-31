@@ -4,15 +4,6 @@ on:
   push:
     tags:
       - 'v*.*.*'  # Triggers on version tags like v1.0.0
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'test/**'
-      - 'tests/**'
-      - 'scripts/**'
-      - '**_test.dart'
-      - 'LICENSE'
-      - '.gitignore'
 
 jobs:
   create-release:
