@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
 ### 🎉 Major Features Added
 
 #### Hierarchical Logging System
@@ -238,6 +239,12 @@ lib/features/video_merger/
 
 
 
+
+
+## [3.0.4] - 2025-12-31
+
+### Changes
+- chore: add write permissions for contents in release workflow jobs (86c5635)
 
 ## [3.0.3] - 2025-12-31
 
