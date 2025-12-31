@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
 ### 🎉 Major Features Added
 
 #### Hierarchical Logging System
@@ -227,5 +228,18 @@ lib/features/video_merger/
 - Clean architecture principles followed throughout
 
 ---
+
+**Note:** This changelog documents the major refactoring and feature additions completed in the recent development cycle. Version numbers will be assigned when the first official release is tagged.
+
+## [2.0.0] - 2025-12-31
+
+### Changes
+- fix!: Merge pull request #2 from PradhiptaBagaskara/semver (3102ae9)
+- chore: enhance macOS setup instructions and improve app signing process (740f795)
+- chore: enhance macOS setup instructions and improve app signing process (32a5e12)
+- feat: update dependencies and enhance README for Linux support (90fb929)
+- feat: integrate package_info_plus and logger for enhanced app functionality (f7a50cd)
+- feat: add automated semantic versioning system (679e8ea)
+- Merge pull request #1 from PradhiptaBagaskara/cleaning (f12fb68)
 
 **Note:** This changelog documents the major refactoring and feature additions completed in the recent development cycle. Version numbers will be assigned when the first official release is tagged.
