@@ -1,90 +1,170 @@
-name: Build and Release
+name: Automated Release
 
 on:
   push:
     tags:
-      - 'v*'
-
+      - 'v*.*.*'  # Triggers on version tags like v1.0.0
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'test/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - '**_test.dart'
+      - 'LICENSE'
+      - '.gitignore'
 
 jobs:
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build macOS
-        run: flutter build macos --release
-
-      - name: Create macOS DMG
-        run: |
-          mkdir -p build/macos/installer
-          cp -R "build/macos/Build/Products/Release/Swaloka Looping Tool.app" build/macos/installer/
-          ln -s /Applications build/macos/installer/Applications
-          hdiutil create -volname "Swaloka Looping Tool" -srcfolder build/macos/installer -ov -format UDZO "Swaloka_Looping_Tool.dmg"
-
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-dmg
-          path: Swaloka_Looping_Tool.dmg
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build Windows
-        run: flutter build windows --release
-
-      - name: Create Windows Installer (Inno Setup)
-        shell: pwsh
-        run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows/installer_script.iss
-
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-installer
-          path: Swaloka_Looping_Tool_Windows_Installer.exe
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-macos, build-windows]
+  create-release:
+    name: Create GitHub Release
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for changelog
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+
+          # Extract section for this version from CHANGELOG.md
+          CHANGELOG=$(awk "/## \[$VERSION\]/,/## \[/" CHANGELOG.md | sed '1d;$d')
+
+          # If changelog is empty, use commits since last tag
+          if [ -z "$CHANGELOG" ]; then
+            PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+            if [ -z "$PREV_TAG" ]; then
+              CHANGELOG=$(git log --pretty=format:"- %s (%h)" HEAD)
+            else
+              CHANGELOG=$(git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD)
+            fi
+          fi
+
+          # Save to file for multiline content
+          echo "$CHANGELOG" > changelog_content.md
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
-          files: |
-            macos-dmg/Swaloka_Looping_Tool.dmg
-            windows-installer/Swaloka_Looping_Tool_Windows_Installer.exe
+          name: Swaloka Looping Tool ${{ steps.get_version.outputs.TAG }}
+          body_path: changelog_content.md
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(steps.get_version.outputs.VERSION, '-') }}
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Output release info
+        run: |
+          echo "✅ Release created for version ${{ steps.get_version.outputs.VERSION }}"
+          echo "🔗 https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.TAG }}"
+
+  build-macos:
+    name: Build macOS App
+    runs-on: macos-latest
+    needs: create-release
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
+
+      - name: Build macOS app
+        run: flutter build macos --release
+
+      - name: Ad-hoc code sign (basic security)
+        run: |
+          echo "🔐 Applying ad-hoc signature to app bundle..."
+          codesign --force --deep --sign - "build/macos/Build/Products/Release/swaloka_looping_tool.app"
+
+          echo "✅ Verifying signature..."
+          codesign -dv --verbose=4 "build/macos/Build/Products/Release/swaloka_looping_tool.app"
+
+      - name: Create DMG
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+
+          # Install create-dmg
+          brew install create-dmg
+
+          # Create DMG from app bundle
+          create-dmg \
+            --volname "Swaloka Looping Tool" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon-size 100 \
+            --app-drop-link 600 185 \
+            "build/Swaloka-Looping-Tool-${VERSION}-installer.dmg" \
+            "build/macos/Build/Products/Release/swaloka_looping_tool.app" || true
+
+      - name: Upload macOS DMG to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/Swaloka-Looping-Tool-*-installer.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    name: Build Windows App
+    runs-on: windows-latest
+    needs: create-release
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
+
+      - name: Build Windows app
+        run: flutter build windows --release
+
+      - name: Create ZIP archive
+        run: |
+          $VERSION = "${{ github.ref }}".Replace("refs/tags/v", "")
+
+          # Create distribution folder
+          New-Item -ItemType Directory -Force -Path "dist"
+
+          # Copy built app
+          Copy-Item -Path "build/windows/x64/runner/Release/*" -Destination "dist/" -Recurse
+
+          # Create ZIP
+          Compress-Archive -Path "dist/*" -DestinationPath "build/Swaloka-Looping-Tool-${VERSION}-windows-installer.zip"
+
+      - name: Upload Windows ZIP to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/Swaloka-Looping-Tool-*-windows-installer.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

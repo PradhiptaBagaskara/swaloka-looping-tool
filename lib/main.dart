@@ -4,10 +4,14 @@ import 'package:window_manager/window_manager.dart';
 import 'dart:io' show Platform;
 import 'app.dart';
 import 'core/constants/app_constants.dart';
+import 'core/services/app_logger.dart';
 
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize global app logger
+  AppLogger.initialize();
 
   // Initialize window manager for desktop platforms
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
@@ -33,6 +37,7 @@ void main() async {
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();
       await windowManager.focus();
+      log.i('🪟 Window shown and focused');
     });
   }
 

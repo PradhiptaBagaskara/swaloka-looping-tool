@@ -1,14 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:io';
 import 'core/theme/app_theme.dart';
 import 'core/services/system_info_service.dart';
+import 'core/services/app_logger.dart';
 import 'features/video_merger/presentation/pages/video_merger_page.dart';
 
 /// Provider to check FFmpeg availability
 final ffmpegCheckProvider = FutureProvider<bool>((ref) async {
-  return await SystemInfoService.isFFmpegAvailable();
+  log.i('🎬 Checking FFmpeg installation');
+  final isAvailable = await SystemInfoService.isFFmpegAvailable();
+
+  if (isAvailable) {
+    log.i('✅ FFmpeg found and available');
+  } else {
+    log.w('⚠️  FFmpeg not found');
+  }
+
+  return isAvailable;
+});
+
+/// Provider to get app version
+final appVersionProvider = FutureProvider<String>((ref) async {
+  final packageInfo = await PackageInfo.fromPlatform();
+  final version = 'v${packageInfo.version}';
+  log.i('📦 App version: $version');
+  return version;
 });
 
 class SwalokaApp extends ConsumerWidget {
