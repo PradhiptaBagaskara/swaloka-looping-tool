@@ -1,5 +1,8 @@
 ;!@Install@!UTF-8!
 Title="Swaloka Looping Tool - Portable"
-BeginPrompt="Swaloka Looping Tool will extract and run.\n\nThis is a portable single-file executable.\nNo installation required!"
+BeginPrompt="Swaloka Looping Tool will extract and run.
+
+This is a portable single-file executable.
+No installation required!"
 RunProgram="swaloka_looping_tool.exe"
 ;!@InstallEnd@!

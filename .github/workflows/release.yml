@@ -106,14 +106,24 @@ jobs:
       - name: Build Windows app
         run: flutter build windows --release
 
-      - name: Create Single-File Portable EXE
+      - name: Download 7-Zip SFX Module
+        run: |
+          Write-Host "📥 Downloading 7-Zip LZMA SDK..." -ForegroundColor Cyan
+          Invoke-WebRequest -Uri "https://www.7-zip.org/a/lzma2501.7z" -OutFile "lzma_sdk.7z"
+
+          # Extract the SDK using 7z (should be available in GitHub Actions Windows runner)
+          & "C:\Program Files\7-Zip\7z.exe" x lzma_sdk.7z -o"lzma_sdk" -y
+
+          Write-Host "✅ Downloaded and extracted 7-Zip SFX module" -ForegroundColor Green
+
+      - name: Create Single-File Portable EXE with 7-Zip SFX
         run: |
           $VERSION = "${{ github.ref }}".Replace("refs/tags/v", "")
           $APP_NAME = "Swaloka-Looping-Tool"
           $BUILD_DIR = "build/windows/x64/runner/Release"
           $TEMP_DIR = "portable_temp"
 
-          Write-Host "🔨 Building Single-File Portable Executable..." -ForegroundColor Cyan
+          Write-Host "🔨 Building Single-File Portable Executable with 7-Zip SFX..." -ForegroundColor Cyan
 
           # Create temp directory and copy files
           New-Item -ItemType Directory -Path $TEMP_DIR -Force | Out-Null
@@ -140,117 +150,75 @@ jobs:
           For more: https://github.com/pradhiptabagaskara/swaloka-looping-tool
           "@ | Out-File -FilePath "$TEMP_DIR/README.txt" -Encoding UTF8
 
-          # Create IExpress directive file (SED)
+          # Create output directory
           $OUTPUT = "build/$APP_NAME-$VERSION-windows-portable.exe"
           New-Item -ItemType Directory -Path "build" -Force | Out-Null
 
-          # Get list of all files to package
-          $files = Get-ChildItem -Path $TEMP_DIR -Recurse -File
-          $fileList = ($files | ForEach-Object { "FILE$($files.IndexOf($_))=`"$($_.FullName)`"" }) -join "`r`n"
+          # Create 7z archive from the portable temp directory
+          Write-Host "📦 Creating 7z archive..." -ForegroundColor Cyan
+          $ARCHIVE = "portable.7z"
+          & "C:\Program Files\7-Zip\7z.exe" a -t7z $ARCHIVE "$TEMP_DIR\*" -mx9
 
-          # Create IExpress Self-Extraction Directive file
-          @"
-          [Version]
-          Class=IEXPRESS
-          SEDVersion=3
-          [Options]
-          PackagePurpose=InstallApp
-          ShowInstallProgramWindow=0
-          HideExtractAnimation=1
-          UseLongFileName=1
-          InsideCompressed=0
-          CAB_FixedSize=0
-          CAB_ResvCodeSigning=0
-          RebootMode=N
-          InstallPrompt=%InstallPrompt%
-          DisplayLicense=%DisplayLicense%
-          FinishMessage=%FinishMessage%
-          TargetName=%TargetName%
-          FriendlyName=%FriendlyName%
-          AppLaunched=%AppLaunched%
-          PostInstallCmd=%PostInstallCmd%
-          AdminQuietInstCmd=%AdminQuietInstCmd%
-          UserQuietInstCmd=%UserQuietInstCmd%
-          SourceFiles=SourceFiles
-          [Strings]
-          InstallPrompt=Swaloka Looping Tool will extract and run. No installation required!
-          DisplayLicense=
-          FinishMessage=
-          TargetName=$OUTPUT
-          FriendlyName=Swaloka Looping Tool Portable
-          AppLaunched=cmd /c start "" "swaloka_looping_tool.exe"
-          PostInstallCmd=<None>
-          AdminQuietInstCmd=
-          UserQuietInstCmd=
-          FILE0="$TEMP_DIR"
-          [SourceFiles]
-          SourceFiles0=$TEMP_DIR
-          [SourceFiles0]
-          %FILE0%=
-          "@ | Out-File -FilePath "portable.sed" -Encoding ASCII
+          if (-not (Test-Path $ARCHIVE)) {
+            Write-Host "❌ Failed to create 7z archive" -ForegroundColor Red
+            exit 1
+          }
 
-          # Create the self-extracting EXE using IExpress
-          Write-Host "📦 Creating portable EXE with IExpress..." -ForegroundColor Cyan
-          Start-Process -FilePath "iexpress.exe" -ArgumentList "/N", "/Q", "portable.sed" -Wait -NoNewWindow
+          # Find the SFX module (try multiple possible locations)
+          Write-Host "🔍 Looking for SFX module..." -ForegroundColor Cyan
+          $SFX_MODULE = $null
+          $possiblePaths = @(
+            "lzma_sdk\bin\7zS2con.sfx",
+            "lzma_sdk\bin\7zSD.sfx",
+            "lzma_sdk\bin\7zS2.sfx",
+            "lzma_sdk\CPP\7zip\Bundles\SFXCon\Release\7zS2con.sfx"
+          )
 
-          if (-not (Test-Path $OUTPUT)) {
-            Write-Host "❌ Failed to create portable EXE!" -ForegroundColor Red
-            Write-Host "Trying alternative method with 7-Zip..." -ForegroundColor Yellow
-
-            # Fallback to 7-Zip if IExpress fails
-            if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
-              choco install 7zip -y
-              $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          foreach ($path in $possiblePaths) {
+            if (Test-Path $path) {
+              $SFX_MODULE = $path
+              break
             }
+          }
 
-            # Create 7z archive
-            $ARCHIVE = "archive.7z"
-            & 7z a -t7z -mx=9 $ARCHIVE "$TEMP_DIR/*"
+          if (-not $SFX_MODULE) {
+            Write-Host "❌ SFX module not found. Available files:" -ForegroundColor Red
+            Get-ChildItem "lzma_sdk" -Recurse -Filter "*.sfx" -ErrorAction SilentlyContinue
+            Get-ChildItem "lzma_sdk" -Recurse -Filter "7z*.exe" -ErrorAction SilentlyContinue
+            exit 1
+          }
 
-            # Try direct SFX download
-            try {
-              $SFX_URL = "https://raw.githubusercontent.com/chrisant996/clink/master/installer/7zSD.sfx"
-              Invoke-WebRequest -Uri $SFX_URL -OutFile "7zSD.sfx" -ErrorAction Stop
-            } catch {
-              Write-Host "⚠️  Direct download failed, extracting from archive..." -ForegroundColor Yellow
-              Invoke-WebRequest -Uri "https://www.7-zip.org/a/7z2408-extra.7z" -OutFile "7z-extra.7z"
-              & 7z x "7z-extra.7z" -o"7z-extra" -y
-              $sfxPath = Get-ChildItem -Path "7z-extra" -Filter "7zSD.sfx" -Recurse | Select-Object -First 1
-              Copy-Item -Path $sfxPath.FullName -Destination "7zSD.sfx" -Force
-              Remove-Item -Path "7z-extra" -Recurse -Force -ErrorAction SilentlyContinue
-              Remove-Item "7z-extra.7z" -Force
-            }
+          Write-Host "✅ Using SFX module: $SFX_MODULE" -ForegroundColor Green
 
-            # Create config
-            @"
-          ;!@Install@!UTF-8!
-          Title="Swaloka Looping Tool"
-          BeginPrompt="Swaloka Looping Tool will extract and run.\n\nNo installation required!"
-          RunProgram="swaloka_looping_tool.exe"
-          ;!@InstallEnd@!
-          "@ | Out-File -FilePath "config.txt" -Encoding ASCII
+          # Get the SFX config file
+          $SFX_CONFIG = "windows/sfx_config.txt"
 
-            # Combine files
-            cmd /c "copy /b 7zSD.sfx + config.txt + $ARCHIVE $OUTPUT"
+          # Create the self-extracting executable by concatenating:
+          # 1. SFX module binary
+          # 2. Config file
+          # 3. 7z archive
+          Write-Host "📦 Creating self-extracting executable..." -ForegroundColor Cyan
 
-            # Cleanup
-            Remove-Item "7zSD.sfx" -Force -ErrorAction SilentlyContinue
-            Remove-Item "config.txt" -Force -ErrorAction SilentlyContinue
-            Remove-Item $ARCHIVE -Force -ErrorAction SilentlyContinue
+          # Use copy command to concatenate binary files (this works better on Windows)
+          cmd /c "copy /b `"$SFX_MODULE`"+`"$SFX_CONFIG`"+`"$ARCHIVE`" `"$OUTPUT`""
+
+          # Verify output was created
+          if (Test-Path $OUTPUT) {
+            $FileSize = (Get-Item $OUTPUT).Length / 1MB
+            Write-Host "✅ Portable EXE created successfully!" -ForegroundColor Green
+            Write-Host "   Location: $OUTPUT" -ForegroundColor Cyan
+            Write-Host "   Size: $([math]::Round($FileSize, 2)) MB" -ForegroundColor Cyan
+          } else {
+            Write-Host "❌ Output file not created: $OUTPUT" -ForegroundColor Red
+            exit 1
           }
 
           # Cleanup
-          Write-Host "🧹 Cleaning up..." -ForegroundColor Cyan
+          Write-Host "🧹 Cleaning up temporary files..." -ForegroundColor Cyan
           Remove-Item -Path $TEMP_DIR -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item "portable.sed" -Force -ErrorAction SilentlyContinue
-
-          if (Test-Path $OUTPUT) {
-            $FileSize = (Get-Item $OUTPUT).Length / 1MB
-            Write-Host "✅ Portable EXE created: $OUTPUT ($([math]::Round($FileSize, 2)) MB)" -ForegroundColor Green
-          } else {
-            Write-Host "❌ Failed to create portable EXE with both methods!" -ForegroundColor Red
-            exit 1
-          }
+          Remove-Item $ARCHIVE -Force -ErrorAction SilentlyContinue
+          Remove-Item "lzma_sdk" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "lzma_sdk.7z" -Force -ErrorAction SilentlyContinue
 
       - name: Download VC++ Redistributable
         run: |
