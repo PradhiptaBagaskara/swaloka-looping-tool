@@ -6,18 +6,59 @@ import 'package:swaloka_looping_tool/core/services/log_service.dart';
 
 /// Service for merging background video with sequential audio files
 class VideoMergerService {
+  /// Pre-warm the OS file cache by reading the video file
+  /// This significantly speeds up FFmpeg processing on first run
+  Future<void> _prewarmCache(
+    String filePath,
+    void Function(LogEntry log)? onLog,
+  ) async {
+    final file = File(filePath);
+    if (!await file.exists()) return;
 
-  // create temp directory in project folder
+    final fileSize = await file.length();
+    final fileSizeMB = (fileSize / 1024 / 1024).toStringAsFixed(1);
+    onLog?.call(LogEntry.info('Pre-loading video ($fileSizeMB MB)...'));
+
+    // Read file in chunks to warm the OS cache without holding all in memory
+    final stream = file.openRead();
+    await for (final _ in stream) {
+      // Just read and discard - this warms the OS page cache
+    }
+    onLog?.call(LogEntry.success('Video pre-loaded into cache'));
+  }
+
+  // create temp directory
   Future<Directory> _createTempDirectory(
     String projectRootPath,
     void Function(LogEntry log)? onLog,
   ) async {
     onLog?.call(LogEntry.info('Creating temp directory...'));
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final tempDir = Directory(
-      p.join(projectRootPath, 'temp', 'swaloka_temp_$timestamp'),
-    );
-    await tempDir.create(recursive: true);
+
+    Directory tempDir;
+
+    // On macOS/Linux: use system temp (potentially faster, no indexing)
+    // On Windows: use project temp (avoid path length limits, antivirus issues)
+    if (!Platform.isWindows) {
+      try {
+        final systemTemp = Directory.systemTemp;
+        tempDir = Directory(p.join(systemTemp.path, 'swaloka_temp_$timestamp'));
+        await tempDir.create(recursive: true);
+      } catch (_) {
+        // Fall back to project directory
+        tempDir = Directory(
+          p.join(projectRootPath, 'temp', 'swaloka_temp_$timestamp'),
+        );
+        await tempDir.create(recursive: true);
+      }
+    } else {
+      // Windows: always use project temp
+      tempDir = Directory(
+        p.join(projectRootPath, 'temp', 'swaloka_temp_$timestamp'),
+      );
+      await tempDir.create(recursive: true);
+    }
+
     onLog?.call(LogEntry.success('Temp directory created: ${tempDir.path}'));
     return tempDir;
   }
@@ -214,7 +255,12 @@ class VideoMergerService {
     void Function(LogEntry log)? onLog,
   }) async {
     await FFmpegService.verifyInstallation(onLog);
+    onProgress?.call(0.1);
+
+    // Pre-warm OS cache for faster FFmpeg processing
+    await _prewarmCache(backgroundVideoPath, onLog);
     onProgress?.call(0.2);
+
     final tempDir = await _createTempDirectory(projectRootPath, onLog);
     try {
       final concatFilePath = await _concatAudioFiles(
