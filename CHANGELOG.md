@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
 ### 🎉 Major Features Added
 
 #### Hierarchical Logging System
@@ -272,6 +273,12 @@ lib/features/video_merger/
 
 
 
+
+
+## [3.6.0] - 2026-01-01
+
+### Changes
+- feat: add Linux support for app build and enhance hardware encoder detection (ca9c739)
 
 ## [3.5.3] - 2026-01-01
 
