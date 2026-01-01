@@ -23,16 +23,17 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "..\build\windows\x64\runner\Release\swaloka_looping_tool.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\windows\x64\runner\Release\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\windows\x64\runner\Release\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Include VC++ Redistributable installer (download from https://aka.ms/vs/17/release/vc_redist.x64.exe and place in windows folder)
-Source: "vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: VCRedistNeedsInstall
+; Include VC++ Redistributable installer (optional - skip if not present in build)
+; Download from https://aka.ms/vs/17/release/vc_redist.x64.exe and place in windows folder to bundle it
+Source: "vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\Swaloka Looping Tool"; Filename: "{app}\swaloka_looping_tool.exe"
 Name: "{autodesktop}\Swaloka Looping Tool"; Filename: "{app}\swaloka_looping_tool.exe"; Tasks: desktopicon
 
 [Run]
-; Install VC++ Redistributable silently if needed
-Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Visual C++ Runtime..."; Check: VCRedistNeedsInstall; Flags: waituntilterminated
+; Install VC++ Redistributable silently if needed and if bundled
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Visual C++ Runtime..."; Check: VCRedistNeedsInstall; Flags: waituntilterminated skipifdoesntexist
 Filename: "{app}\swaloka_looping_tool.exe"; Description: "{cm:LaunchProgram,Swaloka Looping Tool}"; Flags: nowait postinstall skipifsilent
 
 [Code]
@@ -49,4 +50,8 @@ begin
     if (CompareStr(Version, 'v14.29') >= 0) then
       Result := False;
   end;
+  
+  // Also skip if the redistributable file wasn't bundled
+  if Result then
+    Result := FileExists(ExpandConstant('{tmp}\vc_redist.x64.exe'));
 end;
