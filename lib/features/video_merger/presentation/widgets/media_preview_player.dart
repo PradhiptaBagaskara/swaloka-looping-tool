@@ -79,27 +79,36 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
-      return Container(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
-            const SizedBox(height: 16),
-            Text(
-              'Unable to play this file',
-              style: TextStyle(color: Colors.grey[400]),
-            ),
-          ],
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 24, color: Colors.redAccent),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  'Unable to play this file',
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     if (!_initialized) {
-      return Container(
-        padding: const EdgeInsets.all(32),
-        child: const Center(
-          child: CircularProgressIndicator(strokeWidth: 2),
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
         ),
       );
     }

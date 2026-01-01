@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
+import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import '../providers/ffmpeg_provider.dart';
 
 /// Error page shown when FFmpeg is not installed
@@ -245,9 +245,9 @@ class FFmpegErrorPage extends ConsumerWidget {
                       // Wait a moment for the dialog to show
                       await Future.delayed(const Duration(milliseconds: 300));
 
-                      // Perform the actual check
-                      final isAvailable =
-                          await SystemInfoService.isFFmpegAvailable();
+                      // Perform the actual check (reset cache first)
+                      FFmpegService.resetCache();
+                      final isAvailable = await FFmpegService.isAvailable();
 
                       // Close the checking dialog
                       if (context.mounted) {

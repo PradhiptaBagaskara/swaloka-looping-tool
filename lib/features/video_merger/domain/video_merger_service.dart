@@ -1,135 +1,11 @@
 import 'dart:io';
 import 'dart:math';
-import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
+import 'package:path/path.dart' as p;
+import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
 
 /// Service for merging background video with sequential audio files
 class VideoMergerService {
-  /// Helper function to run FFmpeg command with hierarchical logging
-  Future<void> runFFmpegWithLogging(
-    List<String> command, {
-    String? errorMessage,
-    void Function(LogEntry log)? onLog,
-  }) async {
-    // Get FFmpeg path and extended environment
-    final ffmpegPath = SystemInfoService.ffmpegPath;
-    final env = SystemInfoService.extendedEnvironment;
-
-    // Create and show command log immediately
-    final commandLog = LogEntry.info(
-      'Command: $ffmpegPath ${command.join(" ")}',
-    );
-    onLog?.call(commandLog);
-
-    final startTime = DateTime.now();
-
-    // Run FFmpeg with extended PATH environment
-    // Windows: use simple 'ffmpeg' command (relies on PATH)
-    // macOS/Linux: use resolved path with extended environment (for release builds)
-    final ProcessResult result;
-    if (Platform.isWindows) {
-      result = await Process.run('ffmpeg', command);
-    } else {
-      result = await Process.run(ffmpegPath, command, environment: env);
-    }
-
-    final exitCode = result.exitCode;
-
-    // Parse stdout and stderr into log entries
-    final stdoutLogs = <LogEntry>[];
-    final stderrLogs = <LogEntry>[];
-
-    final stdoutStr = result.stdout as String;
-    if (stdoutStr.isNotEmpty) {
-      for (final line in stdoutStr.split('\n')) {
-        final trimmed = line.trim();
-        if (trimmed.isNotEmpty) {
-          stdoutLogs.add(LogEntry.simple(LogLevel.info, trimmed));
-        }
-      }
-    }
-
-    final stderrStr = result.stderr as String;
-    if (stderrStr.isNotEmpty) {
-      for (final line in stderrStr.split('\n')) {
-        final trimmed = line.trim();
-        if (trimmed.isNotEmpty) {
-          stderrLogs.add(LogEntry.simple(LogLevel.info, trimmed));
-        }
-      }
-    }
-    final executionDuration = DateTime.now().difference(startTime);
-
-    // Format duration nicely
-    String formatDuration(Duration duration) {
-      if (duration.inSeconds == 0) {
-        return '${duration.inMilliseconds}ms';
-      } else if (duration.inSeconds < 60) {
-        final seconds = duration.inMilliseconds / 1000;
-        return '${seconds.toStringAsFixed(1)}s';
-      } else {
-        final minutes = duration.inMinutes;
-        final seconds = duration.inSeconds % 60;
-        return '${minutes}m ${seconds}s';
-      }
-    }
-
-    // Create execution log with stdout and stderr as sub-logs
-    final executionSubLogs = <LogEntry>[];
-
-    if (stdoutLogs.isNotEmpty) {
-      executionSubLogs.add(
-        LogEntry.withSubLogs(
-          LogLevel.info,
-          'stdout (${stdoutLogs.length} lines)',
-          stdoutLogs,
-        ),
-      );
-    }
-
-    if (stderrLogs.isNotEmpty) {
-      executionSubLogs.add(
-        LogEntry.withSubLogs(
-          LogLevel.info,
-          'stderr (${stderrLogs.length} lines)',
-          stderrLogs,
-        ),
-      );
-    }
-
-    // Add execution details as sublog
-    if (executionSubLogs.isNotEmpty) {
-      final executionLog = LogEntry.withSubLogs(
-        LogLevel.info,
-        'Running FFmpeg command',
-        executionSubLogs,
-      );
-      commandLog.addSubLog(executionLog);
-    }
-
-    // Add duration as sublog
-    final durationLog = LogEntry.success(
-      'FFmpeg command completed in ${formatDuration(executionDuration)}',
-    );
-    commandLog.addSubLog(durationLog);
-
-    if (exitCode != 0) {
-      final errorLog = LogEntry.error(
-        'FFmpeg command failed with exit code $exitCode',
-      );
-      onLog?.call(errorLog);
-      throw Exception(errorMessage ?? 'FFmpeg command failed');
-    }
-  }
-
-  // Check if ffmpeg exists in system path
-  Future<void> verifyFFmpegInstallation(
-    void Function(LogEntry log)? onLog,
-  ) async {
-    onLog?.call(LogEntry.info('Checking if ffmpeg exists in system path...'));
-    await SystemInfoService.isFFmpegAvailable(raiseException: true);
-    onLog?.call(LogEntry.success('FFmpeg CLI found in system path.'));
-  }
 
   // create temp directory in project folder
   Future<Directory> _createTempDirectory(
@@ -138,7 +14,9 @@ class VideoMergerService {
   ) async {
     onLog?.call(LogEntry.info('Creating temp directory...'));
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final tempDir = Directory('$projectRootPath/temp/swaloka_temp_$timestamp');
+    final tempDir = Directory(
+      p.join(projectRootPath, 'temp', 'swaloka_temp_$timestamp'),
+    );
     await tempDir.create(recursive: true);
     onLog?.call(LogEntry.success('Temp directory created: ${tempDir.path}'));
     return tempDir;
@@ -173,9 +51,9 @@ class VideoMergerService {
         batch.asMap().entries.map((entry) async {
           final idx = i + entry.key;
           final inputPath = entry.value;
-          final outPath = '${tempDir.path}/audio_part_$idx.aac';
+          final outPath = p.join(tempDir.path, 'audio_part_$idx.aac');
 
-          await runFFmpegWithLogging(
+          await FFmpegService.run(
             [
               '-y',
               '-i',
@@ -198,7 +76,7 @@ class VideoMergerService {
         }),
       );
     }
-    final concatFilePath = '${tempDir.path}/audio_concat.txt';
+    final concatFilePath = p.join(tempDir.path, 'audio_concat.txt');
     final concatFiles = <String>[];
 
     // First iteration: Always use original order from UI
@@ -242,13 +120,13 @@ class VideoMergerService {
     String concatFilePath,
     void Function(LogEntry log)? onLog,
   ) async {
-    final mergedAudioPath = '${tempDir.path}/audio_merged.aac';
+    final mergedAudioPath = p.join(tempDir.path, 'audio_merged.aac');
 
     // Create parent log for merging operation
     final mergeLog = LogEntry.info('Merging audio tracks...');
     onLog?.call(mergeLog);
 
-    await runFFmpegWithLogging(
+    await FFmpegService.run(
       [
         '-y',
         '-f',
@@ -312,7 +190,7 @@ class VideoMergerService {
       '-y',
     ];
 
-    await runFFmpegWithLogging(
+    await FFmpegService.run(
       command,
       errorMessage: 'Failed to merge video',
       onLog: (log) => videoMergeLog.addSubLog(log),
@@ -340,7 +218,7 @@ class VideoMergerService {
     void Function(double progress)? onProgress,
     void Function(LogEntry log)? onLog,
   }) async {
-    await verifyFFmpegInstallation(onLog);
+    await FFmpegService.verifyInstallation(onLog);
     onProgress?.call(0.2);
     final tempDir = await _createTempDirectory(projectRootPath, onLog);
     try {

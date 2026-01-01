@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
+import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/services/app_logger.dart';
 
 /// State notifier to track FFmpeg status with auto-check on startup
@@ -20,11 +20,11 @@ class FFmpegStatusNotifier extends Notifier<bool?> {
   Future<bool> checkFFmpeg() async {
     try {
       log.i('🎬 Checking FFmpeg installation...');
-      final isAvailable = await SystemInfoService.isFFmpegAvailable();
+      final isAvailable = await FFmpegService.isAvailable();
       state = isAvailable;
 
       if (isAvailable) {
-        final path = SystemInfoService.ffmpegPath;
+        final path = FFmpegService.ffmpegPath;
         log.i('✅ FFmpeg found: $path');
       } else {
         log.w('⚠️  FFmpeg not found');
@@ -40,6 +40,7 @@ class FFmpegStatusNotifier extends Notifier<bool?> {
   /// Force re-check FFmpeg (e.g., after user installs it)
   Future<bool> recheckFFmpeg() async {
     state = null; // Reset to "checking" state
+    FFmpegService.resetCache(); // Clear cached path to re-detect
     return checkFFmpeg();
   }
 }

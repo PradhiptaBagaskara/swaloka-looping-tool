@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/models/swaloka_project.dart';
 
@@ -33,9 +34,9 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     await _saveProjectToFile(project);
 
     // Ensure directories
-    await Directory('$rootPath/outputs').create(recursive: true);
-    await Directory('$rootPath/logs').create(recursive: true);
-    await Directory('$rootPath/temp').create(recursive: true);
+    await Directory(p.join(rootPath, 'outputs')).create(recursive: true);
+    await Directory(p.join(rootPath, 'logs')).create(recursive: true);
+    await Directory(p.join(rootPath, 'temp')).create(recursive: true);
 
     state = project;
 
@@ -52,15 +53,15 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     Function(String path)? onProjectAdded,
     VoidCallback? onFilesRefresh,
   }) async {
-    final file = File('$rootPath/project.swaloka');
+    final file = File(p.join(rootPath, 'project.swaloka'));
     if (await file.exists()) {
       final json = jsonDecode(await file.readAsString());
       state = SwalokaProject.fromJson(json);
 
       // Ensure directories exist (in case they were deleted)
-      await Directory('$rootPath/outputs').create(recursive: true);
-      await Directory('$rootPath/logs').create(recursive: true);
-      await Directory('$rootPath/temp').create(recursive: true);
+      await Directory(p.join(rootPath, 'outputs')).create(recursive: true);
+      await Directory(p.join(rootPath, 'logs')).create(recursive: true);
+      await Directory(p.join(rootPath, 'temp')).create(recursive: true);
 
       // Clean up old temp directories from previous sessions
       await _cleanupTempDirectories(rootPath);
@@ -131,14 +132,14 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
   }
 
   Future<void> _saveProjectToFile(SwalokaProject project) async {
-    final file = File('${project.rootPath}/project.swaloka');
+    final file = File(p.join(project.rootPath, 'project.swaloka'));
     await file.writeAsString(jsonEncode(project.toJson()));
   }
 
   /// Clean up old temp directories in the project
   Future<void> _cleanupTempDirectories(String rootPath) async {
     try {
-      final tempDir = Directory('$rootPath/temp');
+      final tempDir = Directory(p.join(rootPath, 'temp'));
       if (await tempDir.exists()) {
         final contents = tempDir.listSync();
         for (final item in contents) {

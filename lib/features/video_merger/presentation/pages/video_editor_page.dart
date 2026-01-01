@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
 import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
@@ -373,12 +374,26 @@ class VideoEditorPage extends ConsumerWidget {
           ref,
           'Audio Tracks (${project.audioFiles.length})',
           Icons.audiotrack,
+          action: project.audioFiles.isNotEmpty
+              ? IconButton(
+                  onPressed: () {
+                    ref.read(activeProjectProvider.notifier).removeAllAudios();
+                  },
+                  icon: const Icon(Icons.delete_sweep, size: 18),
+                  tooltip: 'Remove all audio tracks',
+                  color: Colors.grey[500],
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  splashRadius: 16,
+                )
+              : null,
         ),
         if (!collapsedSections.contains(
           'Audio Tracks (${project.audioFiles.length})',
         )) ...[
           const SizedBox(height: 12),
-          // Simple list without reordering
+          _buildDropZone(context, ref, isVideo: false),
+          // Audio list
           for (int i = 0; i < project.audioFiles.length; i++)
             _buildMediaItem(
               context,
@@ -391,8 +406,6 @@ class VideoEditorPage extends ConsumerWidget {
               },
               index: i + 1,
             ),
-          const SizedBox(height: 12),
-          _buildDropZone(context, ref, isVideo: false),
         ],
       ],
     );
@@ -402,43 +415,52 @@ class VideoEditorPage extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     String title,
-    IconData icon,
-  ) {
+    IconData icon, {
+    Widget? action,
+  }) {
     final collapsedSections = ref.watch(collapsedSectionsProvider);
     final isCollapsed = collapsedSections.contains(title);
 
-    return InkWell(
-      onTap: () => ref.read(collapsedSectionsProvider.notifier).toggle(title),
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFF333333)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: Colors.deepPurple[200]),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[400],
-                  letterSpacing: 1,
-                ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF333333)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: () =>
+                  ref.read(collapsedSectionsProvider.notifier).toggle(title),
+              borderRadius: BorderRadius.circular(8),
+              child: Row(
+                children: [
+                  Icon(icon, size: 16, color: Colors.deepPurple[200]),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[400],
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    isCollapsed ? Icons.expand_more : Icons.expand_less,
+                    size: 18,
+                    color: Colors.grey[600],
+                  ),
+                ],
               ),
             ),
-            Icon(
-              isCollapsed ? Icons.expand_more : Icons.expand_less,
-              size: 18,
-              color: Colors.grey[600],
-            ),
-          ],
-        ),
+          ),
+          if (action != null) ...[const SizedBox(width: 8), action],
+        ],
       ),
     );
   }
@@ -1194,8 +1216,12 @@ class VideoEditorPage extends ConsumerWidget {
           : '';
       final outputFileName =
           '${sanitizedTitle.replaceAll(' ', '_')}_$loopPrefix$timestamp.mp4';
-      final outputPath = '$outputDir/$outputFileName';
-      logFilePath = '${project.rootPath}/logs/ffmpeg_log_$timestamp.log';
+      final outputPath = p.join(outputDir, outputFileName);
+      logFilePath = p.join(
+        project.rootPath,
+        'logs',
+        'ffmpeg_log_$timestamp.log',
+      );
 
       ref.read(processingStateProvider.notifier).startProcessing();
       final service = ref.read(videoMergerServiceProvider);

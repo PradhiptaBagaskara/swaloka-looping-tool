@@ -1,3 +1,5 @@
+import 'package:path/path.dart' as p;
+
 /// Model representing a Swaloka video merger project
 class SwalokaProject {
   final String name;
@@ -24,33 +26,50 @@ class SwalokaProject {
     this.audioLoopCount = 1,
   });
 
-  Map<String, dynamic> toJson() => {
-        'name': name,
-        'rootPath': rootPath,
-        'customOutputPath': customOutputPath,
-        'audioFiles': audioFiles,
-        'backgroundVideo': backgroundVideo,
-        'title': title,
-        'author': author,
-        'comment': comment,
-        'concurrencyLimit': concurrencyLimit,
-        'audioLoopCount': audioLoopCount,
-      };
+  Map<String, dynamic> toJson() {
+    // Normalize paths for consistent storage
+    String? normalizePath(String? path) =>
+        path != null ? p.normalize(path) : null;
 
-  factory SwalokaProject.fromJson(Map<String, dynamic> json) => SwalokaProject(
-        name: json['name'],
-        rootPath: json['rootPath'],
-        customOutputPath: json['customOutputPath'],
-        audioFiles: List<String>.from(json['audioFiles'] ?? []),
-        backgroundVideo: json['backgroundVideo'],
-        title: json['title'],
-        author: json['author'],
-        comment: json['comment'],
-        concurrencyLimit: json['concurrencyLimit'] ?? 4,
-        audioLoopCount: json['audioLoopCount'] ?? 1,
-      );
+    return {
+      'name': name,
+      'rootPath': p.normalize(rootPath),
+      'customOutputPath': normalizePath(customOutputPath),
+      'audioFiles': audioFiles.map((e) => p.normalize(e)).toList(),
+      'backgroundVideo': normalizePath(backgroundVideo),
+      'title': title,
+      'author': author,
+      'comment': comment,
+      'concurrencyLimit': concurrencyLimit,
+      'audioLoopCount': audioLoopCount,
+    };
+  }
 
-  String get effectiveOutputPath => customOutputPath ?? '$rootPath/outputs';
+  factory SwalokaProject.fromJson(Map<String, dynamic> json) {
+    // Normalize paths for current platform
+    String? normalizePath(String? path) =>
+        path != null ? p.normalize(path) : null;
+
+    return SwalokaProject(
+      name: json['name'],
+      rootPath: p.normalize(json['rootPath']),
+      customOutputPath: normalizePath(json['customOutputPath']),
+      audioFiles:
+          (json['audioFiles'] as List<dynamic>?)
+              ?.map((e) => p.normalize(e as String))
+              .toList() ??
+          [],
+      backgroundVideo: normalizePath(json['backgroundVideo']),
+      title: json['title'],
+      author: json['author'],
+      comment: json['comment'],
+      concurrencyLimit: json['concurrencyLimit'] ?? 4,
+      audioLoopCount: json['audioLoopCount'] ?? 1,
+    );
+  }
+
+  String get effectiveOutputPath =>
+      customOutputPath ?? p.join(rootPath, 'outputs');
 
   SwalokaProject copyWith({
     String? name,
@@ -66,16 +85,26 @@ class SwalokaProject {
     int? concurrencyLimit,
     int? audioLoopCount,
   }) {
+    // Normalize paths for consistency
+    final normalizedAudioFiles = audioFiles
+        ?.map((e) => p.normalize(e))
+        .toList();
+    final normalizedBackgroundVideo = backgroundVideo != null
+        ? p.normalize(backgroundVideo)
+        : null;
+
     return SwalokaProject(
       name: name ?? this.name,
-      rootPath: rootPath ?? this.rootPath,
+      rootPath: rootPath != null ? p.normalize(rootPath) : this.rootPath,
       customOutputPath: clearCustomOutputPath
           ? null
-          : (customOutputPath ?? this.customOutputPath),
-      audioFiles: audioFiles ?? this.audioFiles,
+          : (customOutputPath != null
+                ? p.normalize(customOutputPath)
+                : this.customOutputPath),
+      audioFiles: normalizedAudioFiles ?? this.audioFiles,
       backgroundVideo: clearBackgroundVideo
           ? null
-          : (backgroundVideo ?? this.backgroundVideo),
+          : (normalizedBackgroundVideo ?? this.backgroundVideo),
       title: title ?? this.title,
       author: author ?? this.author,
       comment: comment ?? this.comment,
