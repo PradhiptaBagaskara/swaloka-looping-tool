@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 import '../providers/video_merger_providers.dart';
 import '../providers/ffmpeg_provider.dart';
 import 'ffmpeg_error_page.dart';
@@ -267,8 +268,10 @@ class ProjectLandingPage extends ConsumerWidget {
     WidgetRef ref,
     String path,
   ) {
-    final projectName = path.split('/').last;
-    final projectFile = File('$path/project.swaloka');
+    // Use platform-aware path operations
+    final normalizedPath = p.normalize(path);
+    final projectName = p.basename(normalizedPath);
+    final projectFile = File(p.join(normalizedPath, 'project.swaloka'));
     final isCompatible = projectFile.existsSync();
 
     return Padding(
@@ -318,7 +321,7 @@ class ProjectLandingPage extends ConsumerWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        path,
+                        normalizedPath,
                         style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -389,7 +392,11 @@ class ProjectLandingPage extends ConsumerWidget {
 
     if (result == null) return;
 
-    final nameController = TextEditingController(text: result.split('/').last);
+    // Use platform-aware path operations
+    final normalizedPath = p.normalize(result);
+    final nameController = TextEditingController(
+      text: p.basename(normalizedPath),
+    );
     if (context.mounted) {
       showDialog(
         context: context,
@@ -462,9 +469,10 @@ class ProjectLandingPage extends ConsumerWidget {
     );
 
     if (dir != null) {
-      final projectFile = File('$dir/project.swaloka');
+      final normalizedDir = p.normalize(dir);
+      final projectFile = File(p.join(normalizedDir, 'project.swaloka'));
       if (await projectFile.exists()) {
-        _loadProject(ref, dir);
+        _loadProject(ref, normalizedDir);
       } else {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

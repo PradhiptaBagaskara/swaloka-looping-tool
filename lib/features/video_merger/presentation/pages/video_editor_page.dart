@@ -646,7 +646,7 @@ class VideoEditorPage extends ConsumerWidget {
                     const SizedBox(height: 4),
                     Text(
                       project.customOutputPath ??
-                          'Default: ${project.rootPath}/output',
+                          'Default: ${p.join(project.rootPath, 'output')}',
                       style: TextStyle(fontSize: 10, color: Colors.grey[600]),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -761,7 +761,7 @@ class VideoEditorPage extends ConsumerWidget {
     required VoidCallback onRemove,
     int? index,
   }) {
-    final fileName = path.split('/').last;
+    final fileName = p.basename(path);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -948,7 +948,7 @@ class VideoEditorPage extends ConsumerWidget {
   }
 
   Widget _buildRecentFileItem(BuildContext context, FileSystemEntity file) {
-    final fileName = file.path.split('/').last;
+    final fileName = p.basename(file.path);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
@@ -984,7 +984,7 @@ class VideoEditorPage extends ConsumerWidget {
   }
 
   void _showPreview(BuildContext context, String path, {bool isVideo = true}) {
-    final fileName = path.split('/').last;
+    final fileName = p.basename(path);
     showDialog(
       context: context,
       builder: (context) => Dialog(

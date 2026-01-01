@@ -30,21 +30,26 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     Function(String path)? onProjectAdded,
     VoidCallback? onFilesRefresh,
   }) async {
-    final project = SwalokaProject(name: name, rootPath: rootPath);
+    // Normalize the rootPath for the current platform
+    final normalizedRootPath = p.normalize(rootPath);
+
+    final project = SwalokaProject(name: name, rootPath: normalizedRootPath);
     await _saveProjectToFile(project);
 
     // Ensure directories
-    await Directory(p.join(rootPath, 'outputs')).create(recursive: true);
-    await Directory(p.join(rootPath, 'logs')).create(recursive: true);
-    await Directory(p.join(rootPath, 'temp')).create(recursive: true);
+    await Directory(
+      p.join(normalizedRootPath, 'outputs'),
+    ).create(recursive: true);
+    await Directory(p.join(normalizedRootPath, 'logs')).create(recursive: true);
+    await Directory(p.join(normalizedRootPath, 'temp')).create(recursive: true);
 
     state = project;
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastProjectPathKey, rootPath);
+    await prefs.setString(_lastProjectPathKey, normalizedRootPath);
 
     // Notify callbacks
-    onProjectAdded?.call(rootPath);
+    onProjectAdded?.call(normalizedRootPath);
     onFilesRefresh?.call();
   }
 
@@ -53,24 +58,37 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     Function(String path)? onProjectAdded,
     VoidCallback? onFilesRefresh,
   }) async {
-    final file = File(p.join(rootPath, 'project.swaloka'));
+    // Normalize the rootPath for the current platform
+    final normalizedRootPath = p.normalize(rootPath);
+
+    final file = File(p.join(normalizedRootPath, 'project.swaloka'));
     if (await file.exists()) {
       final json = jsonDecode(await file.readAsString());
-      state = SwalokaProject.fromJson(json);
+      final loadedProject = SwalokaProject.fromJson(json);
+
+      // Use the rootPath parameter (from Recent Projects) instead of the one from JSON
+      // This ensures we use the correct path even if the JSON has a stale/incorrect path
+      state = loadedProject.copyWith(rootPath: normalizedRootPath);
 
       // Ensure directories exist (in case they were deleted)
-      await Directory(p.join(rootPath, 'outputs')).create(recursive: true);
-      await Directory(p.join(rootPath, 'logs')).create(recursive: true);
-      await Directory(p.join(rootPath, 'temp')).create(recursive: true);
+      await Directory(
+        p.join(normalizedRootPath, 'outputs'),
+      ).create(recursive: true);
+      await Directory(
+        p.join(normalizedRootPath, 'logs'),
+      ).create(recursive: true);
+      await Directory(
+        p.join(normalizedRootPath, 'temp'),
+      ).create(recursive: true);
 
       // Clean up old temp directories from previous sessions
-      await _cleanupTempDirectories(rootPath);
+      await _cleanupTempDirectories(normalizedRootPath);
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_lastProjectPathKey, rootPath);
+      await prefs.setString(_lastProjectPathKey, normalizedRootPath);
 
       // Notify callbacks
-      onProjectAdded?.call(rootPath);
+      onProjectAdded?.call(normalizedRootPath);
       onFilesRefresh?.call();
     }
   }

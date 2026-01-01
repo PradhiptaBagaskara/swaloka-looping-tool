@@ -196,11 +196,6 @@ class VideoMergerService {
       onLog: (log) => videoMergeLog.addSubLog(log),
     );
 
-    // Mark merge as complete
-    videoMergeLog.addSubLog(
-      LogEntry.success('Video merge complete! Output: $outputPath'),
-    );
-
     return outputPath;
     // end of _mergeVideoWithAudioFiles
   }
