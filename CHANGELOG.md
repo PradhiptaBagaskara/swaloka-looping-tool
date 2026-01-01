@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
 ### 🎉 Major Features Added
 
 #### Hierarchical Logging System
@@ -264,6 +265,13 @@ lib/features/video_merger/
 
 
 
+
+
+## [3.5.0] - 2026-01-01
+
+### Changes
+- chore: improve FFmpeg command execution on Windows and add file path validation for video merger service (d070bbb)
+- feat: enhance video merging performance by pre-warming OS file cache and improving temp directory creation logic for cross-platform compatibility (4ac39bc)
 
 ## [3.4.1] - 2026-01-01
 
