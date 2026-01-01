@@ -6,27 +6,6 @@ import 'package:swaloka_looping_tool/core/services/log_service.dart';
 
 /// Service for merging background video with sequential audio files
 class VideoMergerService {
-  /// Pre-warm the OS file cache by reading the video file
-  /// This significantly speeds up FFmpeg processing on first run
-  Future<void> _prewarmCache(
-    String filePath,
-    void Function(LogEntry log)? onLog,
-  ) async {
-    final file = File(filePath);
-    if (!await file.exists()) return;
-
-    final fileSize = await file.length();
-    final fileSizeMB = (fileSize / 1024 / 1024).toStringAsFixed(1);
-    onLog?.call(LogEntry.info('Pre-loading video ($fileSizeMB MB)...'));
-
-    // Read file in chunks to warm the OS cache without holding all in memory
-    final stream = file.openRead();
-    await for (final _ in stream) {
-      // Just read and discard - this warms the OS page cache
-    }
-    onLog?.call(LogEntry.success('Video pre-loaded into cache'));
-  }
-
   // create temp directory
   Future<Directory> _createTempDirectory(
     String projectRootPath,
@@ -145,7 +124,15 @@ class VideoMergerService {
     }
 
     final concatContent = concatFiles
-        .map((f) => "file '${f.replaceAll("'", "'\\''")}'")
+        .map((f) {
+          // On Windows, FFmpeg concat demuxer works better with forward slashes
+          // Convert backslashes to forward slashes for FFmpeg compatibility
+          String ffmpegPath = f;
+          if (Platform.isWindows) {
+            ffmpegPath = f.replaceAll(r'\', '/');
+          }
+          return "file '${ffmpegPath.replaceAll("'", "'\\''")}'";
+        })
         .join('\n');
     await File(concatFilePath).writeAsString(concatContent);
 
@@ -255,10 +242,6 @@ class VideoMergerService {
     void Function(LogEntry log)? onLog,
   }) async {
     await FFmpegService.verifyInstallation(onLog);
-    onProgress?.call(0.1);
-
-    // Pre-warm OS cache for faster FFmpeg processing
-    await _prewarmCache(backgroundVideoPath, onLog);
     onProgress?.call(0.2);
 
     final tempDir = await _createTempDirectory(projectRootPath, onLog);

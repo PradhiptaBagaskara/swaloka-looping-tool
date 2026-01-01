@@ -147,11 +147,14 @@ class FFmpegService {
     final startTime = DateTime.now();
 
     // Run FFmpeg with extended PATH environment
-    // Windows: use simple 'ffmpeg' command (relies on PATH)
+    // Windows: use simple 'ffmpeg' command with extended environment
     // macOS/Linux: use resolved path with extended environment (for release builds)
     final ProcessResult result;
     if (Platform.isWindows) {
-      result = await Process.run('ffmpeg', command);
+      // On Windows, Process.run handles argument quoting automatically
+      // runInShell is NOT needed - it can actually cause escaping issues
+      // The extended environment is sufficient to find ffmpeg in PATH
+      result = await Process.run('ffmpeg', command, environment: env);
     } else {
       result = await Process.run(ffmpegExecutable, command, environment: env);
     }

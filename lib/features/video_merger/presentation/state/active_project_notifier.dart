@@ -68,7 +68,17 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
 
       // Use the rootPath parameter (from Recent Projects) instead of the one from JSON
       // This ensures we use the correct path even if the JSON has a stale/incorrect path
-      state = loadedProject.copyWith(rootPath: normalizedRootPath);
+      var updatedProject = loadedProject.copyWith(rootPath: normalizedRootPath);
+
+      // Validate and fix audio/video file paths if they don't exist
+      // This handles cases where the project was moved or paths became invalid
+      updatedProject = await _validateAndFixFilePaths(
+        updatedProject,
+        loadedProject.rootPath,
+        normalizedRootPath,
+      );
+
+      state = updatedProject;
 
       // Ensure directories exist (in case they were deleted)
       await Directory(
@@ -91,6 +101,80 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
       onProjectAdded?.call(normalizedRootPath);
       onFilesRefresh?.call();
     }
+  }
+
+  /// Validate and fix file paths if they don't exist
+  /// Attempts to find files relative to the new root path if old paths are invalid
+  Future<SwalokaProject> _validateAndFixFilePaths(
+    SwalokaProject project,
+    String oldRootPath,
+    String newRootPath,
+  ) async {
+    // Skip validation if paths haven't changed
+    if (oldRootPath == newRootPath) {
+      return project;
+    }
+
+    // Helper to fix a single path
+    Future<String?> fixPath(String? filePath) async {
+      if (filePath == null) return null;
+
+      // If file exists at current path, no fix needed
+      if (await File(filePath).exists()) {
+        return filePath;
+      }
+
+      // Try to find the file relative to new root path
+      // Extract just the filename
+      final fileName = p.basename(filePath);
+
+      // Check common locations in the new root path
+      final possiblePaths = [
+        p.join(newRootPath, fileName),
+        p.join(newRootPath, 'audio', fileName),
+        p.join(newRootPath, 'video', fileName),
+        p.join(newRootPath, 'media', fileName),
+      ];
+
+      for (final possiblePath in possiblePaths) {
+        if (await File(possiblePath).exists()) {
+          return possiblePath;
+        }
+      }
+
+      // If not found, return null (file is missing)
+      return null;
+    }
+
+    // Fix background video path
+    final fixedBackgroundVideo = await fixPath(project.backgroundVideo);
+
+    // Fix audio file paths
+    final fixedAudioFiles = <String>[];
+    for (final audioPath in project.audioFiles) {
+      final fixed = await fixPath(audioPath);
+      if (fixed != null) {
+        fixedAudioFiles.add(fixed);
+      }
+      // Skip files that couldn't be found
+    }
+
+    // Return updated project only if changes were made
+    if (fixedBackgroundVideo != project.backgroundVideo ||
+        fixedAudioFiles.length != project.audioFiles.length) {
+      final updatedProject = project.copyWith(
+        backgroundVideo: fixedBackgroundVideo,
+        audioFiles: fixedAudioFiles,
+        clearBackgroundVideo: fixedBackgroundVideo == null,
+      );
+
+      // Save the fixed paths back to the project file
+      await _saveProjectToFile(updatedProject);
+
+      return updatedProject;
+    }
+
+    return project;
   }
 
   Future<void> updateSettings({
