@@ -155,6 +155,11 @@ Ready to upload to your favorite video platform!
 ### 1️⃣ **Download the App**
 Get the latest release for your platform from the [Releases page](https://github.com/yourusername/swaloka-looping-tool/releases)
 
+**Platform-Specific Downloads:**
+- **Windows:** `Swaloka-Looping-Tool-X.X.X-windows-installer.exe`
+- **macOS:** `Swaloka-Looping-Tool-X.X.X-macos.zip`
+- **Linux:** `Swaloka-Looping-Tool-X.X.X-linux-x64.tar.gz`
+
 ### 2️⃣ **Install FFmpeg** (Required)
 
 #### **macOS:**
@@ -190,7 +195,37 @@ sudo pacman -S ffmpeg
 
 **The app will detect if FFmpeg is missing and guide you through installation.**
 
-### 3️⃣ **First-Time macOS Setup (Important!)**
+### 3️⃣ **Extract and Run (Linux)**
+
+**Extract the archive:**
+```bash
+tar -xzf Swaloka-Looping-Tool-X.X.X-linux-x64.tar.gz
+cd bundle
+```
+
+**Make executable and run:**
+```bash
+chmod +x swaloka_looping_tool
+./swaloka_looping_tool
+```
+
+**Optional: Create desktop entry (for app menu integration):**
+```bash
+# Create .desktop file
+cat > ~/.local/share/applications/swaloka-looping-tool.desktop <<EOF
+[Desktop Entry]
+Name=Swaloka Looping Tool
+Exec=/path/to/bundle/swaloka_looping_tool
+Icon=/path/to/bundle/data/flutter_assets/assets/logo.png
+Type=Application
+Categories=AudioVideo;Video;
+EOF
+
+# Update desktop database
+update-desktop-database ~/.local/share/applications/
+```
+
+### 4️⃣ **First-Time macOS Setup (Important!)**
 
 **⚠️ If the app won't open or crashes immediately:**
 
@@ -401,6 +436,37 @@ macOS security blocks unsigned apps by default. Here's how to open it:
 **Why:** The app is not notarized (requires $99/year Apple developer account). This is normal for free/open-source software.
 
 **Alternative:** If it still crashes, check Console.app for crash logs and report the issue on GitHub.
+
+### App Won't Start (Linux)
+**Issue:** Permission denied or missing libraries
+
+**Solutions:**
+1. **Make executable:**
+   ```bash
+   chmod +x swaloka_looping_tool
+   ```
+
+2. **Check for missing libraries:**
+   ```bash
+   ldd swaloka_looping_tool
+   ```
+
+3. **Install GTK3 dependencies:**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt install libgtk-3-0 libblkid1 liblzma5
+
+   # Fedora
+   sudo dnf install gtk3
+
+   # Arch Linux
+   sudo pacman -S gtk3
+   ```
+
+4. **Run from terminal** to see error messages:
+   ```bash
+   ./swaloka_looping_tool
+   ```
 
 ### Out of Disk Space
 **Issue:** "Not enough space" error

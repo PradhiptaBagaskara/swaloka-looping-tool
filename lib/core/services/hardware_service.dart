@@ -24,6 +24,14 @@ class HardwareService {
         'cores': Platform.numberOfProcessors,
         'computerName': info.computerName,
       };
+    } else if (Platform.isLinux) {
+      final info = await _deviceInfo.linuxInfo;
+      return {
+        'model': info.prettyName,
+        'os': '${info.name} ${info.version ?? info.versionId ?? ""}',
+        'cores': Platform.numberOfProcessors,
+        'machine': info.machineId ?? 'unknown',
+      };
     }
     return {'cores': Platform.numberOfProcessors};
   }
@@ -89,6 +97,24 @@ class HardwareService {
       }
     }
 
+    if (Platform.isLinux) {
+      // On Linux, check FFmpeg for available hardware encoders
+      try {
+        final result = await Process.run('ffmpeg', ['-encoders']);
+        final output = result.stdout.toString();
+
+        // Check for hardware encoders in order of preference
+        if (output.contains('h264_nvenc')) return 'h264_nvenc'; // NVIDIA
+        if (output.contains('h264_vaapi'))
+          return 'h264_vaapi'; // VA-API (Intel/AMD)
+        if (output.contains('h264_qsv')) return 'h264_qsv'; // Intel Quick Sync
+        if (output.contains('h264_v4l2m2m'))
+          return 'h264_v4l2m2m'; // V4L2 (embedded)
+      } catch (e) {
+        // FFmpeg not found in PATH
+      }
+    }
+
     return null; // Fallback to CPU (libx264)
   }
 
@@ -101,6 +127,14 @@ class HardwareService {
         'h264_nvenc': 'NVIDIA NVENC',
         'h264_amf': 'AMD AMF',
         'h264_qsv': 'Intel Quick Sync',
+        'libx264': 'Software (CPU)',
+      };
+    } else if (Platform.isLinux) {
+      return {
+        'h264_nvenc': 'NVIDIA NVENC',
+        'h264_vaapi': 'VA-API (Intel/AMD)',
+        'h264_qsv': 'Intel Quick Sync',
+        'h264_v4l2m2m': 'V4L2 (Hardware)',
         'libx264': 'Software (CPU)',
       };
     }
