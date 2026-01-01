@@ -50,7 +50,7 @@ begin
     if (CompareStr(Version, 'v14.29') >= 0) then
       Result := False;
   end;
-  
+
   // Also skip if the redistributable file wasn't bundled
   if Result then
     Result := FileExists(ExpandConstant('{tmp}\vc_redist.x64.exe'));

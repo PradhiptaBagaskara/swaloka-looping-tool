@@ -77,6 +77,12 @@ jobs:
       - name: Build Windows app
         run: flutter build windows --release
 
+      - name: Download VC++ Redistributable
+        run: |
+          # Download Microsoft Visual C++ Redistributable (required for FFmpeg and native libs)
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "windows/vc_redist.x64.exe"
+          Write-Host "✅ Downloaded VC++ Redistributable"
+
       - name: Create EXE installer with Inno Setup
         run: |
           $VERSION = "${{ github.ref }}".Replace("refs/tags/v", "")
