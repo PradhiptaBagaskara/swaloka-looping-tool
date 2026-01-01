@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
 ### 🎉 Major Features Added
 
 #### Hierarchical Logging System
@@ -270,6 +271,12 @@ lib/features/video_merger/
 
 
 
+
+
+## [3.5.3] - 2026-01-01
+
+### Changes
+- chore: simplify error handling and update donation options in VideoEditorPage (ec076a7)
 
 ## [3.5.2] - 2026-01-01
 
