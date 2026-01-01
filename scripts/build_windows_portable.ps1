@@ -75,14 +75,14 @@ $SFX_MODULE = "7zSD.sfx"
 
 if (-not (Test-Path $SFX_MODULE)) {
     Write-Host "📥 Downloading 7-Zip SFX module..." -ForegroundColor Yellow
-    
+
     # Download 7-Zip Extra (contains SFX modules)
     $7Z_EXTRA_URL = "https://www.7-zip.org/a/7z2408-extra.7z"
     $7Z_EXTRA_FILE = "7z-extra.7z"
-    
+
     try {
         Invoke-WebRequest -Uri $7Z_EXTRA_URL -OutFile $7Z_EXTRA_FILE
-        
+
         # Extract SFX module using 7z (if available) or expand
         if (Get-Command 7z -ErrorAction SilentlyContinue) {
             & 7z e $7Z_EXTRA_FILE "7zSD.sfx" -y
@@ -93,7 +93,7 @@ if (-not (Test-Path $SFX_MODULE)) {
             Write-Host "❌ Please install 7-Zip first: https://www.7-zip.org/" -ForegroundColor Red
             exit 1
         }
-        
+
         Remove-Item $7Z_EXTRA_FILE -Force
     } catch {
         Write-Host "❌ Failed to download SFX module: $_" -ForegroundColor Red

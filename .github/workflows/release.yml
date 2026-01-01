@@ -24,7 +24,7 @@ jobs:
           # Get the branch containing this tag
           BRANCH=$(git branch -r --contains ${{ github.ref }} | grep -v HEAD | head -1 | sed 's/.*\///')
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-          
+
           # Check if it's dev branch
           if [[ "$BRANCH" == "dev" ]]; then
             echo "is_dev=true" >> $GITHUB_OUTPUT
@@ -142,16 +142,24 @@ jobs:
 
           # Install 7-Zip if not available
           if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
+            Write-Host "📥 Installing 7-Zip..." -ForegroundColor Yellow
             choco install 7zip -y
             $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
           }
 
           # Create 7z archive
+          Write-Host "📦 Creating archive..." -ForegroundColor Cyan
           $ARCHIVE = "archive.7z"
           & 7z a -t7z -mx=9 $ARCHIVE "$TEMP_DIR/*"
 
-          # Download 7zSD.sfx (console SFX module)
-          Invoke-WebRequest -Uri "https://github.com/mcmilk/7-Zip/raw/master/CPP/7zip/Bundles/SFXCon/release/7zSD.sfx" -OutFile "7zSD.sfx"
+          # Download 7zSD.sfx (console SFX module) from official 7-Zip
+          Write-Host "📥 Downloading 7-Zip SFX module..." -ForegroundColor Yellow
+          $SFX_URL = "https://www.7-zip.org/a/7z2408-extra.7z"
+          Invoke-WebRequest -Uri $SFX_URL -OutFile "7z-extra.7z"
+
+          # Extract the SFX module
+          & 7z e "7z-extra.7z" "7zSD.sfx" -y
+          Remove-Item "7z-extra.7z" -Force
 
           # Create config for SFX
           @"
@@ -163,11 +171,13 @@ jobs:
           "@ | Out-File -FilePath "config.txt" -Encoding ASCII
 
           # Combine: SFX + config + archive = portable EXE
+          Write-Host "🎁 Creating portable EXE..." -ForegroundColor Cyan
           $OUTPUT = "build/$APP_NAME-$VERSION-windows-portable.exe"
           New-Item -ItemType Directory -Path "build" -Force | Out-Null
           cmd /c "copy /b 7zSD.sfx + config.txt + $ARCHIVE $OUTPUT"
 
           # Cleanup
+          Write-Host "🧹 Cleaning up..." -ForegroundColor Cyan
           Remove-Item -Path $TEMP_DIR -Recurse -Force
           Remove-Item -Path $ARCHIVE -Force
           Remove-Item -Path "7zSD.sfx" -Force
