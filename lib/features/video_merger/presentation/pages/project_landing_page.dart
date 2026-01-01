@@ -8,11 +8,16 @@ import '../providers/ffmpeg_provider.dart';
 import 'ffmpeg_error_page.dart';
 
 /// Landing page for creating or opening projects
-class ProjectLandingPage extends ConsumerWidget {
+class ProjectLandingPage extends ConsumerStatefulWidget {
   const ProjectLandingPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProjectLandingPage> createState() => _ProjectLandingPageState();
+}
+
+class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
+  @override
+  Widget build(BuildContext context) {
     final recentProjects = ref.watch(recentProjectsProvider);
     final ffmpegStatus = ref.watch(ffmpegStatusProvider);
 
@@ -33,7 +38,7 @@ class ProjectLandingPage extends ConsumerWidget {
                   if (ffmpegStatus == null)
                     _buildFFmpegCheckingBanner(context)
                   else if (ffmpegStatus == false)
-                    _buildFFmpegWarning(context, ref),
+                    _buildFFmpegWarning(context),
 
                   // Logo
                   Container(
@@ -72,14 +77,14 @@ class ProjectLandingPage extends ConsumerWidget {
                         title: 'Create New Project',
                         description: 'Start a new video project from scratch',
                         icon: Icons.add_to_photos_outlined,
-                        onTap: () => _createNewProject(context, ref),
+                        onTap: () => _createNewProject(context),
                       ),
                       _buildLandingCard(
                         context,
                         title: 'Open Existing Project',
                         description: 'Continue working on a saved project',
                         icon: Icons.folder_open_outlined,
-                        onTap: () => _openProject(context, ref),
+                        onTap: () => _openProject(context),
                       ),
                     ],
                   ),
@@ -105,8 +110,7 @@ class ProjectLandingPage extends ConsumerWidget {
                             ),
                           ),
                           ...recentProjects.map(
-                            (path) =>
-                                _buildRecentProjectItem(context, ref, path),
+                            (path) => _buildRecentProjectItem(context, path),
                           ),
                         ],
                       ),
@@ -151,7 +155,7 @@ class ProjectLandingPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildFFmpegWarning(BuildContext context, WidgetRef ref) {
+  Widget _buildFFmpegWarning(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 24),
       padding: const EdgeInsets.all(16),
@@ -263,11 +267,7 @@ class ProjectLandingPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildRecentProjectItem(
-    BuildContext context,
-    WidgetRef ref,
-    String path,
-  ) {
+  Widget _buildRecentProjectItem(BuildContext context, String path) {
     // Use platform-aware path operations
     final normalizedPath = p.normalize(path);
     final projectName = p.basename(normalizedPath);
@@ -279,9 +279,9 @@ class ProjectLandingPage extends ConsumerWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => _loadProject(ref, path),
+          onTap: () => _loadProject(path),
           onSecondaryTapDown: (details) {
-            _showProjectContextMenu(context, ref, path, details);
+            _showProjectContextMenu(context, path, details);
           },
           borderRadius: BorderRadius.circular(12),
           child: Container(
@@ -340,7 +340,6 @@ class ProjectLandingPage extends ConsumerWidget {
 
   void _showProjectContextMenu(
     BuildContext context,
-    WidgetRef ref,
     String path,
     TapDownDetails details,
   ) {
@@ -364,16 +363,21 @@ class ProjectLandingPage extends ConsumerWidget {
     });
   }
 
-  void _loadProject(WidgetRef ref, String path) {
+  void _loadProject(String path) {
     // Use microtask to avoid InkWell animation issues during state change
     Future.microtask(() {
+      if (!mounted) return;
+
       ref
           .read(activeProjectProvider.notifier)
           .loadProject(
             path,
-            onProjectAdded: (p) =>
-                ref.read(recentProjectsProvider.notifier).addProject(p),
+            onProjectAdded: (p) {
+              if (!mounted) return;
+              ref.read(recentProjectsProvider.notifier).addProject(p);
+            },
             onFilesRefresh: () {
+              if (!mounted) return;
               final project = ref.read(activeProjectProvider);
               if (project != null) {
                 ref
@@ -385,7 +389,7 @@ class ProjectLandingPage extends ConsumerWidget {
     });
   }
 
-  Future<void> _createNewProject(BuildContext context, WidgetRef ref) async {
+  Future<void> _createNewProject(BuildContext context) async {
     final result = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Select or Create a Project Folder',
     );
@@ -434,15 +438,21 @@ class ProjectLandingPage extends ConsumerWidget {
                   Navigator.pop(context);
                   // Use microtask to avoid InkWell animation issues
                   Future.microtask(() {
+                    if (!mounted) return;
+
                     ref
                         .read(activeProjectProvider.notifier)
                         .createProject(
                           result,
                           nameController.text,
-                          onProjectAdded: (p) => ref
-                              .read(recentProjectsProvider.notifier)
-                              .addProject(p),
+                          onProjectAdded: (p) {
+                            if (!mounted) return;
+                            ref
+                                .read(recentProjectsProvider.notifier)
+                                .addProject(p);
+                          },
                           onFilesRefresh: () {
+                            if (!mounted) return;
                             final project = ref.read(activeProjectProvider);
                             if (project != null) {
                               ref
@@ -462,7 +472,7 @@ class ProjectLandingPage extends ConsumerWidget {
     }
   }
 
-  Future<void> _openProject(BuildContext context, WidgetRef ref) async {
+  Future<void> _openProject(BuildContext context) async {
     final dir = await FilePicker.platform.getDirectoryPath(
       lockParentWindow: true,
       dialogTitle: 'Select your Project Folder',
@@ -472,7 +482,7 @@ class ProjectLandingPage extends ConsumerWidget {
       final normalizedDir = p.normalize(dir);
       final projectFile = File(p.join(normalizedDir, 'project.swaloka'));
       if (await projectFile.exists()) {
-        _loadProject(ref, normalizedDir);
+        _loadProject(normalizedDir);
       } else {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -495,7 +505,7 @@ class ProjectLandingPage extends ConsumerWidget {
       if (result != null && result.files.single.path != null) {
         final filePath = result.files.single.path!;
         final projectDir = File(filePath).parent.path;
-        _loadProject(ref, projectDir);
+        _loadProject(projectDir);
       }
     }
   }
