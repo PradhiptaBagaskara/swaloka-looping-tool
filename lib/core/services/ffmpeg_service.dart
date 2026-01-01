@@ -147,14 +147,26 @@ class FFmpegService {
     final startTime = DateTime.now();
 
     // Run FFmpeg with extended PATH environment
-    // Windows: use simple 'ffmpeg' command with extended environment
+    // Windows: needs runInShell for PATH resolution, with quoted arguments
     // macOS/Linux: use resolved path with extended environment (for release builds)
     final ProcessResult result;
     if (Platform.isWindows) {
-      // On Windows, Process.run handles argument quoting automatically
-      // runInShell is NOT needed - it can actually cause escaping issues
-      // The extended environment is sufficient to find ffmpeg in PATH
-      result = await Process.run('ffmpeg', command, environment: env);
+      // On Windows, we need runInShell: true for PATH resolution
+      // But with runInShell, arguments with spaces must be quoted
+      final quotedCommand = command.map((arg) {
+        // Quote arguments that contain spaces or special characters
+        if (arg.contains(' ') || arg.contains('&') || arg.contains('"')) {
+          // Escape any existing quotes and wrap in quotes
+          return '"${arg.replaceAll('"', r'\"')}"';
+        }
+        return arg;
+      }).toList();
+      result = await Process.run(
+        'ffmpeg',
+        quotedCommand,
+        environment: env,
+        runInShell: true,
+      );
     } else {
       result = await Process.run(ffmpegExecutable, command, environment: env);
     }
