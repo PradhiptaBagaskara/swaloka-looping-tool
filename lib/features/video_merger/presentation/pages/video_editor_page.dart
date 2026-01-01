@@ -241,7 +241,7 @@ class VideoEditorPage extends ConsumerWidget {
                   ),
                 ),
                 loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
+                error: (_, _) => const SizedBox.shrink(),
               ),
             ],
           ),
@@ -1064,23 +1064,11 @@ class VideoEditorPage extends ConsumerWidget {
             ),
             const SizedBox(height: 20),
             _buildDonateOption(
-              Icons.code,
-              'GitHub Sponsors',
-              'Support on GitHub',
-              () async {
-                final url = Uri.parse(
-                  'https://github.com/sponsors/AliAkberAakworked',
-                );
-                if (await canLaunchUrl(url)) await launchUrl(url);
-              },
-            ),
-            const SizedBox(height: 12),
-            _buildDonateOption(
               Icons.coffee,
-              'Buy Me a Coffee',
-              'One-time donation',
+              'Saweria',
+              'Support via Saweria',
               () async {
-                final url = Uri.parse('https://buymeacoffee.com/swaloka');
+                final url = Uri.parse('https://saweria.co/masimas');
                 if (await canLaunchUrl(url)) await launchUrl(url);
               },
             ),
