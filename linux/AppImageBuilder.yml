@@ -1,0 +1,60 @@
+version: 1
+
+AppDir:
+  path: ./AppDir
+
+  app_info:
+    id: com.swaloka.looping.tool
+    name: Swaloka Looping Tool
+    icon: swaloka_looping_tool
+    version: latest
+    exec: usr/bin/swaloka_looping_tool
+    exec_args: $@
+
+  apt:
+    arch: amd64
+    sources:
+      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal main restricted universe multiverse'
+        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3B4FE6ACC0B21F32'
+
+    include:
+      - libgtk-3-0
+      - libglib2.0-0
+      - libcairo2
+      - libpango-1.0-0
+      - libgdk-pixbuf2.0-0
+      - libatk1.0-0
+      - libatk-bridge2.0-0
+      - libepoxy0
+      - libx11-6
+      - libxcomposite1
+      - libxdamage1
+      - libxext6
+      - libxfixes3
+      - libxi6
+      - libxrandr2
+      - libxrender1
+      - libxcursor1
+      - libxinerama1
+
+  files:
+    include:
+      - usr/bin/swaloka_looping_tool
+      - usr/lib
+    exclude:
+      - usr/share/man
+      - usr/share/doc/*/README.*
+      - usr/share/doc/*/changelog.*
+      - usr/share/doc/*/NEWS.*
+      - usr/share/doc/*/TODO.*
+
+  runtime:
+    env:
+      APPDIR_LIBRARY_PATH: $APPDIR/usr/lib:$APPDIR/usr/lib/x86_64-linux-gnu:$APPDIR/lib/x86_64-linux-gnu
+      GDK_PIXBUF_MODULE_FILE: $APPDIR/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders.cache
+      GDK_PIXBUF_MODULEDIR: $APPDIR/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders
+
+AppImage:
+  arch: x86_64
+  update-information: guess
+  sign-key: None

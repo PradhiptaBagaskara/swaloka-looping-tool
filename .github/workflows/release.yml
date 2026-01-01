@@ -6,9 +6,37 @@ on:
       - 'v*.*.*'  # Triggers on version tags like v1.0.0
 
 jobs:
+  check-branch:
+    name: Check Branch
+    runs-on: ubuntu-latest
+    outputs:
+      is_dev: ${{ steps.check.outputs.is_dev }}
+      branch: ${{ steps.check.outputs.branch }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if tag is on dev branch
+        id: check
+        run: |
+          # Get the branch containing this tag
+          BRANCH=$(git branch -r --contains ${{ github.ref }} | grep -v HEAD | head -1 | sed 's/.*\///')
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          
+          # Check if it's dev branch
+          if [[ "$BRANCH" == "dev" ]]; then
+            echo "is_dev=true" >> $GITHUB_OUTPUT
+            echo "🔧 Dev branch detected - will only upload artifacts"
+          else
+            echo "is_dev=false" >> $GITHUB_OUTPUT
+            echo "🚀 Production branch detected - will create full release"
+          fi
   build-macos:
     name: Build macOS App
     runs-on: macos-latest
+    needs: check-branch
 
     permissions:
       contents: write
@@ -55,6 +83,7 @@ jobs:
   build-windows:
     name: Build Windows App
     runs-on: windows-latest
+    needs: check-branch
 
     permissions:
       contents: write
@@ -76,6 +105,76 @@ jobs:
 
       - name: Build Windows app
         run: flutter build windows --release
+
+      - name: Create Single-File Portable EXE
+        run: |
+          $VERSION = "${{ github.ref }}".Replace("refs/tags/v", "")
+          $APP_NAME = "Swaloka-Looping-Tool"
+          $BUILD_DIR = "build/windows/x64/runner/Release"
+          $TEMP_DIR = "portable_temp"
+
+          Write-Host "🔨 Building Single-File Portable Executable..." -ForegroundColor Cyan
+
+          # Create temp directory and copy files
+          New-Item -ItemType Directory -Path $TEMP_DIR -Force | Out-Null
+          Copy-Item -Path "$BUILD_DIR/*" -Destination $TEMP_DIR -Recurse -Force
+
+          # Create README
+          @"
+          Swaloka Looping Tool - Portable Version
+          ========================================
+
+          FIRST RUN:
+          1. Make sure FFmpeg is installed:
+             - Using Chocolatey: choco install ffmpeg
+             - Using Scoop: scoop install ffmpeg
+             - Or download from: https://www.gyan.dev/ffmpeg/builds/
+
+          2. Double-click this EXE to run - it will extract and launch automatically
+
+          FEATURES:
+          - Single executable file
+          - Run from anywhere (USB drive, etc.)
+          - No installation required
+
+          For more: https://github.com/pradhiptabagaskara/swaloka-looping-tool
+          "@ | Out-File -FilePath "$TEMP_DIR/README.txt" -Encoding UTF8
+
+          # Install 7-Zip if not available
+          if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
+            choco install 7zip -y
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          }
+
+          # Create 7z archive
+          $ARCHIVE = "archive.7z"
+          & 7z a -t7z -mx=9 $ARCHIVE "$TEMP_DIR/*"
+
+          # Download 7zSD.sfx (console SFX module)
+          Invoke-WebRequest -Uri "https://github.com/mcmilk/7-Zip/raw/master/CPP/7zip/Bundles/SFXCon/release/7zSD.sfx" -OutFile "7zSD.sfx"
+
+          # Create config for SFX
+          @"
+          ;!@Install@!UTF-8!
+          Title="Swaloka Looping Tool"
+          BeginPrompt="Swaloka Looping Tool will extract and run.\n\nNo installation required!"
+          RunProgram="swaloka_looping_tool.exe"
+          ;!@InstallEnd@!
+          "@ | Out-File -FilePath "config.txt" -Encoding ASCII
+
+          # Combine: SFX + config + archive = portable EXE
+          $OUTPUT = "build/$APP_NAME-$VERSION-windows-portable.exe"
+          New-Item -ItemType Directory -Path "build" -Force | Out-Null
+          cmd /c "copy /b 7zSD.sfx + config.txt + $ARCHIVE $OUTPUT"
+
+          # Cleanup
+          Remove-Item -Path $TEMP_DIR -Recurse -Force
+          Remove-Item -Path $ARCHIVE -Force
+          Remove-Item -Path "7zSD.sfx" -Force
+          Remove-Item -Path "config.txt" -Force
+
+          $FileSize = (Get-Item $OUTPUT).Length / 1MB
+          Write-Host "✅ Portable EXE created: $OUTPUT ($([math]::Round($FileSize, 2)) MB)" -ForegroundColor Green
 
       - name: Download VC++ Redistributable
         run: |
@@ -99,6 +198,13 @@ jobs:
           # Move installer to build folder
           Move-Item "Swaloka-Looping-Tool-$VERSION-windows-installer.exe" "build/"
 
+      - name: Upload Portable EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable
+          path: build/Swaloka-Looping-Tool-*-windows-portable.exe
+          retention-days: 1
+
       - name: Upload EXE installer artifact
         uses: actions/upload-artifact@v4
         with:
@@ -109,6 +215,7 @@ jobs:
   build-linux:
     name: Build Linux App
     runs-on: ubuntu-latest
+    needs: check-branch
 
     permissions:
       contents: write
@@ -125,7 +232,7 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libfuse2
 
       - name: Install dependencies
         run: flutter pub get
@@ -136,20 +243,86 @@ jobs:
       - name: Build Linux app
         run: flutter build linux --release
 
-      - name: Create tar.gz archive
+      - name: Create AppImage (Single File)
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
+          APP_NAME="Swaloka-Looping-Tool"
+          BUILD_DIR="build/linux/x64/release/bundle"
+          APPDIR="AppDir"
 
-          # Navigate to build directory
+          echo "🔨 Building AppImage for $APP_NAME v$VERSION..."
+
+          # Create AppDir structure
+          mkdir -p "$APPDIR/usr/bin"
+          mkdir -p "$APPDIR/usr/lib"
+          mkdir -p "$APPDIR/usr/share/applications"
+          mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+
+          # Copy application files
+          cp -r "$BUILD_DIR"/* "$APPDIR/usr/bin/"
+
+          # Create desktop entry
+          cat > "$APPDIR/swaloka_looping_tool.desktop" <<EOF
+          [Desktop Entry]
+          Name=Swaloka Looping Tool
+          Exec=swaloka_looping_tool
+          Icon=swaloka_looping_tool
+          Type=Application
+          Categories=AudioVideo;Video;
+          Comment=Automate video production with looping backgrounds
+          Terminal=false
+          EOF
+
+          cp "$APPDIR/swaloka_looping_tool.desktop" "$APPDIR/usr/share/applications/"
+
+          # Copy icon
+          if [ -f "assets/logo.png" ]; then
+            cp "assets/logo.png" "$APPDIR/swaloka_looping_tool.png"
+            cp "assets/logo.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/swaloka_looping_tool.png"
+          fi
+
+          # Create AppRun script
+          cat > "$APPDIR/AppRun" <<'APPRUN'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export PATH="${HERE}/usr/bin/:${PATH:+:$PATH}"
+          export LD_LIBRARY_PATH="${HERE}/usr/lib/:${HERE}/usr/lib/x86_64-linux-gnu/:${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export XDG_DATA_DIRS="${HERE}/usr/share/${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+          EXEC="${HERE}/usr/bin/swaloka_looping_tool"
+          exec "${EXEC}" "$@"
+          APPRUN
+          chmod +x "$APPDIR/AppRun"
+
+          # Download appimagetool
+          wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x appimagetool-x86_64.AppImage
+
+          # Build AppImage
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage "$APPDIR" "$APP_NAME-$VERSION-x86_64.AppImage"
+          chmod +x "$APP_NAME-$VERSION-x86_64.AppImage"
+
+          # Move to build directory
+          mkdir -p build/appimage
+          mv "$APP_NAME-$VERSION-x86_64.AppImage" "build/appimage/"
+
+          echo "✅ AppImage created: build/appimage/$APP_NAME-$VERSION-x86_64.AppImage"
+
+      - name: Create tar.gz archive (Alternative)
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
           cd build/linux/x64/release/bundle
-
-          # Create tar.gz archive
           tar -czf "Swaloka-Looping-Tool-${VERSION}-linux-x64.tar.gz" *
-
-          # Move to build root
           mv "Swaloka-Looping-Tool-${VERSION}-linux-x64.tar.gz" "${GITHUB_WORKSPACE}/build/"
 
-      - name: Upload Linux archive artifact
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: build/appimage/Swaloka-Looping-Tool-*-x86_64.AppImage
+          retention-days: 1
+
+      - name: Upload tar.gz archive artifact
         uses: actions/upload-artifact@v4
         with:
           name: linux-archive
@@ -159,7 +332,9 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-macos, build-windows, build-linux]
+    needs: [check-branch, build-macos, build-windows, build-linux]
+    # Only create release if NOT on dev branch
+    if: needs.check-branch.outputs.is_dev != 'true'
 
     permissions:
       contents: write
@@ -197,10 +372,22 @@ jobs:
           name: macos-zip
           path: ./artifacts
 
+      - name: Download Windows portable EXE
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-portable
+          path: ./artifacts
+
       - name: Download Windows installer
         uses: actions/download-artifact@v4
         with:
           name: windows-installer
+          path: ./artifacts
+
+      - name: Download Linux AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-appimage
           path: ./artifacts
 
       - name: Download Linux archive
@@ -229,3 +416,40 @@ jobs:
           echo ""
           echo "📦 Files uploaded:"
           ls -lh ./artifacts/
+
+  dev-build-summary:
+    name: Dev Build Summary
+    runs-on: ubuntu-latest
+    needs: [check-branch, build-macos, build-windows, build-linux]
+    # Only run this if on dev branch
+    if: needs.check-branch.outputs.is_dev == 'true'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Dev build completed
+        run: |
+          echo "🔧 Dev Build Summary"
+          echo "===================="
+          echo ""
+          echo "✅ All builds completed successfully for dev branch!"
+          echo "📦 Version: ${GITHUB_REF#refs/tags/}"
+          echo "🌿 Branch: ${{ needs.check-branch.outputs.branch }}"
+          echo ""
+          echo "📥 Artifacts uploaded to GitHub Actions:"
+          echo "   - macos-zip"
+          echo "   - windows-portable"
+          echo "   - windows-installer"
+          echo "   - linux-appimage"
+          echo "   - linux-archive"
+          echo ""
+          echo "💡 To download artifacts:"
+          echo "   1. Go to Actions tab"
+          echo "   2. Click on this workflow run"
+          echo "   3. Scroll down to 'Artifacts' section"
+          echo ""
+          echo "🚀 To create a production release:"
+          echo "   1. Merge dev to main"
+          echo "   2. Tag on main branch"
+          echo "   3. Full release will be created automatically"

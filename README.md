@@ -156,9 +156,11 @@ Ready to upload to your favorite video platform!
 Get the latest release for your platform from the [Releases page](https://github.com/yourusername/swaloka-looping-tool/releases)
 
 **Platform-Specific Downloads:**
-- **Windows:** `Swaloka-Looping-Tool-X.X.X-windows-installer.exe`
+- **Windows (Single File):** `Swaloka-Looping-Tool-X.X.X-windows-portable.exe` ⭐ **Recommended**
+- **Windows (Installer):** `Swaloka-Looping-Tool-X.X.X-windows-installer.exe`
 - **macOS:** `Swaloka-Looping-Tool-X.X.X-macos.zip`
-- **Linux:** `Swaloka-Looping-Tool-X.X.X-linux-x64.tar.gz`
+- **Linux (Single File):** `Swaloka-Looping-Tool-X.X.X-x86_64.AppImage` ⭐ **Recommended**
+- **Linux (Archive):** `Swaloka-Looping-Tool-X.X.X-linux-x64.tar.gz`
 
 ### 2️⃣ **Install FFmpeg** (Required)
 
@@ -195,7 +197,76 @@ sudo pacman -S ffmpeg
 
 **The app will detect if FFmpeg is missing and guide you through installation.**
 
-### 3️⃣ **Extract and Run (Linux)**
+### 3️⃣ **Run on Windows**
+
+#### **Option 1: Portable Single-File EXE (Easiest)** ⭐
+
+Just download and run - no installation needed:
+
+```powershell
+# Simply double-click the .exe file or run:
+.\Swaloka-Looping-Tool-X.X.X-windows-portable.exe
+```
+
+**Features:**
+- ✅ Single executable file (like AppImage on Linux)
+- ✅ Run from anywhere (USB drive, network drive, etc.)
+- ✅ No installation or admin rights required
+- ✅ Automatic extraction and launch
+- ✅ Portable - take it anywhere!
+
+**First run:** The EXE will automatically extract files to a temporary location and launch. This takes a few seconds.
+
+#### **Option 2: Traditional Installer**
+
+For a standard Windows installation:
+
+```powershell
+# Run the installer
+.\Swaloka-Looping-Tool-X.X.X-windows-installer.exe
+```
+
+**Features:**
+- Installs to Program Files
+- Creates Start Menu shortcuts
+- Includes VC++ Redistributable
+- Traditional uninstall process
+
+### 4️⃣ **Run on Linux**
+
+#### **Option 1: AppImage (Easiest - Single File)** ⭐
+
+Just download, make executable, and run:
+
+```bash
+# Make executable
+chmod +x Swaloka-Looping-Tool-X.X.X-x86_64.AppImage
+
+# Run
+./Swaloka-Looping-Tool-X.X.X-x86_64.AppImage
+```
+
+**That's it!** No installation needed. Works on any Linux distribution.
+
+**Optional: Integrate with desktop menu:**
+```bash
+# Move to applications folder
+mv Swaloka-Looping-Tool-X.X.X-x86_64.AppImage ~/.local/bin/swaloka-looping-tool
+
+# Create desktop entry
+cat > ~/.local/share/applications/swaloka-looping-tool.desktop <<EOF
+[Desktop Entry]
+Name=Swaloka Looping Tool
+Exec=$HOME/.local/bin/swaloka-looping-tool
+Icon=video-editor
+Type=Application
+Categories=AudioVideo;Video;
+EOF
+
+update-desktop-database ~/.local/share/applications/
+```
+
+#### **Option 2: Extract tar.gz (Manual)**
 
 **Extract the archive:**
 ```bash
@@ -209,9 +280,8 @@ chmod +x swaloka_looping_tool
 ./swaloka_looping_tool
 ```
 
-**Optional: Create desktop entry (for app menu integration):**
+**Optional: Create desktop entry:**
 ```bash
-# Create .desktop file
 cat > ~/.local/share/applications/swaloka-looping-tool.desktop <<EOF
 [Desktop Entry]
 Name=Swaloka Looping Tool
@@ -221,11 +291,10 @@ Type=Application
 Categories=AudioVideo;Video;
 EOF
 
-# Update desktop database
 update-desktop-database ~/.local/share/applications/
 ```
 
-### 4️⃣ **First-Time macOS Setup (Important!)**
+### 5️⃣ **First-Time macOS Setup (Important!)**
 
 **⚠️ If the app won't open or crashes immediately:**
 
@@ -437,10 +506,61 @@ macOS security blocks unsigned apps by default. Here's how to open it:
 
 **Alternative:** If it still crashes, check Console.app for crash logs and report the issue on GitHub.
 
+### Windows Portable EXE Issues
+**Issue:** Portable EXE won't run or shows errors
+
+**Solutions:**
+
+**Error: "Windows protected your PC"**
+1. Click **"More info"**
+2. Click **"Run anyway"**
+3. This happens because the app isn't code-signed (requires expensive certificate)
+
+**Error: "Cannot extract archive" or extraction fails**
+1. **Try running as administrator** (right-click → Run as administrator)
+2. **Check available disk space** (needs ~200MB in TEMP folder)
+3. **Disable antivirus temporarily** - some antiviruses block self-extracting archives
+4. **Use the installer version instead** if portable continues failing
+
+**First run is slow:**
+- Normal! The EXE extracts ~50MB of files on first launch
+- Subsequent launches will be faster if files are cached
+- Progress may not be visible - give it 10-15 seconds
+
+**Prefer traditional install?**
+- Use the installer version: `*-windows-installer.exe`
+- Installs normally to Program Files
+- No extraction delay
+
 ### App Won't Start (Linux)
 **Issue:** Permission denied or missing libraries
 
 **Solutions:**
+
+**For AppImage:**
+1. **Make executable:**
+   ```bash
+   chmod +x Swaloka-Looping-Tool-*.AppImage
+   ```
+
+2. **Install FUSE (if needed):**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt install libfuse2
+
+   # Fedora
+   sudo dnf install fuse
+
+   # Arch Linux
+   sudo pacman -S fuse2
+   ```
+
+3. **Run from terminal** to see error messages:
+   ```bash
+   ./Swaloka-Looping-Tool-*.AppImage
+   ```
+
+**For tar.gz bundle:**
 1. **Make executable:**
    ```bash
    chmod +x swaloka_looping_tool
