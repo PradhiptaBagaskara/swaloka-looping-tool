@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
 ### 🎉 Major Features Added
 
 #### Hierarchical Logging System
@@ -260,6 +261,12 @@ lib/features/video_merger/
 
 
 
+
+
+## [3.4.0] - 2026-01-01
+
+### Changes
+- feat: implement FFmpeg service for handling video processing and update related dependencies (8a5bdf6)
 
 ## [3.3.0] - 2026-01-01
 
