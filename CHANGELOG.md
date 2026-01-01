@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
 ### 🎉 Major Features Added
 
 #### Hierarchical Logging System
@@ -256,6 +257,12 @@ lib/features/video_merger/
 
 
 
+
+
+## [3.2.1] - 2026-01-01
+
+### Changes
+- fix: update VC++ Redistributable installation logic in Windows installer script to handle optional bundling (75e9513)
 
 ## [3.2.0] - 2026-01-01
 
