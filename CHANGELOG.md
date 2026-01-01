@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🎨 Improvements
+
+#### Enhanced Video Playback
+- **Switched to MediaKit player** - Replaced `video_player_win` with `media_kit`
+  - Full Linux support via libmpv
+  - Hardware-accelerated playback on Windows, macOS, and Linux
+  - Better codec support and performance
+  - Unified API across all desktop platforms
+
 
 
 

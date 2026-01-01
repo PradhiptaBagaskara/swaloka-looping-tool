@@ -256,6 +256,7 @@ macOS security blocks unsigned apps by default. Here's how to open it:
 - AVI (Audio Video Interleave)
 - MKV (Matroska)
 - WebM
+- **Note:** Hardware-accelerated video playback powered by MediaKit/libmpv with excellent Linux support
 
 ### 🎵 **Supported Audio Formats**
 - MP3 (most common)

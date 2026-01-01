@@ -1,6 +1,7 @@
-import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 /// Widget for previewing video/audio files with playback controls
 class MediaPreviewPlayer extends StatefulWidget {
@@ -18,37 +19,76 @@ class MediaPreviewPlayer extends StatefulWidget {
 }
 
 class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
-  late VideoPlayerController _controller;
+  late final Player _player;
+  late final VideoController _videoController;
+  final List<StreamSubscription> _subscriptions = [];
   bool _initialized = false;
   String? _error;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+  bool _isPlaying = false;
 
   @override
   void initState() {
     super.initState();
-    _initController();
+    _initPlayer();
   }
 
   @override
   void didUpdateWidget(MediaPreviewPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.path != widget.path) {
-      _controller.dispose();
+      _disposePlayer();
       _initialized = false;
-      _initController();
+      _initPlayer();
     }
   }
 
-  void _initController() {
-    _controller = VideoPlayerController.file(File(widget.path));
-    _controller
-        .initialize()
+  void _initPlayer() {
+    _player = Player();
+    _videoController = VideoController(_player);
+
+    // Listen to player state and store subscriptions
+    _subscriptions.add(
+      _player.stream.position.listen((position) {
+        if (mounted) {
+          setState(() {
+            _position = position;
+          });
+        }
+      }),
+    );
+
+    _subscriptions.add(
+      _player.stream.duration.listen((duration) {
+        if (mounted) {
+          setState(() {
+            _duration = duration;
+          });
+        }
+      }),
+    );
+
+    _subscriptions.add(
+      _player.stream.playing.listen((playing) {
+        if (mounted) {
+          setState(() {
+            _isPlaying = playing;
+          });
+        }
+      }),
+    );
+
+    // Open the media file
+    _player
+        .open(Media(widget.path))
         .then((_) {
           if (mounted) {
             setState(() {
               _initialized = true;
             });
             // Auto-play when preview opens
-            _controller.play();
+            _player.play();
           }
         })
         .catchError((error) {
@@ -60,9 +100,20 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
         });
   }
 
+  Future<void> _disposePlayer() async {
+    // Cancel all stream subscriptions first
+    for (final subscription in _subscriptions) {
+      await subscription.cancel();
+    }
+    _subscriptions.clear();
+
+    // Then dispose the player
+    await _player.dispose();
+  }
+
   @override
   void dispose() {
-    _controller.dispose();
+    _disposePlayer();
     super.dispose();
   }
 
@@ -74,6 +125,18 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
       return '${twoDigits(duration.inHours)}:$minutes:$seconds';
     }
     return '$minutes:$seconds';
+  }
+
+  void _togglePlayPause() {
+    if (_isPlaying) {
+      _player.pause();
+    } else {
+      _player.play();
+    }
+  }
+
+  void _seekTo(Duration position) {
+    _player.seek(position);
   }
 
   @override
@@ -115,154 +178,83 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
 
     // Audio player - compact view
     if (!widget.isVideo) {
-      return ValueListenableBuilder<VideoPlayerValue>(
-        valueListenable: _controller,
-        builder: (context, value, child) {
-          final position = _formatDuration(value.position);
-          final duration = _formatDuration(value.duration);
-          return Padding(
-            padding: const EdgeInsets.all(24),
-            child: Row(
-              children: [
-                // Play/Pause button
-                IconButton(
-                  iconSize: 48,
-                  icon: Icon(
-                    value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
-                    color: Colors.green,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      value.isPlaying ? _controller.pause() : _controller.play();
-                    });
-                  },
-                ),
-                const SizedBox(width: 12),
-                // Progress bar and time
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                          trackHeight: 4,
-                        ),
-                        child: Slider(
-                          value: value.position.inMilliseconds.toDouble(),
-                          max: value.duration.inMilliseconds.toDouble().clamp(1, double.infinity),
-                          activeColor: Colors.green,
-                          inactiveColor: Colors.grey[700],
-                          onChanged: (v) {
-                            _controller.seekTo(Duration(milliseconds: v.toInt()));
-                          },
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(position, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-                            Text(duration, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+      final position = _formatDuration(_position);
+      final duration = _formatDuration(_duration);
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Row(
+          children: [
+            // Play/Pause button
+            IconButton(
+              iconSize: 48,
+              icon: Icon(
+                _isPlaying
+                    ? Icons.pause_circle_filled
+                    : Icons.play_circle_filled,
+                color: Colors.green,
+              ),
+              onPressed: _togglePlayPause,
             ),
-          );
-        },
+            const SizedBox(width: 12),
+            // Progress bar and time
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 6,
+                      ),
+                      trackHeight: 4,
+                    ),
+                    child: Slider(
+                      value: _position.inMilliseconds.toDouble(),
+                      max: _duration.inMilliseconds.toDouble().clamp(
+                        1,
+                        double.infinity,
+                      ),
+                      activeColor: Colors.green,
+                      inactiveColor: Colors.grey[700],
+                      onChanged: (v) {
+                        _seekTo(Duration(milliseconds: v.toInt()));
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          position,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                        Text(
+                          duration,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       );
     }
 
-    // Video player - full view
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Flexible(
-          child: AspectRatio(
-            aspectRatio: _controller.value.aspectRatio,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                VideoPlayer(_controller),
-                // Play/Pause overlay
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      setState(() {
-                        _controller.value.isPlaying ? _controller.pause() : _controller.play();
-                      });
-                    },
-                    child: AnimatedOpacity(
-                      opacity: _controller.value.isPlaying ? 0.0 : 1.0,
-                      duration: const Duration(milliseconds: 200),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: const BoxDecoration(
-                          color: Colors.black38,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.play_arrow, size: 48, color: Colors.white),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        // Controls
-        Container(
-          padding: const EdgeInsets.all(12),
-          color: Colors.black,
-          child: ValueListenableBuilder<VideoPlayerValue>(
-            valueListenable: _controller,
-            builder: (context, value, child) {
-              final position = _formatDuration(value.position);
-              final duration = _formatDuration(value.duration);
-              return Row(
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      value.isPlaying ? Icons.pause : Icons.play_arrow,
-                      color: Colors.white,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        value.isPlaying ? _controller.pause() : _controller.play();
-                      });
-                    },
-                  ),
-                  Text(position, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                  Expanded(
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                        trackHeight: 3,
-                      ),
-                      child: Slider(
-                        value: value.position.inMilliseconds.toDouble(),
-                        max: value.duration.inMilliseconds.toDouble().clamp(1, double.infinity),
-                        activeColor: Colors.blue,
-                        inactiveColor: Colors.grey[700],
-                        onChanged: (v) {
-                          _controller.seekTo(Duration(milliseconds: v.toInt()));
-                        },
-                      ),
-                    ),
-                  ),
-                  Text(duration, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
+    // Video player - full view with built-in controls
+    return Video(
+      controller: _videoController,
+      // Built-in controls are used by default
     );
   }
 }

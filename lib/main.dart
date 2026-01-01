@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io' show Platform;
+import 'package:media_kit/media_kit.dart';
 import 'app.dart';
 import 'core/constants/app_constants.dart';
 import 'core/services/app_logger.dart';
@@ -12,6 +13,10 @@ void main() async {
 
   // Initialize global app logger
   AppLogger.initialize();
+
+  // Initialize MediaKit for video/audio playback
+  MediaKit.ensureInitialized();
+  log.i('🎬 MediaKit video player initialized');
 
   // Initialize window manager for desktop platforms
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
