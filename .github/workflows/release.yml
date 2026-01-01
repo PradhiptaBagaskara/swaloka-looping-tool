@@ -190,8 +190,8 @@ jobs:
 
           Write-Host "✅ Using SFX module: $SFX_MODULE" -ForegroundColor Green
 
-          # Get the SFX config file
-          $SFX_CONFIG = "windows/sfx_config.txt"
+          # Get the SFX config file (use absolute path)
+          $SFX_CONFIG = (Resolve-Path "windows/sfx_config.txt").Path
 
           # Create the self-extracting executable by concatenating:
           # 1. SFX module binary
@@ -200,7 +200,11 @@ jobs:
           Write-Host "📦 Creating self-extracting executable..." -ForegroundColor Cyan
 
           # Use copy command to concatenate binary files (this works better on Windows)
-          cmd /c "copy /b `"$SFX_MODULE`"+`"$SFX_CONFIG`"+`"$ARCHIVE`" `"$OUTPUT`""
+          cmd /c "copy /b `"$SFX_MODULE`"+`"$SFX_CONFIG`"+`"$ARCHIVE`" `"$OUTPUT`"" 2>&1
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "⚠️  Copy command returned exit code: $LASTEXITCODE" -ForegroundColor Yellow
+          }
 
           # Verify output was created
           if (Test-Path $OUTPUT) {
@@ -215,10 +219,35 @@ jobs:
 
           # Cleanup
           Write-Host "🧹 Cleaning up temporary files..." -ForegroundColor Cyan
-          Remove-Item -Path $TEMP_DIR -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item $ARCHIVE -Force -ErrorAction SilentlyContinue
-          Remove-Item "lzma_sdk" -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item "lzma_sdk.7z" -Force -ErrorAction SilentlyContinue
+          try {
+            Remove-Item -Path $TEMP_DIR -Recurse -Force -ErrorAction Stop
+            Write-Host "   ✓ Removed $TEMP_DIR" -ForegroundColor Gray
+          } catch {
+            Write-Host "   ⚠️  Could not remove $TEMP_DIR" -ForegroundColor Yellow
+          }
+
+          try {
+            Remove-Item $ARCHIVE -Force -ErrorAction Stop
+            Write-Host "   ✓ Removed $ARCHIVE" -ForegroundColor Gray
+          } catch {
+            Write-Host "   ⚠️  Could not remove $ARCHIVE" -ForegroundColor Yellow
+          }
+
+          try {
+            Remove-Item "lzma_sdk" -Recurse -Force -ErrorAction Stop
+            Write-Host "   ✓ Removed lzma_sdk" -ForegroundColor Gray
+          } catch {
+            Write-Host "   ⚠️  Could not remove lzma_sdk" -ForegroundColor Yellow
+          }
+
+          try {
+            Remove-Item "lzma_sdk.7z" -Force -ErrorAction Stop
+            Write-Host "   ✓ Removed lzma_sdk.7z" -ForegroundColor Gray
+          } catch {
+            Write-Host "   ⚠️  Could not remove lzma_sdk.7z" -ForegroundColor Yellow
+          }
+
+          Write-Host "✅ Cleanup completed" -ForegroundColor Green
 
       - name: Download VC++ Redistributable
         run: |
