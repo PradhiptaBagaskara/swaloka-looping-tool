@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+
 ### 🎨 Improvements
 
 #### Enhanced Video Playback
@@ -285,6 +286,12 @@ lib/features/video_merger/
 
 
 
+
+
+## [3.7.1] - 2026-01-02
+
+### Changes
+- fix: add AppImage creation to Linux release workflow and install additional dependencies (76a8062)
 
 ## [3.7.0] - 2026-01-02
 
