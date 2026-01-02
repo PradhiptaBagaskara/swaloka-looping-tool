@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
 import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
 import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
@@ -33,10 +34,6 @@ class VideoEditorPage extends ConsumerWidget {
     final canMerge =
         project.backgroundVideo != null &&
         project.audioFiles.isNotEmpty &&
-        project.title != null &&
-        project.title!.isNotEmpty &&
-        project.author != null &&
-        project.author!.isNotEmpty &&
         !processingState.isProcessing;
 
     return Scaffold(
@@ -297,6 +294,7 @@ class VideoEditorPage extends ConsumerWidget {
             endIndent: 12,
             width: 32,
             color: Colors.white10,
+            thickness: 1,
           ),
           TextButton.icon(
             onPressed: () => _showDonateDialog(context),
@@ -348,6 +346,21 @@ class VideoEditorPage extends ConsumerWidget {
           _buildAdvancedEncodingSettings(context, ref),
         ],
         const SizedBox(height: 48),
+
+        // Intro Video Section
+        _buildTimelineHeader(
+          context,
+          ref,
+          'Intro Video (Optional)',
+          Icons.play_circle_filled,
+        ),
+        if (!collapsedSections.contains('Intro Video (Optional)')) ...[
+          const SizedBox(height: 12),
+          _buildIntroSection(context, ref),
+        ],
+        const SizedBox(height: 48),
+
+        // Background Video Section
         _buildTimelineHeader(
           context,
           ref,
@@ -412,6 +425,128 @@ class VideoEditorPage extends ConsumerWidget {
     );
   }
 
+  Widget _buildIntroSection(BuildContext context, WidgetRef ref) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF333333)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Info hint about processing time
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: Colors.blue[300],
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Adding an intro video will increase processing time',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.blue[200],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Intro Audio',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[300],
+            ),
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return SegmentedButton<IntroAudioMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: IntroAudioMode.keepOriginal,
+                    label: Text('Keep Original'),
+                    icon: Icon(Icons.volume_up),
+                  ),
+                  ButtonSegment(
+                    value: IntroAudioMode.silent,
+                    label: Text('Mute Intro'),
+                    icon: Icon(Icons.volume_off),
+                  ),
+                  ButtonSegment(
+                    value: IntroAudioMode.overlayPlaylist,
+                    label: Text('Overlay Playlist'),
+                    icon: Icon(Icons.queue_music),
+                  ),
+                ],
+                selected: {project.introAudioMode},
+                onSelectionChanged: (Set<IntroAudioMode> newSelection) {
+                  ref
+                      .read(activeProjectProvider.notifier)
+                      .updateSettings(
+                        introAudioMode: newSelection.first,
+                      );
+                },
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: WidgetStateProperty.all(
+                    const TextStyle(fontSize: 11),
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _getIntroAudioDescription(project.introAudioMode),
+            style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: Color(0xFF333333)),
+          const SizedBox(height: 16),
+          if (project.introVideo != null)
+            _buildMediaItem(
+              context,
+              project.introVideo!,
+              Icons.videocam,
+              isVideo: true,
+              onRemove: () =>
+                  ref.read(activeProjectProvider.notifier).setIntroVideo(null),
+            )
+          else
+            _buildDropZone(context, ref, isVideo: true, isIntro: true),
+        ],
+      ),
+    );
+  }
+
+  String _getIntroAudioDescription(IntroAudioMode mode) {
+    switch (mode) {
+      case IntroAudioMode.keepOriginal:
+        return 'Play audio from the intro video';
+      case IntroAudioMode.silent:
+        return 'Intro video plays in silence';
+      case IntroAudioMode.overlayPlaylist:
+        return 'Play main audio playlist during intro';
+    }
+  }
+
   Widget _buildTimelineHeader(
     BuildContext context,
     WidgetRef ref,
@@ -470,14 +605,27 @@ class VideoEditorPage extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref, {
     required bool isVideo,
+    bool isIntro = false,
   }) {
+    String label;
+    IconData icon;
+
+    if (isVideo) {
+      if (isIntro) {
+        label = 'Add optional intro video (drag & drop or click)';
+        icon = Icons.play_circle_outline;
+      } else {
+        label = 'Add your background video (drag & drop or click)';
+        icon = Icons.video_library_outlined;
+      }
+    } else {
+      label = 'Add audio files (drag & drop or click to select multiple)';
+      icon = Icons.library_music_outlined;
+    }
+
     return DropZoneWidget(
-      label: isVideo
-          ? 'Add your background video (drag & drop or click)'
-          : 'Add audio files (drag & drop or click to select multiple)',
-      icon: isVideo
-          ? Icons.video_library_outlined
-          : Icons.library_music_outlined,
+      label: label,
+      icon: icon,
       onFilesDropped: (files) {
         if (isVideo) {
           final videoFile = files.firstWhere(
@@ -485,9 +633,15 @@ class VideoEditorPage extends ConsumerWidget {
                 _videoExtensions.contains(f.path.split('.').last.toLowerCase()),
             orElse: () => files.first,
           );
-          ref
-              .read(activeProjectProvider.notifier)
-              .setBackgroundVideo(videoFile.path);
+          if (isIntro) {
+            ref
+                .read(activeProjectProvider.notifier)
+                .setIntroVideo(videoFile.path);
+          } else {
+            ref
+                .read(activeProjectProvider.notifier)
+                .setBackgroundVideo(videoFile.path);
+          }
         } else {
           final audioFiles = files
               .where(
@@ -504,7 +658,7 @@ class VideoEditorPage extends ConsumerWidget {
         ref.read(processingStateProvider.notifier).reset();
       },
       onTap: () => isVideo
-          ? _selectBackgroundVideo(context, ref)
+          ? _selectVideo(context, ref, isIntro: isIntro)
           : _selectAudioFiles(context, ref),
     );
   }
@@ -553,6 +707,7 @@ class VideoEditorPage extends ConsumerWidget {
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 8,
+                      // isDense: true,
                     ),
                     filled: true,
                     fillColor: Colors.black26,
@@ -607,6 +762,7 @@ class VideoEditorPage extends ConsumerWidget {
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 8,
+                      // isDense: true,
                     ),
                     filled: true,
                     fillColor: Colors.black26,
@@ -681,8 +837,19 @@ class VideoEditorPage extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              Icon(Icons.info_outline, size: 12, color: Colors.grey[600]),
+              const SizedBox(width: 6),
+              Text(
+                'These details will be embedded into the video metadata.',
+                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
           _buildInputField(
-            label: 'Video Title *',
+            label: 'Video Title',
             hint: 'e.g., Relaxing Music Mix',
             initialValue: project.title,
             onChanged: (v) => ref
@@ -691,7 +858,7 @@ class VideoEditorPage extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           _buildInputField(
-            label: 'Creator / Channel Name *',
+            label: 'Creator / Channel Name',
             hint: 'e.g., Your Channel Name',
             initialValue: project.author,
             onChanged: (v) => ref
@@ -700,7 +867,7 @@ class VideoEditorPage extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           _buildInputField(
-            label: 'Comment (Optional)',
+            label: 'Comment',
             hint: 'e.g., Made with Swaloka',
             initialValue: project.comment,
             onChanged: (v) => ref
@@ -803,6 +970,12 @@ class VideoEditorPage extends ConsumerWidget {
                   ? Colors.blue.withValues(alpha: 0.1)
                   : Colors.green.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: isVideo
+                    ? Colors.blue.withValues(alpha: 0.3)
+                    : Colors.green.withValues(alpha: 0.3),
+                width: 0.5,
+              ),
             ),
             child: Icon(
               icon,
@@ -1039,6 +1212,110 @@ class VideoEditorPage extends ConsumerWidget {
     );
   }
 
+  Widget _buildIssueRow(String label, String introVal, String bgVal) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: Colors.red.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Intro',
+                        style: TextStyle(fontSize: 9, color: Colors.red),
+                      ),
+                      Text(
+                        introVal,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(Icons.arrow_forward, size: 16, color: Colors.grey),
+              ),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: Colors.green.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Background',
+                        style: TextStyle(fontSize: 9, color: Colors.green),
+                      ),
+                      Text(
+                        bgVal,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCodecInfo(String label, String codec) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Text(
+            codec.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showDonateDialog(BuildContext context) {
     showDialog<void>(
       context: context,
@@ -1127,21 +1404,30 @@ class VideoEditorPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _selectBackgroundVideo(
+  Future<void> _selectVideo(
     BuildContext context,
-    WidgetRef ref,
-  ) async {
+    WidgetRef ref, {
+    required bool isIntro,
+  }) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.video,
         initialDirectory: project.rootPath,
       );
       if (result != null && result.files.single.path != null) {
-        unawaited(
-          ref
-              .read(activeProjectProvider.notifier)
-              .setBackgroundVideo(result.files.single.path),
-        );
+        if (isIntro) {
+          unawaited(
+            ref
+                .read(activeProjectProvider.notifier)
+                .setIntroVideo(result.files.single.path),
+          );
+        } else {
+          unawaited(
+            ref
+                .read(activeProjectProvider.notifier)
+                .setBackgroundVideo(result.files.single.path),
+          );
+        }
         ref.read(processingStateProvider.notifier).reset();
       }
     } on Exception catch (e) {
@@ -1192,6 +1478,184 @@ class VideoEditorPage extends ConsumerWidget {
 
     if (backgroundVideo == null || audioFiles.isEmpty) return;
 
+    // Codec Validation (Warning only, can't easily auto-fix cross-codec without massive re-encode)
+    if (project.introVideo != null) {
+      // Get metadata for both videos (cached, so only one ffprobe call per file)
+      final introMeta = await FFmpegService.getVideoMetadata(
+        project.introVideo!,
+      );
+      final bgMeta = await FFmpegService.getVideoMetadata(backgroundVideo);
+
+      // Check codec mismatch
+      if (introMeta.codec != null &&
+          bgMeta.codec != null &&
+          introMeta.codec != bgMeta.codec) {
+        if (!context.mounted) return;
+        final shouldProceed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                SizedBox(width: 12),
+                Text('Codec Mismatch', style: TextStyle(color: Colors.white)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'The intro video and background video have different codecs. This may cause issues during merging.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                _buildCodecInfo('Intro Video', introMeta.codec!),
+                const SizedBox(height: 8),
+                _buildCodecInfo('Background Video', bgMeta.codec!),
+                const SizedBox(height: 16),
+                const Text(
+                  'Recommendation:',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Please convert your intro video to match the background video codec (e.g., using HandBrake to convert both to H.264/MP4).',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('I Understand, Try Anyway'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldProceed != true) return;
+      }
+
+      // 2. Check Resolution, FPS, and Pixel Format Mismatch
+      final issues = <Widget>[];
+
+      // Check Resolution
+      if (introMeta.width != null &&
+          introMeta.height != null &&
+          bgMeta.width != null &&
+          bgMeta.height != null) {
+        if (introMeta.width != bgMeta.width ||
+            introMeta.height != bgMeta.height) {
+          issues.add(
+            _buildIssueRow(
+              'Resolution',
+              '${introMeta.width}x${introMeta.height}',
+              '${bgMeta.width}x${bgMeta.height}',
+            ),
+          );
+        }
+      }
+
+      // Check FPS
+      if (introMeta.fps != null &&
+          bgMeta.fps != null &&
+          introMeta.fps != bgMeta.fps) {
+        issues.add(
+          _buildIssueRow(
+            'Frame Rate',
+            '${introMeta.fps} fps',
+            '${bgMeta.fps} fps',
+          ),
+        );
+      }
+
+      // Check Pixel Format
+      if (introMeta.pixFmt != null &&
+          bgMeta.pixFmt != null &&
+          introMeta.pixFmt != bgMeta.pixFmt) {
+        issues.add(
+          _buildIssueRow('Pixel Format', introMeta.pixFmt!, bgMeta.pixFmt!),
+        );
+      }
+
+      if (issues.isNotEmpty) {
+        if (!context.mounted) return;
+        // 0: Cancel, 1: Process Anyway
+        final shouldProceed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                SizedBox(width: 12),
+                Text(
+                  'Potential Glitch Detected',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'The intro video and background video have mismatched properties. This will likely cause the merged video to glitch or fail.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                ...issues,
+                const SizedBox(height: 16),
+                const Text(
+                  'It is recommended to manually convert your intro video to match the background video parameters before merging.',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false), // Cancel
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true), // Process Anyway
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Process Anyway'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldProceed != true) {
+          return; // Cancel
+        }
+      }
+    }
+
+    if (!context.mounted) return;
+
     unawaited(
       showDialog<void>(
         context: context,
@@ -1232,6 +1696,8 @@ class VideoEditorPage extends ConsumerWidget {
         comment: project.comment,
         concurrencyLimit: project.concurrencyLimit,
         audioLoopCount: project.audioLoopCount,
+        introVideoPath: project.introVideo,
+        introAudioMode: project.introAudioMode,
         onProgress: (p) =>
             ref.read(processingStateProvider.notifier).updateProgress(p),
         onLog: (log) => ref.read(processingStateProvider.notifier).addLog(log),
