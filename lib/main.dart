@@ -2,7 +2,6 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:media_kit/media_kit.dart';
 import 'package:swaloka_looping_tool/app.dart';
 import 'package:swaloka_looping_tool/core/constants/app_constants.dart';
 import 'package:swaloka_looping_tool/core/services/app_logger.dart';
@@ -15,9 +14,7 @@ void main() async {
   // Initialize global app logger
   AppLogger.initialize();
 
-  // Initialize MediaKit for video/audio playback
-  MediaKit.ensureInitialized();
-  log.i('🎬 MediaKit video player initialized');
+  log.i('🎬 Video player ready (using native AVFoundation)');
 
   // Initialize window manager for desktop platforms
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
