@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.10.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/v3.9.0...v3.10.0) (2026-01-02)
+
+
+### Features
+
+* enhance installation process, CI workflows, and macOs fixes ([#22](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/22)) ([7fd2746](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/7fd2746163e3a4091ec7e5459244af3b387bf4f6))
+
 ## [3.9.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/v3.8.0...v3.9.0) (2026-01-02)
 
 
