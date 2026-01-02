@@ -40,7 +40,7 @@ Name: "{autodesktop}\Swaloka Looping Tool"; Filename: "{app}\swaloka_looping_too
 ; Install VC++ Redistributable silently if needed and if bundled
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Visual C++ Runtime..."; Check: VCRedistNeedsInstall; Flags: waituntilterminated skipifdoesntexist
 ; Install FFmpeg if task is checked and not already installed
-Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\setup_ffmpeg.ps1"" -Silent -AddToSystemPath"; StatusMsg: "Installing FFmpeg..."; Tasks: installffmpeg; Check: ShouldInstallFFmpeg; Flags: waituntilterminated runhidden
+Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -NoExit -Command ""& '{app}\setup_ffmpeg.ps1' -AddToSystemPath; Write-Host ''; Write-Host 'Press any key to continue...' -ForegroundColor Green; $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"""; StatusMsg: "Installing FFmpeg (this may take 2-3 minutes)..."; Tasks: installffmpeg; Check: ShouldInstallFFmpeg; Flags: waituntilterminated
 Filename: "{app}\swaloka_looping_tool.exe"; Description: "{cm:LaunchProgram,Swaloka Looping Tool}"; Flags: nowait postinstall skipifsilent
 
 [Code]

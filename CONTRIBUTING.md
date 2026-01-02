@@ -154,28 +154,104 @@ git commit -m "WIP"
 
 ## How Releases Work
 
-This project uses [Release Please](https://github.com/googleapis/release-please) for automated releases:
+This project uses [Release Please](https://github.com/googleapis/release-please) with **GitHub Flow** for automated releases:
 
-1. You submit a PR with conventional commits
-2. Maintainer merges your PR to `main`
-3. Release Please automatically creates/updates a Release PR
-4. When maintainer merges the Release PR:
-   - Version is bumped automatically
-   - CHANGELOG is updated
-   - Builds run (macOS, Windows, Linux)
-   - Release is published
+### Workflow
+
+```
+Feature Branch → PR → Review → Merge to main → Release
+```
+
+### Step-by-Step
+
+1. **Create a feature branch** with conventional commits
+2. **Open a PR** to `main`
+   - Automated checks run (linting, tests, build verification)
+   - Optional: Add labels to build test artifacts
+3. **Code review** and approval
+4. **Merge to main**
+5. **Release Please** automatically creates/updates a Release PR
+6. **Maintainer merges Release PR**:
+   - Version is bumped based on commit types
+   - CHANGELOG is updated automatically
+   - Builds run for all platforms (macOS, Windows, Linux)
+   - Release is published to GitHub
 
 **You don't need to worry about versioning** - just write good commit messages!
 
 ---
 
+## Testing Your Changes
+
+### Local Testing
+
+```bash
+# Run the app locally
+flutter run -d macos   # or windows, linux
+
+# Run tests
+flutter test
+```
+
+### Build PR Artifacts (Optional)
+
+Need to test production builds before merging? Add labels to your PR:
+
+- **`build-pr: all`** - Build all platforms (macOS, Windows, Linux)
+- **`build-pr: macos`** - Build macOS only
+- **`build-pr: windows`** - Build Windows only
+- **`build-pr: linux`** - Build Linux only
+
+The workflow will:
+1. ✅ Build production-quality artifacts
+2. ✅ Sign executables (ad-hoc for macOS, self-signed for Windows)
+3. ✅ Create installers (Windows .exe, Linux AppImage)
+4. ✅ Upload artifacts to the PR for testing
+
+**Files generated:**
+- macOS: `Swaloka-Looping-Tool-PR{number}-macos.tar.gz`
+- Windows: `Swaloka-Looping-Tool-PR{number}-windows-installer.exe`
+- Linux: `Swaloka-Looping-Tool-PR{number}-linux-x64.tar.gz` + AppImage
+
+Download artifacts from the workflow run to test on your machine!
+
+---
+
 ## Pull Request Guidelines
 
-- Keep PRs focused on a single change
-- Update documentation if needed
-- Ensure all tests pass
-- Follow the commit message convention
+### Before Submitting
+
+- ✅ Keep PRs focused on a single change
+- ✅ Write tests if applicable
+- ✅ Update documentation if needed
+- ✅ Follow commit message conventions
+- ✅ Ensure automated checks pass
+
+### PR Checks
+
+Every PR automatically runs:
+- **Linting** - Code style and quality checks
+- **Tests** - Automated test suite
+- **Build verification** - Ensures the app builds successfully
+
+### Optional Build Testing
+
+For complex changes, consider requesting PR builds:
+1. Add a `build-pr:` label to your PR
+2. Wait for builds to complete
+3. Download and test the artifacts
+4. Verify everything works as expected
+
+### Review Process
+
 - Be responsive to review feedback
+- Address comments and suggestions
+- Maintain a respectful, collaborative tone
+- Ask questions if something is unclear
+
+### Merge
+
+Once approved and all checks pass, maintainers will merge your PR!
 
 ---
 

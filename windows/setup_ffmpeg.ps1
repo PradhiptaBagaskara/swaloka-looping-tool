@@ -37,6 +37,7 @@ function Test-AdminPrivileges {
 
 function Download-FFmpeg {
     Write-Log "Downloading FFmpeg from $FFmpegDownloadUrl..."
+    Write-Log "This may take 2-3 minutes depending on your internet speed..." -Type "Warning"
 
     try {
         # Use .NET WebClient for better progress reporting
@@ -46,16 +47,18 @@ function Download-FFmpeg {
             # Add progress callback
             $webClient.DownloadProgressChanged += {
                 param($sender, $e)
-                Write-Progress -Activity "Downloading FFmpeg" `
-                    -Status "$($e.ProgressPercentage)% Complete" `
-                    -PercentComplete $e.ProgressPercentage
+                $progressBar = "=" * [Math]::Floor($e.ProgressPercentage / 2)
+                $spaces = " " * (50 - [Math]::Floor($e.ProgressPercentage / 2))
+                Write-Host "`r[$progressBar$spaces] $($e.ProgressPercentage)% " -NoNewline -ForegroundColor Cyan
             }
         }
 
         $webClient.DownloadFile($FFmpegDownloadUrl, $TempZipPath)
         $webClient.Dispose()
 
-        Write-Progress -Activity "Downloading FFmpeg" -Completed
+        if (-not $Silent) {
+            Write-Host "" # New line after progress bar
+        }
         Write-Log "Download completed successfully." -Type "Success"
         return $true
     }
@@ -67,6 +70,7 @@ function Download-FFmpeg {
 
 function Extract-FFmpeg {
     Write-Log "Extracting FFmpeg to $InstallPath..."
+    Write-Log "Please wait, this may take a minute..." -Type "Warning"
 
     try {
         # Create installation directory if it doesn't exist
@@ -101,16 +105,20 @@ function Extract-FFmpeg {
             $destinationPath = Join-Path $binPath $entry.Name
 
             if (-not $Silent) {
-                Write-Progress -Activity "Extracting FFmpeg" `
-                    -Status "Extracting $($entry.Name)" `
-                    -PercentComplete (($current / $total) * 100)
+                $percent = [Math]::Floor(($current / $total) * 100)
+                $progressBar = "=" * [Math]::Floor($percent / 2)
+                $spaces = " " * (50 - [Math]::Floor($percent / 2))
+                Write-Host "`rExtracting: [$progressBar$spaces] $percent% ($current/$total files) " -NoNewline -ForegroundColor Yellow
             }
 
             [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destinationPath, $true)
         }
 
         $zip.Dispose()
-        Write-Progress -Activity "Extracting FFmpeg" -Completed
+
+        if (-not $Silent) {
+            Write-Host "" # New line after progress bar
+        }
 
         # Verify extraction
         $ffmpegExe = Join-Path $binPath "ffmpeg.exe"

@@ -1,0 +1,105 @@
+name: Build Linux
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: 'Name for the artifact'
+        required: true
+        type: string
+      version:
+        description: 'Version string for the archive name'
+        required: true
+        type: string
+      set-pr-version:
+        description: 'Whether to set PR version in pubspec.yaml'
+        required: false
+        type: boolean
+        default: false
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set PR version in pubspec.yaml
+        if: ${{ inputs.set-pr-version }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          sed -i "s/^version: .*/version: ${VERSION}/" pubspec.yaml
+          echo "✅ Updated version to ${VERSION}"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libasound2-dev libfuse2 libmpv-dev
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
+
+      - name: Build Linux app
+        run: flutter build linux --release
+
+      - name: Create tar.gz archive
+        run: |
+          VERSION=${{ inputs.version }}
+          cd build/linux/x64/release/bundle
+          tar -czf "Swaloka-Looping-Tool-${VERSION}-linux-x64.tar.gz" *
+          mv "Swaloka-Looping-Tool-${VERSION}-linux-x64.tar.gz" "${GITHUB_WORKSPACE}/build/"
+
+      - name: Create AppImage
+        run: |
+          VERSION=${{ inputs.version }}
+
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+
+          mkdir -p AppDir/usr/bin AppDir/usr/lib AppDir/usr/share/icons/hicolor/256x256/apps
+          cp -r build/linux/x64/release/bundle/* AppDir/usr/bin/
+          cp assets/logo.png AppDir/usr/share/icons/hicolor/256x256/apps/swaloka-looping-tool.png
+          cp assets/logo.png AppDir/swaloka-looping-tool.png
+
+          cat > AppDir/swaloka-looping-tool.desktop << 'DESKTOP'
+          [Desktop Entry]
+          Name=Swaloka Looping Tool
+          Comment=Video looping and merging tool
+          Exec=swaloka_looping_tool
+          Icon=swaloka-looping-tool
+          Type=Application
+          Categories=AudioVideo;Video;
+          Terminal=false
+          DESKTOP
+
+          cat > AppDir/AppRun << 'APPRUN'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export PATH="${HERE}/usr/bin:${PATH}"
+          export LD_LIBRARY_PATH="${HERE}/usr/bin/lib:${LD_LIBRARY_PATH}"
+          exec "${HERE}/usr/bin/swaloka_looping_tool" "$@"
+          APPRUN
+          chmod +x AppDir/AppRun
+
+          ARCH=x86_64 ./appimagetool AppDir "build/Swaloka-Looping-Tool-${VERSION}-linux-x64.AppImage"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: |
+            build/Swaloka-Looping-Tool-*-linux-x64.tar.gz
+            build/Swaloka-Looping-Tool-*-linux-x64.AppImage
+          retention-days: 7

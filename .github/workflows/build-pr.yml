@@ -1,0 +1,163 @@
+name: Build PR
+
+on:
+  pull_request:
+    types: [labeled, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-labels:
+    name: Check Build Labels
+    runs-on: ubuntu-latest
+    outputs:
+      build-macos: ${{ steps.check.outputs.build-macos }}
+      build-windows: ${{ steps.check.outputs.build-windows }}
+      build-linux: ${{ steps.check.outputs.build-linux }}
+      should-build: ${{ steps.check.outputs.should-build }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate version
+        id: version
+        run: |
+          # Read current version from pubspec.yaml
+          CURRENT_VERSION=$(grep '^version:' pubspec.yaml | cut -d' ' -f2)
+          PR_NUM="${{ github.event.pull_request.number }}"
+
+          # Create version with PR suffix
+          VERSION="${CURRENT_VERSION}-pr${PR_NUM}"
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "📦 PR build version: ${VERSION}"
+
+      - name: Check labels
+        id: check
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          echo "Labels: $LABELS"
+
+          # Check if we should build at all
+          if echo "$LABELS" | grep -q "build-pr:"; then
+            echo "should-build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should-build=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check specific platforms
+          if echo "$LABELS" | grep -q "build-pr: all"; then
+            echo "build-macos=true" >> $GITHUB_OUTPUT
+            echo "build-windows=true" >> $GITHUB_OUTPUT
+            echo "build-linux=true" >> $GITHUB_OUTPUT
+          else
+            if echo "$LABELS" | grep -q "build-pr: macos"; then
+              echo "build-macos=true" >> $GITHUB_OUTPUT
+            else
+              echo "build-macos=false" >> $GITHUB_OUTPUT
+            fi
+
+            if echo "$LABELS" | grep -q "build-pr: windows"; then
+              echo "build-windows=true" >> $GITHUB_OUTPUT
+            else
+              echo "build-windows=false" >> $GITHUB_OUTPUT
+            fi
+
+            if echo "$LABELS" | grep -q "build-pr: linux"; then
+              echo "build-linux=true" >> $GITHUB_OUTPUT
+            else
+              echo "build-linux=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+  build-macos:
+    name: Build macOS PR
+    needs: check-labels
+    if: needs.check-labels.outputs.build-macos == 'true'
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      artifact-name: pr-macos
+      version: ${{ needs.check-labels.outputs.version }}
+      set-pr-version: true
+
+  build-windows:
+    name: Build Windows PR
+    needs: check-labels
+    if: needs.check-labels.outputs.build-windows == 'true'
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      artifact-name: pr-windows
+      version: ${{ needs.check-labels.outputs.version }}
+      set-pr-version: true
+
+  build-linux:
+    name: Build Linux PR
+    needs: check-labels
+    if: needs.check-labels.outputs.build-linux == 'true'
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      artifact-name: pr-linux
+      version: ${{ needs.check-labels.outputs.version }}
+      set-pr-version: true
+
+  comment-pr:
+    name: Comment on PR
+    needs: [check-labels, build-macos, build-windows, build-linux]
+    if: always() && needs.check-labels.outputs.should-build == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const builds = [];
+
+            if ('${{ needs.build-macos.result }}' === 'success') {
+              builds.push('✅ macOS build ready');
+            } else if ('${{ needs.build-macos.result }}' === 'failure') {
+              builds.push('❌ macOS build failed');
+            } else if ('${{ needs.build-macos.result }}' === 'skipped') {
+              builds.push('⏭️ macOS build skipped');
+            }
+
+            if ('${{ needs.build-windows.result }}' === 'success') {
+              builds.push('✅ Windows build ready');
+            } else if ('${{ needs.build-windows.result }}' === 'failure') {
+              builds.push('❌ Windows build failed');
+            } else if ('${{ needs.build-windows.result }}' === 'skipped') {
+              builds.push('⏭️ Windows build skipped');
+            }
+
+            if ('${{ needs.build-linux.result }}' === 'success') {
+              builds.push('✅ Linux build ready');
+            } else if ('${{ needs.build-linux.result }}' === 'failure') {
+              builds.push('❌ Linux build failed');
+            } else if ('${{ needs.build-linux.result }}' === 'skipped') {
+              builds.push('⏭️ Linux build skipped');
+            }
+
+            const body = `## 🔨 PR Builds
+
+            ${builds.join('\n')}
+
+            📦 Download artifacts from the workflow run to test the builds.
+
+            ---
+            *To trigger builds, add labels:*
+            - \`build-pr: macos\` - Build macOS
+            - \`build-pr: windows\` - Build Windows
+            - \`build-pr: linux\` - Build Linux
+            - \`build-pr: all\` - Build all platforms`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

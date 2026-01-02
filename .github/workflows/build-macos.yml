@@ -1,0 +1,81 @@
+name: Build macOS
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: 'Name for the artifact'
+        required: true
+        type: string
+      version:
+        description: 'Version string for the archive name'
+        required: true
+        type: string
+      set-pr-version:
+        description: 'Whether to set PR version in pubspec.yaml'
+        required: false
+        type: boolean
+        default: false
+
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set PR version in pubspec.yaml
+        if: ${{ inputs.set-pr-version }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          sed -i '' "s/^version: .*/version: ${VERSION}/" pubspec.yaml
+          echo "✅ Updated version to ${VERSION}"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
+
+      - name: Build macOS app
+        run: flutter build macos --release
+
+      - name: Ad-hoc sign macOS app
+        run: |
+          APP_PATH=$(find build/macos/Build/Products/Release -name "*.app" -type d -maxdepth 1 | head -n 1)
+
+          echo "Signing app at: $APP_PATH"
+
+          # Ad-hoc sign the app bundle (sign all executables and frameworks)
+          codesign --force --deep --sign - "$APP_PATH"
+
+          # Verify the signature
+          codesign --verify --verbose "$APP_PATH"
+
+          echo "✅ Ad-hoc signed macOS app"
+
+      - name: Create tar.gz archive
+        run: |
+          VERSION="${{ inputs.version }}"
+
+          APP_PATH=$(find build/macos/Build/Products/Release -name "*.app" -type d -maxdepth 1 | head -n 1)
+          APP_NAME=$(basename "$APP_PATH")
+
+          cd "$(dirname "$APP_PATH")"
+          tar -czf "Swaloka-Looping-Tool-${VERSION}-macos.tar.gz" "$APP_NAME"
+          mv "Swaloka-Looping-Tool-${VERSION}-macos.tar.gz" "${GITHUB_WORKSPACE}/build/"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: build/Swaloka-Looping-Tool-*-macos.tar.gz
+          retention-days: 7
