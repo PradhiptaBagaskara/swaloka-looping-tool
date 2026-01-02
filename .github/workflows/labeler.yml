@@ -1,0 +1,167 @@
+name: Auto Label
+
+on:
+  pull_request:
+    types: [opened, edited]
+  issues:
+    types: [opened, edited]
+
+jobs:
+  label-pr:
+    name: Label PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Add labels based on PR title
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title.toLowerCase();
+            const labels = [];
+
+            // Label definitions with colors
+            const labelDefs = {
+              'breaking-change': 'D93F0B',
+              'enhancement': '84b6eb',
+              'bug': 'd73a4a',
+              'documentation': '0075ca',
+              'refactor': 'fbca04',
+              'performance': '5319e7',
+              'test': 'bfd4f2',
+              'chore': 'fef2c0'
+            };
+
+            // Conventional commit type → label
+            if (title.startsWith('feat!') || title.includes('breaking')) {
+              labels.push('breaking-change');
+            }
+            if (title.startsWith('feat')) {
+              labels.push('enhancement');
+            } else if (title.startsWith('fix')) {
+              labels.push('bug');
+            } else if (title.startsWith('docs')) {
+              labels.push('documentation');
+            } else if (title.startsWith('refactor')) {
+              labels.push('refactor');
+            } else if (title.startsWith('perf')) {
+              labels.push('performance');
+            } else if (title.startsWith('test')) {
+              labels.push('test');
+            } else if (title.startsWith('chore') || title.startsWith('ci') || title.startsWith('build')) {
+              labels.push('chore');
+            }
+
+            // Create labels if they don't exist
+            for (const label of labels) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label
+                });
+              } catch (e) {
+                if (e.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: label,
+                    color: labelDefs[label] || 'ededed'
+                  });
+                  console.log(`Created label: ${label}`);
+                }
+              }
+            }
+
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                labels: labels
+              });
+              console.log(`Added labels: ${labels.join(', ')}`);
+            }
+
+  label-issue:
+    name: Label Issue
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Add labels based on issue content
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            const labels = [];
+
+            // Label definitions with colors
+            const labelDefs = {
+              'platform: macos': '000000',
+              'platform: windows': '0078D4',
+              'platform: linux': 'FCC624',
+              'area: video': '1D76DB',
+              'area: audio': '5319E7',
+              'area: ui': 'D4C5F9',
+              'area: ffmpeg': 'B60205',
+              'area: project': '0E8A16',
+              'area: performance': 'FBCA04'
+            };
+
+            // Platform detection (from form dropdown)
+            const osMatch = body.match(/### Operating System\s*\n\n(\w+)/i);
+            if (osMatch) {
+              const os = osMatch[1].toLowerCase();
+              if (os === 'macos') labels.push('platform: macos');
+              if (os === 'windows') labels.push('platform: windows');
+              if (os === 'linux') labels.push('platform: linux');
+            }
+
+            // Area detection (from form dropdown)
+            const areaMatch = body.match(/### (?:Affected|Feature) Area\s*\n\n([^\n]+)/i);
+            if (areaMatch) {
+              const area = areaMatch[1].toLowerCase();
+              if (area.includes('video')) labels.push('area: video');
+              if (area.includes('audio')) labels.push('area: audio');
+              if (area.includes('ui') || area.includes('interface')) labels.push('area: ui');
+              if (area.includes('ffmpeg')) labels.push('area: ffmpeg');
+              if (area.includes('project')) labels.push('area: project');
+              if (area.includes('performance')) labels.push('area: performance');
+            }
+
+            // Create labels if they don't exist
+            for (const label of labels) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label
+                });
+              } catch (e) {
+                if (e.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: label,
+                    color: labelDefs[label] || 'ededed'
+                  });
+                  console.log(`Created label: ${label}`);
+                }
+              }
+            }
+
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                labels: labels
+              });
+              console.log(`Added labels: ${labels.join(', ')}`);
+            }
