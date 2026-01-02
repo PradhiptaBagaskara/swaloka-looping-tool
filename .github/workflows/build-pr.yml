@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  actions: read
 
 jobs:
   check-labels:
@@ -116,10 +117,31 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            // Fetch artifacts from this workflow run
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId
+            });
+
+            const artifactMap = {};
+            for (const artifact of artifacts.data.artifacts) {
+              artifactMap[artifact.name] = {
+                id: artifact.id,
+                url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/artifacts/${artifact.id}`,
+                size: (artifact.size_in_bytes / 1024 / 1024).toFixed(2)
+              };
+            }
+
             const builds = [];
 
             if ('${{ needs.build-macos.result }}' === 'success') {
-              builds.push('✅ macOS build ready');
+              const artifact = artifactMap['pr-macos'];
+              if (artifact) {
+                builds.push(`✅ **macOS** - [Download](${artifact.url}) (${artifact.size} MB)`);
+              } else {
+                builds.push('✅ macOS build ready');
+              }
             } else if ('${{ needs.build-macos.result }}' === 'failure') {
               builds.push('❌ macOS build failed');
             } else if ('${{ needs.build-macos.result }}' === 'skipped') {
@@ -127,7 +149,12 @@ jobs:
             }
 
             if ('${{ needs.build-windows.result }}' === 'success') {
-              builds.push('✅ Windows build ready');
+              const artifact = artifactMap['pr-windows'];
+              if (artifact) {
+                builds.push(`✅ **Windows** - [Download](${artifact.url}) (${artifact.size} MB)`);
+              } else {
+                builds.push('✅ Windows build ready');
+              }
             } else if ('${{ needs.build-windows.result }}' === 'failure') {
               builds.push('❌ Windows build failed');
             } else if ('${{ needs.build-windows.result }}' === 'skipped') {
@@ -135,18 +162,25 @@ jobs:
             }
 
             if ('${{ needs.build-linux.result }}' === 'success') {
-              builds.push('✅ Linux build ready');
+              const artifact = artifactMap['pr-linux'];
+              if (artifact) {
+                builds.push(`✅ **Linux** - [Download](${artifact.url}) (${artifact.size} MB)`);
+              } else {
+                builds.push('✅ Linux build ready');
+              }
             } else if ('${{ needs.build-linux.result }}' === 'failure') {
               builds.push('❌ Linux build failed');
             } else if ('${{ needs.build-linux.result }}' === 'skipped') {
               builds.push('⏭️ Linux build skipped');
             }
 
+            const workflowUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
             const body = `## 🔨 PR Builds
 
             ${builds.join('\n')}
 
-            📦 Download artifacts from the workflow run to test the builds.
+            📦 [View workflow run](${workflowUrl})
 
             ---
             *To trigger builds, add labels:*
