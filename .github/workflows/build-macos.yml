@@ -48,32 +48,13 @@ jobs:
       - name: Build macOS app
         run: flutter build macos --release
 
-      - name: Ad-hoc sign macOS app
+      - name: Verify code signature
         run: |
           APP_PATH=$(find build/macos/Build/Products/Release -name "*.app" -type d -maxdepth 1 | head -n 1)
-
-          echo "Signing app at: $APP_PATH"
-
-          # Sign all nested frameworks and dylibs first
-          find "$APP_PATH" -name "*.framework" -o -name "*.dylib" | while read -r lib; do
-            codesign --force --sign - "$lib" 2>/dev/null || true
-          done
-
-          # Sign all executables in Helpers
-          find "$APP_PATH/Contents/Helpers" -type f -perm +111 2>/dev/null | while read -r exe; do
-            codesign --force --sign - "$exe" 2>/dev/null || true
-          done
-
-          # Sign the main app bundle
-          codesign --force --deep --sign - "$APP_PATH"
-
-          # Verify the signature
+          echo "Verifying signature for: $APP_PATH"
           codesign --verify --verbose "$APP_PATH"
-
-          # Remove quarantine attribute (helps with Gatekeeper)
-          xattr -cr "$APP_PATH"
-
-          echo "✅ Ad-hoc signed macOS app"
+          codesign --display --verbose=4 "$APP_PATH"
+          echo "✅ macOS app is properly signed"
 
       - name: Create tar.gz archive
         run: |
