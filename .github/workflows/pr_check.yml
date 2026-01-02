@@ -3,28 +3,43 @@ name: PR Checks
 on:
   pull_request:
     branches: [main]
+  # Trigger for bot-created PRs (like Release Please)
+  pull_request_target:
+    branches: [main]
 
 jobs:
   analyze:
     name: Analyze & Test
     runs-on: ubuntu-latest
+    # Prevent duplicate: pull_request_target only for release-please, pull_request for others
+    if: |
+      (github.event_name == 'pull_request_target' && startsWith(github.head_ref, 'release-please')) ||
+      (github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-please'))
 
     steps:
+      # Skip checks for release-please PRs (only version bumps)
+      - name: Skip for release-please
+        if: startsWith(github.head_ref, 'release-please')
+        run: echo "Skipping checks for release-please PR"
+
       - name: Checkout code
+        if: ${{ !startsWith(github.head_ref, 'release-please') }}
         uses: actions/checkout@v4
 
       - name: Setup Flutter
+        if: ${{ !startsWith(github.head_ref, 'release-please') }}
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
       - name: Install dependencies
+        if: ${{ !startsWith(github.head_ref, 'release-please') }}
         run: flutter pub get
 
       - name: Check formatting
+        if: ${{ !startsWith(github.head_ref, 'release-please') }}
         run: dart format --set-exit-if-changed .
 
       - name: Analyze code
+        if: ${{ !startsWith(github.head_ref, 'release-please') }}
         run: flutter analyze
-
-
