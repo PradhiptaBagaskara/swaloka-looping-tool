@@ -23,7 +23,7 @@ class VideoMergerService {
         final systemTemp = Directory.systemTemp;
         tempDir = Directory(p.join(systemTemp.path, 'swaloka_temp_$timestamp'));
         await tempDir.create(recursive: true);
-      } catch (_) {
+      } on Exception catch (_) {
         // Fall back to project directory
         tempDir = Directory(
           p.join(projectRootPath, 'temp', 'swaloka_temp_$timestamp'),
@@ -56,7 +56,7 @@ class VideoMergerService {
     onLog?.call(processLog);
 
     final extractedFiles = <String>[];
-    for (int i = 0; i < audioFiles.length; i += concurrencyLimit) {
+    for (var i = 0; i < audioFiles.length; i += concurrencyLimit) {
       final end = (i + concurrencyLimit < audioFiles.length)
           ? i + concurrencyLimit
           : audioFiles.length;
@@ -90,7 +90,7 @@ class VideoMergerService {
               p.absolute(outPath),
             ],
             errorMessage: 'Failed to extract audio from $inputPath',
-            onLog: (log) => batchLog.addSubLog(log),
+            onLog: batchLog.addSubLog,
           );
           extractedFiles.add(outPath);
         }),
@@ -109,7 +109,7 @@ class VideoMergerService {
       //   Loop 1: [file1, file2, file3] <- original order
       //   Loop 2: [file2, file3, file1] <- shuffled
       //   Loop 3: [file3, file1, file2] <- shuffled again
-      for (int loop = 1; loop < audioLoopCount; loop++) {
+      for (var loop = 1; loop < audioLoopCount; loop++) {
         final filesToConcat = List<String>.from(extractedFiles);
         filesToConcat.shuffle(Random());
         concatFiles.addAll(filesToConcat);
@@ -127,11 +127,11 @@ class VideoMergerService {
         .map((f) {
           // On Windows, FFmpeg concat demuxer works better with forward slashes
           // Convert backslashes to forward slashes for FFmpeg compatibility
-          String ffmpegPath = f;
+          var ffmpegPath = f;
           if (Platform.isWindows) {
             ffmpegPath = f.replaceAll(r'\', '/');
           }
-          return "file '${ffmpegPath.replaceAll("'", "'\\''")}'";
+          return "file '${ffmpegPath.replaceAll("'", r"'\''")}'";
         })
         .join('\n');
     await File(concatFilePath).writeAsString(concatContent);
@@ -168,7 +168,7 @@ class VideoMergerService {
         mergedAudioPath,
       ],
       errorMessage: 'Failed to merge audio tracks',
-      onLog: (log) => mergeLog.addSubLog(log),
+      onLog: mergeLog.addSubLog,
     );
 
     // Mark merge as complete
@@ -221,7 +221,7 @@ class VideoMergerService {
     await FFmpegService.run(
       command,
       errorMessage: 'Failed to merge video',
-      onLog: (log) => videoMergeLog.addSubLog(log),
+      onLog: videoMergeLog.addSubLog,
     );
 
     return outputPath;
@@ -268,7 +268,7 @@ class VideoMergerService {
         metadataFlags,
         onLog,
       );
-      onProgress?.call(1.0);
+      onProgress?.call(1);
       onLog?.call(
         LogEntry.success('Video merge complete! Output: $outputPath'),
       );

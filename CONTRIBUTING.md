@@ -59,7 +59,11 @@ flutter pub get
 
 ### Setup Git Hooks
 
-This enables automatic formatting and analysis checks before each commit:
+This installs a pre-commit hook that automatically runs before each commit:
+
+1. `dart fix --apply` - Auto-fix lint issues
+2. `dart format .` - Format code
+3. `flutter analyze` - Check for remaining issues
 
 ```bash
 dart run tool/setup_hooks.dart

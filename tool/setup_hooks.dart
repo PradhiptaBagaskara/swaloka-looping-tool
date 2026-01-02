@@ -1,6 +1,5 @@
 #!/usr/bin/env dart
 
-// ignore_for_file: avoid_print
 import 'dart:io';
 
 /// Sets up git pre-commit hooks for the project.
@@ -8,40 +7,57 @@ import 'dart:io';
 void main() {
   final hookDir = Directory('.git/hooks');
   if (!hookDir.existsSync()) {
-    print('❌ Not a git repository. Run "git init" first.');
+    stdout.writeln('❌ Not a git repository. Run "git init" first.');
     exit(1);
   }
 
-  final preCommitHook = File('.git/hooks/pre-commit');
-  preCommitHook.writeAsStringSync('''#!/bin/sh
+  const hookScript = r'''
+#!/bin/sh
 # Auto-generated pre-commit hook
 
 echo "🔍 Running pre-commit checks..."
 
-# Format check
-echo "📝 Checking formatting..."
-dart format --set-exit-if-changed .
-if [ \$? -ne 0 ]; then
-  echo "❌ Formatting issues found. Run 'dart format .' to fix."
+# Auto-fix issues
+echo "🔧 Running dart fix --apply..."
+dart fix --apply
+if [ $? -ne 0 ]; then
+  echo "⚠️  dart fix encountered issues (continuing anyway)"
+fi
+
+# Format code
+echo "📝 Formatting code..."
+dart format .
+if [ $? -ne 0 ]; then
+  echo "❌ Formatting failed."
   exit 1
 fi
 
-# Analyze
+# Analyze with Flutter (more comprehensive for Flutter projects)
 echo "🔬 Analyzing code..."
-dart analyze --fatal-infos
-if [ \$? -ne 0 ]; then
+flutter analyze
+if [ $? -ne 0 ]; then
   echo "❌ Analysis issues found. Fix them before committing."
   exit 1
 fi
 
+# Stage any auto-fixed/formatted changes
+git add -u
+
 echo "✅ All checks passed!"
-''');
+''';
+
+  final preCommitHook = File('.git/hooks/pre-commit')
+    ..writeAsStringSync(hookScript);
 
   // Make executable
   if (!Platform.isWindows) {
     Process.runSync('chmod', ['+x', preCommitHook.path]);
   }
 
-  print('✅ Git hooks installed successfully!');
-  print('   Pre-commit will now run: dart format & dart analyze');
+  stdout
+    ..writeln('✅ Git hooks installed successfully!')
+    ..writeln('   Pre-commit will now run:')
+    ..writeln('   1. dart fix --apply')
+    ..writeln('   2. dart format .')
+    ..writeln('   3. flutter analyze');
 }

@@ -63,7 +63,7 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: Color(0xFF333333), width: 1),
+          side: const BorderSide(color: Color(0xFF333333)),
         ),
       ),
 

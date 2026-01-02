@@ -3,18 +3,17 @@ import 'package:flutter/material.dart';
 
 /// Widget for drag-and-drop file zone
 class DropZoneWidget extends StatefulWidget {
-  final String label;
-  final IconData icon;
-  final Function(List<DropItem>) onFilesDropped;
-  final VoidCallback onTap;
-
   const DropZoneWidget({
-    super.key,
     required this.label,
     required this.icon,
     required this.onFilesDropped,
     required this.onTap,
+    super.key,
   });
+  final String label;
+  final IconData icon;
+  final void Function(List<DropItem>) onFilesDropped;
+  final VoidCallback onTap;
 
   @override
   State<DropZoneWidget> createState() => _DropZoneWidgetState();
@@ -28,7 +27,7 @@ class _DropZoneWidgetState extends State<DropZoneWidget> {
     return DropTarget(
       onDragDone: (details) {
         debugPrint('DND: Dropped ${details.files.length} files');
-        for (var f in details.files) {
+        for (final f in details.files) {
           debugPrint('DND: File path: ${f.path}');
         }
         setState(() => _isDragging = false);
@@ -62,7 +61,6 @@ class _DropZoneWidgetState extends State<DropZoneWidget> {
                   ? Colors.deepPurpleAccent
                   : const Color(0xFF333333),
               width: _isDragging ? 2 : 1,
-              style: BorderStyle.solid,
             ),
           ),
           child: Column(

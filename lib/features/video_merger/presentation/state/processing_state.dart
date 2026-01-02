@@ -2,14 +2,7 @@ import 'package:swaloka_looping_tool/core/services/log_service.dart';
 
 /// State for video processing operations
 class ProcessingState {
-  final bool isProcessing;
-  final double progress;
-  final List<LogEntry> logs;
-  final String? error;
-  final String? outputPath;
-  final DateTime? startTime;
-  final Map<String, int>
-  outputLoopCounts; // Track loop count for each output file
+  // Track loop count for each output file
 
   ProcessingState({
     required this.isProcessing,
@@ -23,10 +16,16 @@ class ProcessingState {
 
   factory ProcessingState.idle() => ProcessingState(
     isProcessing: false,
-    progress: 0.0,
+    progress: 0,
     logs: [],
-    outputLoopCounts: const {},
   );
+  final bool isProcessing;
+  final double progress;
+  final List<LogEntry> logs;
+  final String? error;
+  final String? outputPath;
+  final DateTime? startTime;
+  final Map<String, int> outputLoopCounts;
 
   ProcessingState copyWith({
     bool? isProcessing,

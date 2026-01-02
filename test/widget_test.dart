@@ -1,7 +1,7 @@
 // Basic Flutter widget test for Swaloka Looping Tool
 
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:swaloka_looping_tool/app.dart';
 
 void main() {

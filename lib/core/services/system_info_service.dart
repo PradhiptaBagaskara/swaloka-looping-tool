@@ -7,7 +7,7 @@ class SystemInfoService {
     try {
       // On all platforms (Linux, macOS, Windows), use platform.numberOfProcessors
       return Platform.numberOfProcessors;
-    } catch (e) {
+    } on Exception catch (_) {
       // Fallback to a safe default
       return 4;
     }

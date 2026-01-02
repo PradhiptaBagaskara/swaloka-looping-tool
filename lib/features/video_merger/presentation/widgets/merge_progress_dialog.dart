@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
-import '../providers/video_merger_providers.dart';
-import 'log_entry_widget.dart';
-import 'media_preview_player.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/log_entry_widget.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/media_preview_player.dart';
 
 class MergeProgressDialog extends ConsumerStatefulWidget {
   const MergeProgressDialog({super.key});
@@ -61,10 +61,10 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
   }
 
   String _formatDuration(Duration d) {
-    String twoDigits(int n) => n.toString().padLeft(2, "0");
-    String twoDigitMinutes = twoDigits(d.inMinutes.remainder(60));
-    String twoDigitSeconds = twoDigits(d.inSeconds.remainder(60));
-    return "${twoDigits(d.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final twoDigitMinutes = twoDigits(d.inMinutes.remainder(60));
+    final twoDigitSeconds = twoDigits(d.inSeconds.remainder(60));
+    return '${twoDigits(d.inHours)}:$twoDigitMinutes:$twoDigitSeconds';
   }
 
   @override
@@ -268,7 +268,6 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                 child: Center(
                   child: MediaPreviewPlayer(
                     path: processingState.outputPath!,
-                    isVideo: true,
                   ),
                 ),
               ),

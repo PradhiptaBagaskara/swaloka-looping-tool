@@ -1,15 +1,16 @@
+import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
-import '../providers/ffmpeg_provider.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/ffmpeg_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Error page shown when FFmpeg is not installed
 class FFmpegErrorPage extends ConsumerWidget {
-  final String? error;
-
   const FFmpegErrorPage({super.key, this.error});
+  final String? error;
 
   String get _installationInstructions {
     if (Platform.isMacOS) {
@@ -164,7 +165,6 @@ class FFmpegErrorPage extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: Colors.deepPurple.withValues(alpha: 0.3),
-                        width: 1,
                       ),
                     ),
                     child: Column(
@@ -221,33 +221,37 @@ class FFmpegErrorPage extends ConsumerWidget {
                   OutlinedButton.icon(
                     onPressed: () async {
                       // Show checking dialog
-                      showDialog(
-                        context: context,
-                        barrierDismissible: false,
-                        builder: (context) => const AlertDialog(
-                          backgroundColor: Color(0xFF1E1E1E),
-                          content: Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: Row(
-                              children: [
-                                CircularProgressIndicator(
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.deepPurple,
+                      unawaited(
+                        showDialog<void>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (context) => const AlertDialog(
+                            backgroundColor: Color(0xFF1E1E1E),
+                            content: Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Row(
+                                children: [
+                                  CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.deepPurple,
+                                    ),
                                   ),
-                                ),
-                                SizedBox(width: 20),
-                                Text(
-                                  'Checking FFmpeg...',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                              ],
+                                  SizedBox(width: 20),
+                                  Text(
+                                    'Checking FFmpeg...',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
                       );
 
                       // Wait a moment for the dialog to show
-                      await Future.delayed(const Duration(milliseconds: 300));
+                      await Future<void>.delayed(
+                        const Duration(milliseconds: 300),
+                      );
 
                       // Perform the actual check (reset cache first)
                       FFmpegService.resetCache();
@@ -260,65 +264,67 @@ class FFmpegErrorPage extends ConsumerWidget {
 
                       if (!isAvailable && context.mounted) {
                         // Still not found, show helpful troubleshooting dialog
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            backgroundColor: const Color(0xFF1E1E1E),
-                            title: const Row(
-                              children: [
-                                Icon(Icons.warning, color: Colors.orange),
-                                SizedBox(width: 8),
-                                Text(
-                                  'FFmpeg Still Not Found',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                              ],
-                            ),
-                            content: SingleChildScrollView(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                        unawaited(
+                          showDialog<void>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              backgroundColor: const Color(0xFF1E1E1E),
+                              title: const Row(
                                 children: [
-                                  const Text(
-                                    'FFmpeg is still not detected. Please try the following:',
-                                    style: TextStyle(color: Colors.grey),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  _buildTroubleshootingStep(
-                                    '1',
-                                    'Verify FFmpeg is installed',
-                                    'Open your terminal and run:\nffmpeg -version',
-                                  ),
-                                  const SizedBox(height: 12),
-                                  _buildTroubleshootingStep(
-                                    '2',
-                                    'Check System PATH',
-                                    'Make sure FFmpeg is added to your system PATH environment variable.',
-                                  ),
-                                  const SizedBox(height: 12),
-                                  _buildTroubleshootingStep(
-                                    '3',
-                                    'Restart Terminal/Shell',
-                                    'If you just installed FFmpeg, restart your terminal or shell session.',
-                                  ),
-                                  const SizedBox(height: 12),
-                                  _buildTroubleshootingStep(
-                                    '4',
-                                    'Restart This App',
-                                    'If the above steps don\'t work, try restarting this application.',
+                                  Icon(Icons.warning, color: Colors.orange),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'FFmpeg Still Not Found',
+                                    style: TextStyle(color: Colors.white),
                                   ),
                                 ],
                               ),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(),
-                                child: const Text(
-                                  'OK',
-                                  style: TextStyle(color: Colors.deepPurple),
+                              content: SingleChildScrollView(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'FFmpeg is still not detected. Please try the following:',
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    _buildTroubleshootingStep(
+                                      '1',
+                                      'Verify FFmpeg is installed',
+                                      'Open your terminal and run:\nffmpeg -version',
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _buildTroubleshootingStep(
+                                      '2',
+                                      'Check System PATH',
+                                      'Make sure FFmpeg is added to your system PATH environment variable.',
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _buildTroubleshootingStep(
+                                      '3',
+                                      'Restart Terminal/Shell',
+                                      'If you just installed FFmpeg, restart your terminal or shell session.',
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _buildTroubleshootingStep(
+                                      '4',
+                                      'Restart This App',
+                                      "If the above steps don't work, try restarting this application.",
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  child: const Text(
+                                    'OK',
+                                    style: TextStyle(color: Colors.deepPurple),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         );
                       } else if (isAvailable && context.mounted) {

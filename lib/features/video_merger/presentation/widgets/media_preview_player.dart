@@ -5,14 +5,13 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 /// Widget for previewing video/audio files with playback controls
 class MediaPreviewPlayer extends StatefulWidget {
-  final String path;
-  final bool isVideo;
-
   const MediaPreviewPlayer({
-    super.key,
     required this.path,
+    super.key,
     this.isVideo = true,
   });
+  final String path;
+  final bool isVideo;
 
   @override
   State<MediaPreviewPlayer> createState() => _MediaPreviewPlayerState();
@@ -21,7 +20,7 @@ class MediaPreviewPlayer extends StatefulWidget {
 class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
   late final Player _player;
   late final VideoController _videoController;
-  final List<StreamSubscription> _subscriptions = [];
+  final List<StreamSubscription<dynamic>> _subscriptions = [];
   bool _initialized = false;
   String? _error;
   Duration _position = Duration.zero;
@@ -38,10 +37,14 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
   void didUpdateWidget(MediaPreviewPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.path != widget.path) {
-      _disposePlayer();
-      _initialized = false;
-      _initPlayer();
+      unawaited(_handlePathChange());
     }
+  }
+
+  Future<void> _handlePathChange() async {
+    await _disposePlayer();
+    _initialized = false;
+    _initPlayer();
   }
 
   void _initPlayer() {
@@ -49,25 +52,25 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
     _videoController = VideoController(_player);
 
     // Listen to player state and store subscriptions
-    _subscriptions.add(
-      _player.stream.position.listen((position) {
-        if (mounted) {
-          setState(() {
-            _position = position;
-          });
-        }
-      }),
-    );
-
-    _subscriptions.add(
-      _player.stream.duration.listen((duration) {
-        if (mounted) {
-          setState(() {
-            _duration = duration;
-          });
-        }
-      }),
-    );
+    _subscriptions
+      ..add(
+        _player.stream.position.listen((position) {
+          if (mounted) {
+            setState(() {
+              _position = position;
+            });
+          }
+        }),
+      )
+      ..add(
+        _player.stream.duration.listen((duration) {
+          if (mounted) {
+            setState(() {
+              _duration = duration;
+            });
+          }
+        }),
+      );
 
     _subscriptions.add(
       _player.stream.playing.listen((playing) {
@@ -91,7 +94,7 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
             _player.play();
           }
         })
-        .catchError((error) {
+        .catchError((Object error) {
           if (mounted) {
             setState(() {
               _error = error.toString();
