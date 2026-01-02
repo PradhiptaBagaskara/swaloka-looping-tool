@@ -40,25 +40,18 @@ function Download-FFmpeg {
     Write-Log "This may take 2-3 minutes depending on your internet speed..." -Type "Warning"
 
     try {
-        # Use .NET WebClient for better progress reporting
-        $webClient = New-Object System.Net.WebClient
-
-        if (-not $Silent) {
-            # Add progress callback
-            $webClient.DownloadProgressChanged += {
-                param($sender, $e)
-                $progressBar = "=" * [Math]::Floor($e.ProgressPercentage / 2)
-                $spaces = " " * (50 - [Math]::Floor($e.ProgressPercentage / 2))
-                Write-Host "`r[$progressBar$spaces] $($e.ProgressPercentage)% " -NoNewline -ForegroundColor Cyan
-            }
+        # Use Invoke-WebRequest with progress (built-in progress bar in PowerShell)
+        if ($Silent) {
+            $ProgressPreference = 'SilentlyContinue'
+        } else {
+            $ProgressPreference = 'Continue'
         }
 
-        $webClient.DownloadFile($FFmpegDownloadUrl, $TempZipPath)
-        $webClient.Dispose()
+        # Use TLS 1.2 for HTTPS
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-        if (-not $Silent) {
-            Write-Host "" # New line after progress bar
-        }
+        Invoke-WebRequest -Uri $FFmpegDownloadUrl -OutFile $TempZipPath -UseBasicParsing
+
         Write-Log "Download completed successfully." -Type "Success"
         return $true
     }
