@@ -153,7 +153,7 @@ Ready to upload to your favorite video platform!
 ## 🔧 Installation & Setup
 
 ### 1️⃣ **Download the App**
-Get the latest release for your platform from the [Releases page](https://github.com/yourusername/swaloka-looping-tool/releases)
+Get the latest release for your platform from the [Releases page](https://github.com/pradhiptabagaskara/swaloka-looping-tool/releases)
 
 **Platform-Specific Downloads:**
 - **Windows:** `Swaloka-Looping-Tool-X.X.X-windows-installer.exe`
@@ -600,6 +600,6 @@ If this tool saved you time, please star the repository! ⭐
 
 ---
 
-*Questions? Feedback? Feature ideas? [Let us know!](https://github.com/yourusername/repo/discussions)*
+*Questions? Feedback? Feature ideas? [Let us know!](https://github.com/pradhiptabagaskara/repo/discussions)*
 
 </div>
