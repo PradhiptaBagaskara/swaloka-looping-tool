@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.8.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/v3.7.2...v3.8.0) (2026-01-02)
+
+
+### Features
+
+* **video-merger:** add intro video support with audio handling options ([#18](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/18)) ([03bf7a3](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/03bf7a39c62dd1537fcb2d6bea07157ba3ec3bfa))
+
 ## [3.7.2](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/v3.7.1...v3.7.2) (2026-01-02)
 
 
