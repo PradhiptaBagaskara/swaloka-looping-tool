@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.9.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/v3.8.0...v3.9.0) (2026-01-02)
+
+
+### Features
+
+* Windows installer and delete test ([8ce3b63](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/8ce3b63fee986919e31761cda81c64ca4ca85cd6))
+
 ## [3.8.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/v3.7.2...v3.8.0) (2026-01-02)
 
 
