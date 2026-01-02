@@ -51,6 +51,14 @@ jobs:
 
       - name: Create self-signed certificate and sign executables
         run: |
+          # Find signtool.exe dynamically
+          $signtoolPath = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object -Descending | Select-Object -First 1
+          if (-not $signtoolPath) {
+            Write-Host "⚠️ signtool.exe not found, skipping code signing"
+            exit 0
+          }
+          Write-Host "✅ Found signtool at: $($signtoolPath.FullName)"
+
           $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=Swaloka, O=Swaloka, C=ID" -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddYears(2)
 
           $certPath = "certificate.pfx"
@@ -60,15 +68,18 @@ jobs:
           Write-Host "✅ Created self-signed certificate"
 
           $exePath = "build\windows\x64\runner\Release\swaloka_looping_tool.exe"
-          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign /f $certPath /p "tempPassword123" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $exePath
+          & $signtoolPath.FullName sign /f $certPath /p "tempPassword123" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $exePath
 
           Write-Host "✅ Signed main executable"
 
           Get-ChildItem -Path "build\windows\x64\runner\Release\*.dll" | ForEach-Object {
-              & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign /f $certPath /p "tempPassword123" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $_.FullName
+              & $signtoolPath.FullName sign /f $certPath /p "tempPassword123" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $_.FullName
           }
 
           Write-Host "✅ Signed DLL files"
+
+          # Store signtool path for later steps
+          echo "SIGNTOOL_PATH=$($signtoolPath.FullName)" >> $env:GITHUB_ENV
 
       - name: Download VC++ Redistributable
         run: |
@@ -87,11 +98,14 @@ jobs:
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "windows\installer_script.iss"
           Move-Item "Swaloka-Looping-Tool-$VERSION-windows-installer.exe" "build/"
 
-          # Sign the installer
-          $installerPath = "build\Swaloka-Looping-Tool-$VERSION-windows-installer.exe"
-          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign /f certificate.pfx /p "tempPassword123" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $installerPath
-
-          Write-Host "✅ Signed installer"
+          # Sign the installer using signtool path from previous step
+          if ($env:SIGNTOOL_PATH) {
+            $installerPath = "build\Swaloka-Looping-Tool-$VERSION-windows-installer.exe"
+            & $env:SIGNTOOL_PATH sign /f certificate.pfx /p "tempPassword123" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $installerPath
+            Write-Host "✅ Signed installer"
+          } else {
+            Write-Host "⚠️ Skipping installer signing (signtool not available)"
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
