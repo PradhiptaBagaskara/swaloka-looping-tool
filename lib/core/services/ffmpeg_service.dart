@@ -21,11 +21,45 @@ class VideoMetadata {
 
 /// Service for handling FFmpeg operations
 class FFmpegService {
-  /// Cached FFmpeg path
+  /// Cached FFmpeg path (auto-detected)
   static String? _ffmpegPath;
+
+  /// Custom FFmpeg path set by user (takes priority over auto-detect)
+  static String? _customFfmpegPath;
 
   /// Cache for video metadata to avoid multiple ffprobe calls
   static final Map<String, VideoMetadata> _metadataCache = {};
+
+  /// Set a custom FFmpeg path (overrides auto-detection)
+  static void setCustomPath(String path) {
+    _customFfmpegPath = path;
+    _ffmpegPath = null; // Clear auto-detected cache
+  }
+
+  /// Clear custom path and revert to auto-detection
+  static void clearCustomPath() {
+    _customFfmpegPath = null;
+    _ffmpegPath = null;
+  }
+
+  /// Check if using custom path
+  static bool get hasCustomPath =>
+      _customFfmpegPath != null && _customFfmpegPath!.isNotEmpty;
+
+  /// Get the custom path (if set)
+  static String? get customPath => _customFfmpegPath;
+
+  /// Validate a FFmpeg path by checking if executable exists and works
+  static Future<bool> validatePath(String path) async {
+    try {
+      final result = await Process.run(path, [
+        '-version',
+      ], environment: extendedEnvironment);
+      return result.exitCode == 0;
+    } on Exception catch (_) {
+      return false;
+    }
+  }
 
   /// Extended PATH with common FFmpeg installation directories
   static Map<String, String> get extendedEnvironment {
@@ -54,13 +88,20 @@ class FFmpegService {
   }
 
   /// Get the full path to FFmpeg executable
-  static String get ffmpegPath => _ffmpegPath ?? 'ffmpeg';
+  static String get ffmpegPath {
+    // Custom path takes priority
+    if (_customFfmpegPath != null && _customFfmpegPath!.isNotEmpty) {
+      return _customFfmpegPath!;
+    }
+    return _ffmpegPath ?? 'ffmpeg';
+  }
 
   /// Get the full path to FFprobe executable
   static String get ffprobePath {
-    if (_ffmpegPath != null) {
-      // If we found ffmpeg at a specific path, look for ffprobe in the same directory
-      final dir = File(_ffmpegPath!).parent.path;
+    // Derive ffprobe path from ffmpeg path (same directory)
+    final currentFfmpegPath = _customFfmpegPath ?? _ffmpegPath;
+    if (currentFfmpegPath != null) {
+      final dir = File(currentFfmpegPath).parent.path;
       final ext = Platform.isWindows ? '.exe' : '';
       final probePath = '$dir${Platform.pathSeparator}ffprobe$ext';
       if (File(probePath).existsSync()) {
@@ -72,6 +113,10 @@ class FFmpegService {
 
   /// Find FFmpeg path using extended environment
   static Future<String?> _findFFmpegPath() async {
+    // Custom path takes priority
+    if (_customFfmpegPath != null && _customFfmpegPath!.isNotEmpty) {
+      return _customFfmpegPath;
+    }
     if (_ffmpegPath != null) return _ffmpegPath;
 
     try {
@@ -147,20 +192,16 @@ class FFmpegService {
     }
 
     try {
-      final result = await Process.run(
-        ffprobePath,
-        [
-          '-v',
-          'quiet',
-          '-print_format',
-          'json',
-          '-show_streams',
-          '-select_streams',
-          'v:0',
-          filePath,
-        ],
-        environment: extendedEnvironment,
-      );
+      final result = await Process.run(ffprobePath, [
+        '-v',
+        'quiet',
+        '-print_format',
+        'json',
+        '-show_streams',
+        '-select_streams',
+        'v:0',
+        filePath,
+      ], environment: extendedEnvironment);
 
       if (result.exitCode == 0) {
         final jsonStr = result.stdout as String;
@@ -172,12 +213,8 @@ class FFmpegService {
         final codec = codecMatch?.group(1);
 
         // Parse width and height
-        final widthMatch = RegExp(
-          r'"width":\s*(\d+)',
-        ).firstMatch(jsonStr);
-        final heightMatch = RegExp(
-          r'"height":\s*(\d+)',
-        ).firstMatch(jsonStr);
+        final widthMatch = RegExp(r'"width":\s*(\d+)').firstMatch(jsonStr);
+        final heightMatch = RegExp(r'"height":\s*(\d+)').firstMatch(jsonStr);
         final width = widthMatch != null
             ? int.tryParse(widthMatch.group(1)!)
             : null;

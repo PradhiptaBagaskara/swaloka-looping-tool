@@ -140,11 +140,13 @@ class FFmpegErrorPage extends ConsumerWidget {
 
       // Run the installer
       try {
-        await Process.start(
+        await Process.start('cmd', [
+          '/c',
+          'start',
           'cmd',
-          ['/c', 'start', 'cmd', '/k', installerPath],
-          mode: ProcessStartMode.detached,
-        );
+          '/k',
+          installerPath,
+        ], mode: ProcessStartMode.detached);
 
         if (context.mounted) {
           await showDialog<void>(

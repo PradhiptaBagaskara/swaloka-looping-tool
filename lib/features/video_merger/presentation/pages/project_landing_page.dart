@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:swaloka_looping_tool/features/video_merger/presentation/pages/ffmpeg_error_page.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/ffmpeg_provider.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/settings_dialog.dart';
 
 /// Landing page for creating or opening projects
 class ProjectLandingPage extends ConsumerStatefulWidget {
@@ -119,22 +120,36 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
                   ],
 
                   const SizedBox(height: 64),
-                  // Version info
-                  ref
-                      .watch(appVersionProvider)
-                      .when(
-                        data: (version) => Text(
-                          version,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.grey[700],
-                            letterSpacing: 1,
-                            fontWeight: FontWeight.w500,
+                  // Version info and settings
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ref
+                          .watch(appVersionProvider)
+                          .when(
+                            data: (version) => Text(
+                              version,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.grey[700],
+                                letterSpacing: 1,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            loading: () => const SizedBox.shrink(),
+                            error: (_, _) => const SizedBox.shrink(),
                           ),
+                      const SizedBox(width: 16),
+                      IconButton(
+                        onPressed: () => showSettingsDialog(context),
+                        icon: const Icon(Icons.settings, size: 16),
+                        tooltip: 'Settings',
+                        style: IconButton.styleFrom(
+                          foregroundColor: Colors.grey[600],
                         ),
-                        loading: () => const SizedBox.shrink(),
-                        error: (_, _) => const SizedBox.shrink(),
                       ),
+                    ],
+                  ),
                 ],
               ),
             ),

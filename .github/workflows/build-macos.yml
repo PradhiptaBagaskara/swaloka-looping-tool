@@ -54,11 +54,24 @@ jobs:
 
           echo "Signing app at: $APP_PATH"
 
-          # Ad-hoc sign the app bundle (sign all executables and frameworks)
+          # Sign all nested frameworks and dylibs first
+          find "$APP_PATH" -name "*.framework" -o -name "*.dylib" | while read -r lib; do
+            codesign --force --sign - "$lib" 2>/dev/null || true
+          done
+
+          # Sign all executables in Helpers
+          find "$APP_PATH/Contents/Helpers" -type f -perm +111 2>/dev/null | while read -r exe; do
+            codesign --force --sign - "$exe" 2>/dev/null || true
+          done
+
+          # Sign the main app bundle
           codesign --force --deep --sign - "$APP_PATH"
 
           # Verify the signature
           codesign --verify --verbose "$APP_PATH"
+
+          # Remove quarantine attribute (helps with Gatekeeper)
+          xattr -cr "$APP_PATH"
 
           echo "✅ Ad-hoc signed macOS app"
 
