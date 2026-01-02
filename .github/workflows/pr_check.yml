@@ -24,7 +24,7 @@ jobs:
 
       - name: Checkout code
         if: ${{ !startsWith(github.head_ref, 'release-please') }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Flutter
         if: ${{ !startsWith(github.head_ref, 'release-please') }}
