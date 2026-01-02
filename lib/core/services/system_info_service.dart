@@ -7,7 +7,7 @@ class SystemInfoService {
     try {
       // On all platforms (Linux, macOS, Windows), use platform.numberOfProcessors
       return Platform.numberOfProcessors;
-    } catch (e) {
+    } on Exception catch (_) {
       // Fallback to a safe default
       return 4;
     }
@@ -19,7 +19,9 @@ class SystemInfoService {
   /// - For light workloads: 50% of CPU cores
   /// - For balanced workloads: 75% of CPU cores
   /// - For heavy workloads: 100% of CPU cores (or cores - 1)
-  static int getRecommendedConcurrency({ConcurrentWorkload workload = ConcurrentWorkload.balanced}) {
+  static int getRecommendedConcurrency({
+    ConcurrentWorkload workload = ConcurrentWorkload.balanced,
+  }) {
     final cores = cpuCores;
 
     switch (workload) {

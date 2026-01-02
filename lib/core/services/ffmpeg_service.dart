@@ -70,7 +70,7 @@ class FFmpegService {
         }
         return _ffmpegPath;
       }
-    } catch (_) {}
+    } on Exception catch (_) {}
     return null;
   }
 
@@ -156,11 +156,10 @@ class FFmpegService {
     // Run FFmpeg with extended PATH environment
     // Use the resolved executable path directly and avoid runInShell
     // to prevent complex quoting issues with paths containing spaces.
-    final ProcessResult result = await Process.run(
+    final result = await Process.run(
       ffmpegExecutable,
       command,
       environment: env,
-      runInShell: false,
     );
 
     final exitCode = result.exitCode;
@@ -190,8 +189,8 @@ class FFmpegService {
     // On failure: keep last 100 lines for debugging
     // On success: filter out verbose progress lines
     final stderrLogs = <LogEntry>[];
-    int skippedLines = 0;
-    String stderrNote = '';
+    var skippedLines = 0;
+    var stderrNote = '';
 
     if (exitCode != 0 && stderrLines.isNotEmpty) {
       // Keep last 100 lines for debugging

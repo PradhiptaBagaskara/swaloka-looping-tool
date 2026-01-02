@@ -1,18 +1,20 @@
+import 'dart:async';
 import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
-import 'package:url_launcher/url_launcher.dart';
 import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
 import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
-import '../../domain/models/swaloka_project.dart';
-import '../providers/video_merger_providers.dart';
-import '../providers/ffmpeg_provider.dart';
-import '../state/processing_state.dart';
-import '../widgets/drop_zone_widget.dart';
-import '../widgets/media_preview_player.dart';
-import '../widgets/merge_progress_dialog.dart';
+import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/ffmpeg_provider.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/state/processing_state.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/drop_zone_widget.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/media_preview_player.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/merge_progress_dialog.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Supported file extensions
 const _videoExtensions = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv'];
@@ -20,9 +22,8 @@ const _audioExtensions = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'];
 
 /// Main video editor page with sidebar and timeline
 class VideoEditorPage extends ConsumerWidget {
+  const VideoEditorPage({required this.project, super.key});
   final SwalokaProject project;
-
-  const VideoEditorPage({super.key, required this.project});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -714,8 +715,8 @@ class VideoEditorPage extends ConsumerWidget {
   Widget _buildInputField({
     required String label,
     required String hint,
-    String? initialValue,
     required ValueChanged<String> onChanged,
+    String? initialValue,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -757,8 +758,8 @@ class VideoEditorPage extends ConsumerWidget {
     BuildContext context,
     String path,
     IconData icon, {
-    bool isVideo = false,
     required VoidCallback onRemove,
+    bool isVideo = false,
     int? index,
   }) {
     final fileName = p.basename(path);
@@ -861,9 +862,9 @@ class VideoEditorPage extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const SizedBox(
+              SizedBox(
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(
@@ -871,11 +872,11 @@ class VideoEditorPage extends ConsumerWidget {
                   valueColor: AlwaysStoppedAnimation(Colors.deepPurple),
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Processing...',
-                  style: const TextStyle(fontSize: 12),
+                  style: TextStyle(fontSize: 12),
                 ),
               ),
             ],
@@ -985,7 +986,7 @@ class VideoEditorPage extends ConsumerWidget {
 
   void _showPreview(BuildContext context, String path, {bool isVideo = true}) {
     final fileName = p.basename(path);
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
@@ -1039,7 +1040,7 @@ class VideoEditorPage extends ConsumerWidget {
   }
 
   void _showDonateDialog(BuildContext context) {
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
@@ -1133,16 +1134,17 @@ class VideoEditorPage extends ConsumerWidget {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.video,
-        allowMultiple: false,
         initialDirectory: project.rootPath,
       );
       if (result != null && result.files.single.path != null) {
-        ref
-            .read(activeProjectProvider.notifier)
-            .setBackgroundVideo(result.files.single.path!);
+        unawaited(
+          ref
+              .read(activeProjectProvider.notifier)
+              .setBackgroundVideo(result.files.single.path),
+        );
         ref.read(processingStateProvider.notifier).reset();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       ref.read(processingStateProvider.notifier).setError('Error: $e');
     }
   }
@@ -1162,10 +1164,12 @@ class VideoEditorPage extends ConsumerWidget {
             .toList();
         final current = List<String>.from(project.audioFiles);
         current.addAll(selectedFiles);
-        ref.read(activeProjectProvider.notifier).setAudioFiles(current);
+        unawaited(
+          ref.read(activeProjectProvider.notifier).setAudioFiles(current),
+        );
         ref.read(processingStateProvider.notifier).reset();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       ref.read(processingStateProvider.notifier).setError('Error: $e');
     }
   }
@@ -1173,9 +1177,11 @@ class VideoEditorPage extends ConsumerWidget {
   Future<void> _selectCustomOutput(BuildContext context, WidgetRef ref) async {
     final result = await FilePicker.platform.getDirectoryPath();
     if (result != null) {
-      ref
-          .read(activeProjectProvider.notifier)
-          .updateSettings(customOutputPath: result);
+      unawaited(
+        ref
+            .read(activeProjectProvider.notifier)
+            .updateSettings(customOutputPath: result),
+      );
     }
   }
 
@@ -1186,10 +1192,12 @@ class VideoEditorPage extends ConsumerWidget {
 
     if (backgroundVideo == null || audioFiles.isEmpty) return;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const MergeProgressDialog(),
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const MergeProgressDialog(),
+      ),
     );
 
     String? logFilePath;
@@ -1233,7 +1241,7 @@ class VideoEditorPage extends ConsumerWidget {
       ref
           .read(projectFilesProvider.notifier)
           .refresh(project.effectiveOutputPath);
-    } catch (e) {
+    } on Exception catch (e) {
       ref.read(processingStateProvider.notifier).setError(e.toString());
     } finally {
       if (logFilePath != null) {

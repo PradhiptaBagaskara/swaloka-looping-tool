@@ -1,11 +1,13 @@
+import 'dart:async';
 import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
-import '../providers/video_merger_providers.dart';
-import '../providers/ffmpeg_provider.dart';
-import 'ffmpeg_error_page.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/pages/ffmpeg_error_page.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/ffmpeg_provider.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
 
 /// Landing page for creating or opening projects
 class ProjectLandingPage extends ConsumerStatefulWidget {
@@ -32,12 +34,11 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
               alignment: Alignment.center,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   // FFmpeg status banner
                   if (ffmpegStatus == null)
                     _buildFFmpegCheckingBanner(context)
-                  else if (ffmpegStatus == false)
+                  else if (!ffmpegStatus)
                     _buildFFmpegWarning(context),
 
                   // Logo
@@ -119,19 +120,21 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
 
                   const SizedBox(height: 64),
                   // Version info
-                  ref.watch(appVersionProvider).when(
-                    data: (version) => Text(
-                      version,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey[700],
-                        letterSpacing: 1,
-                        fontWeight: FontWeight.w500,
+                  ref
+                      .watch(appVersionProvider)
+                      .when(
+                        data: (version) => Text(
+                          version,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey[700],
+                            letterSpacing: 1,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, _) => const SizedBox.shrink(),
                       ),
-                    ),
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, __) => const SizedBox.shrink(),
-                  ),
                 ],
               ),
             ),
@@ -216,8 +219,8 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
                   children: [
                     OutlinedButton(
                       onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
+                        Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
                             builder: (_) => const FFmpegErrorPage(),
                           ),
                         );
@@ -359,7 +362,8 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
     String path,
     TapDownDetails details,
   ) {
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
     showMenu(
       context: context,
       position: RelativeRect.fromRect(
@@ -418,71 +422,73 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
       text: p.basename(normalizedPath),
     );
     if (context.mounted) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFF1A1A1A),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFF333333)),
-          ),
-          title: const Text(
-            'Confirm Project Name',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: TextField(
-            controller: nameController,
-            autofocus: true,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Project Name',
-              filled: true,
-              fillColor: Colors.black26,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
+      unawaited(
+        showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: Color(0xFF333333)),
+            ),
+            title: const Text(
+              'Confirm Project Name',
+              style: TextStyle(color: Colors.white),
+            ),
+            content: TextField(
+              controller: nameController,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Project Name',
+                filled: true,
+                fillColor: Colors.black26,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (nameController.text.isNotEmpty) {
-                  Navigator.pop(context);
-                  // Use microtask to avoid InkWell animation issues
-                  Future.microtask(() {
-                    if (!mounted) return;
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (nameController.text.isNotEmpty) {
+                    Navigator.pop(context);
+                    // Use microtask to avoid InkWell animation issues
+                    Future.microtask(() {
+                      if (!mounted) return;
 
-                    ref
-                        .read(activeProjectProvider.notifier)
-                        .createProject(
-                          result,
-                          nameController.text,
-                          onProjectAdded: (p) {
-                            if (!mounted) return;
-                            ref
-                                .read(recentProjectsProvider.notifier)
-                                .addProject(p);
-                          },
-                          onFilesRefresh: () {
-                            if (!mounted) return;
-                            final project = ref.read(activeProjectProvider);
-                            if (project != null) {
+                      ref
+                          .read(activeProjectProvider.notifier)
+                          .createProject(
+                            result,
+                            nameController.text,
+                            onProjectAdded: (p) {
+                              if (!mounted) return;
                               ref
-                                  .read(projectFilesProvider.notifier)
-                                  .refresh(project.effectiveOutputPath);
-                            }
-                          },
-                        );
-                  });
-                }
-              },
-              child: const Text('Create Project'),
-            ),
-          ],
+                                  .read(recentProjectsProvider.notifier)
+                                  .addProject(p);
+                            },
+                            onFilesRefresh: () {
+                              if (!mounted) return;
+                              final project = ref.read(activeProjectProvider);
+                              if (project != null) {
+                                ref
+                                    .read(projectFilesProvider.notifier)
+                                    .refresh(project.effectiveOutputPath);
+                              }
+                            },
+                          );
+                    });
+                  }
+                },
+                child: const Text('Create Project'),
+              ),
+            ],
+          ),
         ),
       );
     }

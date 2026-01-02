@@ -3,11 +3,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class HardwareInfo {
-  final String gpuName;
-  final bool isFfmpegInstalled;
-  final String? cpuName;
-  final String? bestEncoder;
-  final String? selectedEncoder; // User-selected encoder for manual override
+  // User-selected encoder for manual override
 
   HardwareInfo({
     required this.gpuName,
@@ -16,6 +12,11 @@ class HardwareInfo {
     this.bestEncoder,
     this.selectedEncoder,
   });
+  final String gpuName;
+  final bool isFfmpegInstalled;
+  final String? cpuName;
+  final String? bestEncoder;
+  final String? selectedEncoder;
 
   /// Get the encoder to use (selected encoder if set, otherwise best detected)
   String? get effectiveEncoder => selectedEncoder ?? bestEncoder;
@@ -25,9 +26,9 @@ class HardwareService {
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
 
   Future<HardwareInfo> getHardwareInfo() async {
-    String gpuName = 'Unknown GPU';
+    var gpuName = 'Unknown GPU';
     String? cpuName;
-    bool isFfmpegInstalled = false;
+    var isFfmpegInstalled = false;
     String? bestEncoder;
 
     try {
@@ -44,7 +45,7 @@ class HardwareService {
           if (result.exitCode == 0) {
             gpuName = result.stdout.toString().trim();
           }
-        } catch (_) {}
+        } on Exception catch (_) {}
 
         try {
           final result = await Process.run('ffmpeg', ['-version']);
@@ -52,7 +53,7 @@ class HardwareService {
           if (isFfmpegInstalled) {
             bestEncoder = await _detectBestEncoderWindows();
           }
-        } catch (_) {
+        } on Exception catch (_) {
           isFfmpegInstalled = false;
         }
       } else if (Platform.isMacOS) {
@@ -62,7 +63,7 @@ class HardwareService {
         isFfmpegInstalled = true;
         bestEncoder = 'h264_videotoolbox';
       }
-    } catch (e) {
+    } on Exception catch (_) {
       // Fallback
     }
 
@@ -81,7 +82,7 @@ class HardwareService {
       if (output.contains('h264_nvenc')) return 'h264_nvenc';
       if (output.contains('h264_qsv')) return 'h264_qsv';
       if (output.contains('h264_amf')) return 'h264_amf';
-    } catch (_) {}
+    } on Exception catch (_) {}
     return null;
   }
 
@@ -91,7 +92,9 @@ class HardwareService {
   }
 }
 
-final hardwareServiceProvider = Provider((ref) => HardwareService());
+final Provider<HardwareService> hardwareServiceProvider = Provider(
+  (ref) => HardwareService(),
+);
 
 final hardwareInfoProvider = FutureProvider<HardwareInfo>((ref) async {
   return ref.read(hardwareServiceProvider).getHardwareInfo();

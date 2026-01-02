@@ -1,11 +1,12 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:window_manager/window_manager.dart';
-import 'dart:io' show Platform;
 import 'package:media_kit/media_kit.dart';
-import 'app.dart';
-import 'core/constants/app_constants.dart';
-import 'core/services/app_logger.dart';
+import 'package:swaloka_looping_tool/app.dart';
+import 'package:swaloka_looping_tool/core/constants/app_constants.dart';
+import 'package:swaloka_looping_tool/core/services/app_logger.dart';
+import 'package:window_manager/window_manager.dart';
 
 void main() async {
   // Ensure Flutter is initialized

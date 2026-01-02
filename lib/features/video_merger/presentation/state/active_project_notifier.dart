@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../domain/models/swaloka_project.dart';
+import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
 
 /// Notifier for managing the active project
 class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
@@ -27,7 +27,7 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
   Future<void> createProject(
     String rootPath,
     String name, {
-    Function(String path)? onProjectAdded,
+    void Function(String path)? onProjectAdded,
     VoidCallback? onFilesRefresh,
   }) async {
     // Normalize the rootPath for the current platform
@@ -55,7 +55,7 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
 
   Future<void> loadProject(
     String rootPath, {
-    Function(String path)? onProjectAdded,
+    void Function(String path)? onProjectAdded,
     VoidCallback? onFilesRefresh,
   }) async {
     // Normalize the rootPath for the current platform
@@ -64,7 +64,9 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     final file = File(p.join(normalizedRootPath, 'project.swaloka'));
     if (await file.exists()) {
       final json = jsonDecode(await file.readAsString());
-      final loadedProject = SwalokaProject.fromJson(json);
+      final loadedProject = SwalokaProject.fromJson(
+        json as Map<String, dynamic>,
+      );
 
       // Use the rootPath parameter (from Recent Projects) instead of the one from JSON
       // This ensures we use the correct path even if the JSON has a stale/incorrect path
@@ -251,12 +253,12 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
           }
         }
       }
-    } catch (e) {
+    } on Exception catch (_) {
       // Ignore cleanup errors
     }
   }
 
-  void closeProject() async {
+  Future<void> closeProject() async {
     // Cleanup temp directories before closing
     if (state != null) {
       await _cleanupTempDirectories(state!.rootPath);

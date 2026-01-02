@@ -29,11 +29,6 @@ class LoggerConfig {
 
 /// Hierarchical log entry that supports expandable sub-logs (like Docker)
 class LogEntry {
-  final LogLevel level;
-  final String message;
-  final List<LogEntry> subLogs;
-  final DateTime timestamp;
-
   LogEntry({
     required this.level,
     required this.message,
@@ -44,6 +39,24 @@ class LogEntry {
     // Automatically log to system when entry is created
     _logToSystem();
   }
+
+  /// Create a simple log entry without sub-logs
+  factory LogEntry.simple(LogLevel level, String message) {
+    return LogEntry(level: level, message: message);
+  }
+
+  /// Create a log entry with sub-logs
+  factory LogEntry.withSubLogs(
+    LogLevel level,
+    String message,
+    List<LogEntry> subLogs,
+  ) {
+    return LogEntry(level: level, message: message, subLogs: subLogs);
+  }
+  final LogLevel level;
+  final String message;
+  final List<LogEntry> subLogs;
+  final DateTime timestamp;
 
   /// Check if this log entry is expandable
   bool get isExpandable => subLogs.isNotEmpty;
@@ -68,20 +81,6 @@ class LogEntry {
   /// Add multiple sublogs to this entry
   void addSubLogs(List<LogEntry> logs) {
     subLogs.addAll(logs);
-  }
-
-  /// Create a simple log entry without sub-logs
-  factory LogEntry.simple(LogLevel level, String message) {
-    return LogEntry(level: level, message: message);
-  }
-
-  /// Create a log entry with sub-logs
-  factory LogEntry.withSubLogs(
-    LogLevel level,
-    String message,
-    List<LogEntry> subLogs,
-  ) {
-    return LogEntry(level: level, message: message, subLogs: subLogs);
   }
 
   /// Helper to create an info log
@@ -157,7 +156,7 @@ class LogEntry {
       for (final handler in LoggerConfig.handlers) {
         try {
           handler(this);
-        } catch (e) {
+        } on Exception catch (_) {
           // Ignore handler errors to prevent logging from breaking
         }
       }

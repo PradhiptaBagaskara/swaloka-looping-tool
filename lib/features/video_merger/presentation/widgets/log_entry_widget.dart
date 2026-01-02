@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
 
 class LogEntryWidget extends StatefulWidget {
+  const LogEntryWidget({required this.entry, this.level = 0, super.key});
   final LogEntry entry;
   final int level;
-
-  const LogEntryWidget({required this.entry, this.level = 0, super.key});
 
   @override
   State<LogEntryWidget> createState() => _LogEntryWidgetState();
