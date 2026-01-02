@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   # Also allow manual releases
   workflow_dispatch:
 
@@ -18,11 +18,12 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
       version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
+      is_prerelease: ${{ github.ref == 'refs/heads/develop' }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
         with:
-          release-type: dart
+          target-branch: ${{ github.ref_name }}
 
   build-macos:
     name: Build macOS App
@@ -81,9 +82,17 @@ jobs:
         run: |
           gh release upload ${{ needs.release-please.outputs.tag_name }} ./artifacts/* --repo ${{ github.repository }}
 
+      - name: Mark as prerelease (beta)
+        if: ${{ needs.release-please.outputs.is_prerelease == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit ${{ needs.release-please.outputs.tag_name }} --prerelease --repo ${{ github.repository }}
+
       - name: Output release info
         run: |
-          echo "✅ Release assets uploaded for ${{ needs.release-please.outputs.tag_name }}"
+          RELEASE_TYPE="${{ needs.release-please.outputs.is_prerelease == 'true' && '🧪 Beta' || '🚀 Stable' }}"
+          echo "✅ ${RELEASE_TYPE} release assets uploaded for ${{ needs.release-please.outputs.tag_name }}"
           echo "🔗 https://github.com/${{ github.repository }}/releases/tag/${{ needs.release-please.outputs.tag_name }}"
           echo ""
           echo "📦 Files uploaded:"
