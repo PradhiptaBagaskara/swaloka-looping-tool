@@ -154,28 +154,34 @@ git commit -m "WIP"
 
 ## How Releases Work
 
-This project uses [Release Please](https://github.com/googleapis/release-please) with **GitHub Flow** for automated releases:
+This project uses [Release Please](https://github.com/googleapis/release-please) with a **two-branch strategy** for automated releases:
+
+### Branch Strategy
+
+| Branch | Purpose | Version Example |
+|--------|---------|-----------------|
+| `develop` | Beta releases for testing | `4.0.0-beta.0`, `4.0.0-beta.1` |
+| `main` | Stable production releases | `4.0.0`, `4.1.0` |
 
 ### Workflow
 
 ```
-Feature Branch → PR → Review → Merge to main → Release
+Feature Branch → develop (beta) → main (stable)
 ```
 
 ### Step-by-Step
 
-1. **Create a feature branch** with conventional commits
-2. **Open a PR** to `main`
+1. **Create a feature branch** from `develop` with conventional commits
+2. **Open a PR** to `develop`
    - Automated checks run (linting, tests, build verification)
    - Optional: Add labels to build test artifacts
 3. **Code review** and approval
-4. **Merge to main**
-5. **Release Please** automatically creates/updates a Release PR
-6. **Maintainer merges Release PR**:
-   - Version is bumped based on commit types
-   - CHANGELOG is updated automatically
-   - Builds run for all platforms (macOS, Windows, Linux)
-   - Release is published to GitHub
+4. **Merge to `develop`**
+   - Release Please creates a **beta** Release PR
+   - When merged: publishes `4.0.0-beta.0` (marked as prerelease)
+5. **When ready for stable release**: Merge `develop` to `main`
+   - Release Please creates a **stable** Release PR
+   - When merged: publishes `4.0.0` (stable release)
 
 **You don't need to worry about versioning** - just write good commit messages!
 

@@ -6,5 +6,15 @@
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true
     }
-  }
+  },
+  "release-branches": [
+    {
+      "branch": "main"
+    },
+    {
+      "branch": "develop",
+      "prerelease": true,
+      "prerelease-type": "beta"
+    }
+  ]
 }
