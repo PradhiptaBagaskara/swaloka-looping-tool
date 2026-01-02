@@ -77,7 +77,7 @@ class VideoMergerService {
             [
               '-y',
               '-i',
-              inputPath,
+              p.absolute(inputPath),
               '-vn',
               '-acodec',
               'aac',
@@ -87,7 +87,7 @@ class VideoMergerService {
               '2',
               '-b:a',
               '192k',
-              outPath,
+              p.absolute(outPath),
             ],
             errorMessage: 'Failed to extract audio from $inputPath',
             onLog: (log) => batchLog.addSubLog(log),
@@ -201,9 +201,9 @@ class VideoMergerService {
       '-stream_loop',
       '-1',
       '-i',
-      backgroundVideoPath,
+      p.absolute(backgroundVideoPath),
       '-i',
-      mergedAudioPath,
+      p.absolute(mergedAudioPath),
       '-map',
       '0:v',
       '-map',
@@ -214,7 +214,7 @@ class VideoMergerService {
       'copy',
       '-shortest',
       ...metadataFlags,
-      outputPath,
+      p.absolute(outputPath),
       '-y',
     ];
 

@@ -52,7 +52,7 @@ final ffmpegStatusProvider = NotifierProvider<FFmpegStatusNotifier, bool?>(
 /// Provider to get app version
 final appVersionProvider = FutureProvider<String>((ref) async {
   final packageInfo = await PackageInfo.fromPlatform();
-  final version = 'v${packageInfo.version}';
+  final version = 'v${packageInfo.version}+${packageInfo.buildNumber}';
   log.i('📦 App version: $version');
   return version;
 });

@@ -107,6 +107,7 @@ class FFmpegService {
     // These are very verbose and not useful in logs
     return _progressPattern.hasMatch(line) ||
         (line.contains('fps=') && line.contains('time=')) ||
+        (line.contains('configuration')) ||
         (line.contains('bitrate=') && line.contains('speed='));
   }
 
@@ -118,6 +119,7 @@ class FFmpegService {
         lower.contains('warning') ||
         lower.contains('failed') ||
         lower.contains('invalid') ||
+        lower.contains('unable') ||
         lower.contains('cannot') ||
         lower.contains('could not') ||
         lower.contains('no such') ||
@@ -125,7 +127,9 @@ class FFmpegService {
         lower.contains('output #') ||
         lower.contains('stream #') ||
         lower.contains('duration:') ||
-        lower.contains('encoder');
+        lower.contains('avformat') ||
+        lower.contains('encoder') ||
+        lower.contains('avcodec');
   }
 
   /// Run FFmpeg command with hierarchical logging
@@ -139,37 +143,25 @@ class FFmpegService {
     final env = extendedEnvironment;
 
     // Create and show command log immediately
-    final commandLog = LogEntry.info(
-      'Command: $ffmpegExecutable ${command.join(" ")}',
-    );
+    final logCommand = [
+      ffmpegExecutable,
+      ...command.map((arg) => arg.contains(' ') ? '"$arg"' : arg),
+    ].join(' ');
+
+    final commandLog = LogEntry.info('Command: $logCommand');
     onLog?.call(commandLog);
 
     final startTime = DateTime.now();
 
     // Run FFmpeg with extended PATH environment
-    // Windows: needs runInShell for PATH resolution, with quoted arguments
-    // macOS/Linux: use resolved path with extended environment (for release builds)
-    final ProcessResult result;
-    if (Platform.isWindows) {
-      // On Windows, we need runInShell: true for PATH resolution
-      // But with runInShell, arguments with spaces must be quoted
-      final quotedCommand = command.map((arg) {
-        // Quote arguments that contain spaces or special characters
-        if (arg.contains(' ') || arg.contains('&') || arg.contains('"')) {
-          // Escape any existing quotes and wrap in quotes
-          return '"${arg.replaceAll('"', r'\"')}"';
-        }
-        return arg;
-      }).toList();
-      result = await Process.run(
-        'ffmpeg',
-        quotedCommand,
-        environment: env,
-        runInShell: true,
-      );
-    } else {
-      result = await Process.run(ffmpegExecutable, command, environment: env);
-    }
+    // Use the resolved executable path directly and avoid runInShell
+    // to prevent complex quoting issues with paths containing spaces.
+    final ProcessResult result = await Process.run(
+      ffmpegExecutable,
+      command,
+      environment: env,
+      runInShell: false,
+    );
 
     final exitCode = result.exitCode;
 
