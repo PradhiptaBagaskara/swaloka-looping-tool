@@ -26,12 +26,16 @@ jobs:
       - name: Generate version
         id: version
         run: |
-          # Read current version from pubspec.yaml
-          CURRENT_VERSION=$(grep '^version:' pubspec.yaml | cut -d' ' -f2)
+          # Read current version from pubspec.yaml (format: x.y.z+buildnumber)
+          FULL_VERSION=$(grep '^version:' pubspec.yaml | cut -d' ' -f2)
           PR_NUM="${{ github.event.pull_request.number }}"
 
-          # Create version with PR suffix
-          VERSION="${CURRENT_VERSION}-pr${PR_NUM}"
+          # Split version and build number
+          BASE_VERSION=$(echo "$FULL_VERSION" | cut -d'+' -f1)
+          BUILD_NUMBER=$(echo "$FULL_VERSION" | cut -d'+' -f2)
+
+          # Create version with PR suffix (correct format: x.y.z-prN+buildnumber)
+          VERSION="${BASE_VERSION}-pr${PR_NUM}+${BUILD_NUMBER}"
 
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "📦 PR build version: ${VERSION}"

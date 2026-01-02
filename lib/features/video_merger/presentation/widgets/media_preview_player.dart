@@ -18,8 +18,8 @@ class MediaPreviewPlayer extends StatefulWidget {
 }
 
 class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
-  late final Player _player;
-  late final VideoController _videoController;
+  Player? _player;
+  VideoController? _videoController;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   bool _initialized = false;
   String? _error;
@@ -48,59 +48,68 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
   }
 
   void _initPlayer() {
-    _player = Player();
-    _videoController = VideoController(_player);
+    try {
+      final player = Player();
+      _player = player;
+      _videoController = VideoController(player);
 
-    // Listen to player state and store subscriptions
-    _subscriptions
-      ..add(
-        _player.stream.position.listen((position) {
-          if (mounted) {
-            setState(() {
-              _position = position;
-            });
-          }
-        }),
-      )
-      ..add(
-        _player.stream.duration.listen((duration) {
-          if (mounted) {
-            setState(() {
-              _duration = duration;
-            });
-          }
-        }),
-      );
+      // Listen to player state and store subscriptions
+      _subscriptions
+        ..add(
+          player.stream.position.listen((position) {
+            if (mounted) {
+              setState(() {
+                _position = position;
+              });
+            }
+          }),
+        )
+        ..add(
+          player.stream.duration.listen((duration) {
+            if (mounted) {
+              setState(() {
+                _duration = duration;
+              });
+            }
+          }),
+        )
+        ..add(
+          player.stream.playing.listen((playing) {
+            if (mounted) {
+              setState(() {
+                _isPlaying = playing;
+              });
+            }
+          }),
+        );
 
-    _subscriptions.add(
-      _player.stream.playing.listen((playing) {
-        if (mounted) {
-          setState(() {
-            _isPlaying = playing;
+      // Open the media file
+      player
+          .open(Media(widget.path))
+          .then((_) {
+            if (mounted) {
+              setState(() {
+                _initialized = true;
+              });
+              // Auto-play when preview opens
+              player.play();
+            }
+          })
+          .catchError((Object error) {
+            if (mounted) {
+              setState(() {
+                _error = error.toString();
+              });
+            }
           });
-        }
-      }),
-    );
-
-    // Open the media file
-    _player
-        .open(Media(widget.path))
-        .then((_) {
-          if (mounted) {
-            setState(() {
-              _initialized = true;
-            });
-            // Auto-play when preview opens
-            _player.play();
-          }
-        })
-        .catchError((Object error) {
-          if (mounted) {
-            setState(() {
-              _error = error.toString();
-            });
-          }
+    } on Exception catch (e) {
+      // Player initialization failed (can happen in release builds)
+      if (mounted) {
+        setState(() {
+          _error = 'Failed to initialize player: $e';
         });
+      }
+    }
   }
 
   Future<void> _disposePlayer() async {
@@ -111,12 +120,32 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
     _subscriptions.clear();
 
     // Then dispose the player
-    await _player.dispose();
+    final player = _player;
+    if (player != null) {
+      try {
+        await player.dispose();
+      } on Exception catch (_) {
+        // Ignore disposal errors (can happen on force close)
+      }
+    }
+    _player = null;
+    _videoController = null;
   }
 
   @override
   void dispose() {
-    _disposePlayer();
+    // Pause playback to help with cleanup on force close
+    // Note: Using pause() instead of stop() for media_kit v1.x compatibility
+    final player = _player;
+    if (player != null) {
+      try {
+        player.pause();
+      } on Exception catch (_) {
+        // Ignore if player already disposed
+      }
+    }
+    // Schedule async cleanup (won't complete on force close, but that's ok)
+    unawaited(_disposePlayer());
     super.dispose();
   }
 
@@ -131,15 +160,18 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
   }
 
   void _togglePlayPause() {
+    final player = _player;
+    if (player == null) return;
+
     if (_isPlaying) {
-      _player.pause();
+      player.pause();
     } else {
-      _player.play();
+      player.play();
     }
   }
 
   void _seekTo(Duration position) {
-    _player.seek(position);
+    _player?.seek(position);
   }
 
   @override
@@ -170,7 +202,7 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
       );
     }
 
-    if (!_initialized) {
+    if (!_initialized || _videoController == null) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(16),
@@ -260,7 +292,7 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
 
     // Video player - full view with built-in controls
     return Video(
-      controller: _videoController,
+      controller: _videoController!,
       // Built-in controls are used by default
     );
   }
