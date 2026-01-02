@@ -530,20 +530,7 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
           );
         }
       }
-    } else {
-      // Fallback: pick the file directly
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['swaloka'],
-        lockParentWindow: true,
-        dialogTitle: 'Or pick the .swaloka file directly',
-      );
-
-      if (result != null && result.files.single.path != null) {
-        final filePath = result.files.single.path!;
-        final projectDir = File(filePath).parent.path;
-        _loadProject(projectDir);
-      }
     }
+    // Removed fallback file picker - user can just try again
   }
 }
