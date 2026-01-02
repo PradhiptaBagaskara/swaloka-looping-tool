@@ -61,7 +61,7 @@ jobs:
           mv "Swaloka-Looping-Tool-${VERSION}-macos.zip" "${GITHUB_WORKSPACE}/build/"
 
       - name: Upload ZIP artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: macos-zip
           path: build/Swaloka-Looping-Tool-*-macos.zip
@@ -114,7 +114,7 @@ jobs:
           Move-Item "Swaloka-Looping-Tool-$VERSION-windows-installer.exe" "build/"
 
       - name: Upload EXE installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-installer
           path: build/Swaloka-Looping-Tool-*-windows-installer.exe
@@ -209,7 +209,7 @@ jobs:
           ARCH=x86_64 ./appimagetool AppDir "build/Swaloka-Looping-Tool-${VERSION}-linux-x64.AppImage"
 
       - name: Upload Linux archive artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: linux-archive
           path: |
