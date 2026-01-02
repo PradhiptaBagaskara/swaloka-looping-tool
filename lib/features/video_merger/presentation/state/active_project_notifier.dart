@@ -151,6 +151,9 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     // Fix background video path
     final fixedBackgroundVideo = await fixPath(project.backgroundVideo);
 
+    // Fix intro video path
+    final fixedIntroVideo = await fixPath(project.introVideo);
+
     // Fix audio file paths
     final fixedAudioFiles = <String>[];
     for (final audioPath in project.audioFiles) {
@@ -163,11 +166,14 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
 
     // Return updated project only if changes were made
     if (fixedBackgroundVideo != project.backgroundVideo ||
+        fixedIntroVideo != project.introVideo ||
         fixedAudioFiles.length != project.audioFiles.length) {
       final updatedProject = project.copyWith(
         backgroundVideo: fixedBackgroundVideo,
-        audioFiles: fixedAudioFiles,
         clearBackgroundVideo: fixedBackgroundVideo == null,
+        introVideo: fixedIntroVideo,
+        clearIntroVideo: fixedIntroVideo == null,
+        audioFiles: fixedAudioFiles,
       );
 
       // Save the fixed paths back to the project file
@@ -187,6 +193,9 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     String? comment,
     int? concurrencyLimit,
     int? audioLoopCount,
+    String? introVideo,
+    bool clearIntroVideo = false,
+    IntroAudioMode? introAudioMode,
   }) async {
     if (state == null) return;
     final newState = state!.copyWith(
@@ -197,6 +206,9 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
       comment: comment,
       concurrencyLimit: concurrencyLimit,
       audioLoopCount: audioLoopCount,
+      introVideo: introVideo,
+      clearIntroVideo: clearIntroVideo,
+      introAudioMode: introAudioMode,
     );
     state = newState;
     await _saveProjectToFile(newState);
@@ -207,6 +219,16 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     final newState = state!.copyWith(
       backgroundVideo: path,
       clearBackgroundVideo: path == null,
+    );
+    state = newState;
+    await _saveProjectToFile(newState);
+  }
+
+  Future<void> setIntroVideo(String? path) async {
+    if (state == null) return;
+    final newState = state!.copyWith(
+      introVideo: path,
+      clearIntroVideo: path == null,
     );
     state = newState;
     await _saveProjectToFile(newState);

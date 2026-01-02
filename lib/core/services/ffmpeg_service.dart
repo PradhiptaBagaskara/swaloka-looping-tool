@@ -2,10 +2,30 @@ import 'dart:io';
 
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
 
+/// Video metadata container
+class VideoMetadata {
+  const VideoMetadata({
+    required this.codec,
+    required this.width,
+    required this.height,
+    required this.fps,
+    required this.pixFmt,
+  });
+
+  final String? codec;
+  final int? width;
+  final int? height;
+  final String? fps;
+  final String? pixFmt;
+}
+
 /// Service for handling FFmpeg operations
 class FFmpegService {
   /// Cached FFmpeg path
   static String? _ffmpegPath;
+
+  /// Cache for video metadata to avoid multiple ffprobe calls
+  static final Map<String, VideoMetadata> _metadataCache = {};
 
   /// Extended PATH with common FFmpeg installation directories
   static Map<String, String> get extendedEnvironment {
@@ -35,6 +55,20 @@ class FFmpegService {
 
   /// Get the full path to FFmpeg executable
   static String get ffmpegPath => _ffmpegPath ?? 'ffmpeg';
+
+  /// Get the full path to FFprobe executable
+  static String get ffprobePath {
+    if (_ffmpegPath != null) {
+      // If we found ffmpeg at a specific path, look for ffprobe in the same directory
+      final dir = File(_ffmpegPath!).parent.path;
+      final ext = Platform.isWindows ? '.exe' : '';
+      final probePath = '$dir${Platform.pathSeparator}ffprobe$ext';
+      if (File(probePath).existsSync()) {
+        return probePath;
+      }
+    }
+    return 'ffprobe';
+  }
 
   /// Find FFmpeg path using extended environment
   static Future<String?> _findFFmpegPath() async {
@@ -96,6 +130,111 @@ class FFmpegService {
   /// Reset cached FFmpeg path (useful for re-checking after installation)
   static void resetCache() {
     _ffmpegPath = null;
+    _metadataCache.clear();
+  }
+
+  /// Clear video metadata cache (useful when files are modified)
+  static void clearMetadataCache() {
+    _metadataCache.clear();
+  }
+
+  /// Get comprehensive video metadata using a single ffprobe call
+  /// Results are cached to avoid redundant calls for the same file
+  static Future<VideoMetadata> getVideoMetadata(String filePath) async {
+    // Check cache first
+    if (_metadataCache.containsKey(filePath)) {
+      return _metadataCache[filePath]!;
+    }
+
+    try {
+      final result = await Process.run(
+        ffprobePath,
+        [
+          '-v',
+          'quiet',
+          '-print_format',
+          'json',
+          '-show_streams',
+          '-select_streams',
+          'v:0',
+          filePath,
+        ],
+        environment: extendedEnvironment,
+      );
+
+      if (result.exitCode == 0) {
+        final jsonStr = result.stdout as String;
+
+        // Parse codec
+        final codecMatch = RegExp(
+          r'"codec_name":\s*"([^"]+)"',
+        ).firstMatch(jsonStr);
+        final codec = codecMatch?.group(1);
+
+        // Parse width and height
+        final widthMatch = RegExp(
+          r'"width":\s*(\d+)',
+        ).firstMatch(jsonStr);
+        final heightMatch = RegExp(
+          r'"height":\s*(\d+)',
+        ).firstMatch(jsonStr);
+        final width = widthMatch != null
+            ? int.tryParse(widthMatch.group(1)!)
+            : null;
+        final height = heightMatch != null
+            ? int.tryParse(heightMatch.group(1)!)
+            : null;
+
+        // Parse FPS
+        final rFrameRateMatch = RegExp(
+          r'"r_frame_rate":\s*"([^"]+)"',
+        ).firstMatch(jsonStr);
+        String? fps;
+        if (rFrameRateMatch != null) {
+          final val = rFrameRateMatch.group(1)!;
+          final parts = val.split('/');
+          if (parts.length == 2) {
+            final num = double.tryParse(parts[0]);
+            final den = double.tryParse(parts[1]);
+            if (num != null && den != null && den != 0) {
+              fps = (num / den).toStringAsFixed(2);
+              if (fps.endsWith('.00')) {
+                fps = fps.substring(0, fps.length - 3);
+              }
+            }
+          }
+        }
+
+        // Parse pixel format
+        final pixFmtMatch = RegExp(
+          r'"pix_fmt":\s*"([^"]+)"',
+        ).firstMatch(jsonStr);
+        final pixFmt = pixFmtMatch?.group(1);
+
+        final metadata = VideoMetadata(
+          codec: codec,
+          width: width,
+          height: height,
+          fps: fps,
+          pixFmt: pixFmt,
+        );
+
+        // Cache the result
+        _metadataCache[filePath] = metadata;
+        return metadata;
+      }
+    } on Exception catch (_) {}
+
+    // Return empty metadata on failure
+    const emptyMetadata = VideoMetadata(
+      codec: null,
+      width: null,
+      height: null,
+      fps: null,
+      pixFmt: null,
+    );
+    _metadataCache[filePath] = emptyMetadata;
+    return emptyMetadata;
   }
 
   /// Regex pattern for FFmpeg progress lines
@@ -284,5 +423,22 @@ class FFmpegService {
       final seconds = duration.inSeconds % 60;
       return '${minutes}m ${seconds}s';
     }
+  }
+
+  /// Get video codec name using cached metadata
+  static Future<String?> getVideoCodec(String filePath) async {
+    final metadata = await getVideoMetadata(filePath);
+    return metadata.codec;
+  }
+
+  /// Get video resolution (width, height) using cached metadata
+  static Future<({int width, int height})?> getVideoResolution(
+    String filePath,
+  ) async {
+    final metadata = await getVideoMetadata(filePath);
+    if (metadata.width != null && metadata.height != null) {
+      return (width: metadata.width!, height: metadata.height!);
+    }
+    return null;
   }
 }
