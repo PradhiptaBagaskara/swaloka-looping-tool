@@ -1,7 +1,7 @@
-import 'dart:async';
+import 'dart:io' show File, Platform;
+
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
+import 'package:video_player/video_player.dart';
 
 /// Widget for previewing video/audio files with playback controls
 class MediaPreviewPlayer extends StatefulWidget {
@@ -18,14 +18,9 @@ class MediaPreviewPlayer extends StatefulWidget {
 }
 
 class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
-  late final Player _player;
-  late final VideoController _videoController;
-  final List<StreamSubscription<dynamic>> _subscriptions = [];
+  VideoPlayerController? _controller;
   bool _initialized = false;
   String? _error;
-  Duration _position = Duration.zero;
-  Duration _duration = Duration.zero;
-  bool _isPlaying = false;
 
   @override
   void initState() {
@@ -37,81 +32,70 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
   void didUpdateWidget(MediaPreviewPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.path != widget.path) {
-      unawaited(_handlePathChange());
+      _handlePathChange();
     }
   }
 
-  Future<void> _handlePathChange() async {
-    await _disposePlayer();
-    _initialized = false;
+  void _handlePathChange() {
+    _disposePlayer();
+    setState(() {
+      _initialized = false;
+      _error = null;
+    });
     _initPlayer();
   }
 
   void _initPlayer() {
-    _player = Player();
-    _videoController = VideoController(_player);
+    try {
+      final controller = VideoPlayerController.file(File(widget.path));
+      _controller = controller;
 
-    // Listen to player state and store subscriptions
-    _subscriptions
-      ..add(
-        _player.stream.position.listen((position) {
-          if (mounted) {
-            setState(() {
-              _position = position;
-            });
-          }
-        }),
-      )
-      ..add(
-        _player.stream.duration.listen((duration) {
-          if (mounted) {
-            setState(() {
-              _duration = duration;
-            });
-          }
-        }),
-      );
+      controller.addListener(_onControllerUpdate);
 
-    _subscriptions.add(
-      _player.stream.playing.listen((playing) {
-        if (mounted) {
-          setState(() {
-            _isPlaying = playing;
+      controller
+          .initialize()
+          .then((_) {
+            if (mounted) {
+              setState(() {
+                _initialized = true;
+              });
+              // Auto-play when preview opens (skip on Linux - not supported)
+              if (!Platform.isLinux) {
+                controller
+                  ..setLooping(true)
+                  ..play();
+              }
+            }
+          })
+          .catchError((Object error) {
+            if (mounted) {
+              setState(() {
+                _error = error.toString();
+              });
+            }
           });
-        }
-      }),
-    );
-
-    // Open the media file
-    _player
-        .open(Media(widget.path))
-        .then((_) {
-          if (mounted) {
-            setState(() {
-              _initialized = true;
-            });
-            // Auto-play when preview opens
-            _player.play();
-          }
-        })
-        .catchError((Object error) {
-          if (mounted) {
-            setState(() {
-              _error = error.toString();
-            });
-          }
+    } on Exception catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Failed to initialize player: $e';
         });
+      }
+    }
   }
 
-  Future<void> _disposePlayer() async {
-    // Cancel all stream subscriptions first
-    for (final subscription in _subscriptions) {
-      await subscription.cancel();
+  void _onControllerUpdate() {
+    if (mounted) {
+      setState(() {});
     }
-    _subscriptions.clear();
+  }
 
-    // Then dispose the player
-    await _player.dispose();
+  void _disposePlayer() {
+    final controller = _controller;
+    if (controller != null) {
+      controller.removeListener(_onControllerUpdate);
+      controller.dispose();
+    }
+    _controller = null;
   }
 
   @override
@@ -131,15 +115,18 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
   }
 
   void _togglePlayPause() {
-    if (_isPlaying) {
-      _player.pause();
+    final controller = _controller;
+    if (controller == null) return;
+
+    if (controller.value.isPlaying) {
+      controller.pause();
     } else {
-      _player.play();
+      controller.play();
     }
   }
 
   void _seekTo(Duration position) {
-    _player.seek(position);
+    _controller?.seekTo(position);
   }
 
   @override
@@ -170,7 +157,8 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
       );
     }
 
-    if (!_initialized) {
+    final controller = _controller;
+    if (!_initialized || controller == null) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(16),
@@ -183,10 +171,13 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
       );
     }
 
+    final value = controller.value;
+    final position = value.position;
+    final duration = value.duration;
+    final isPlaying = value.isPlaying;
+
     // Audio player - compact view
     if (!widget.isVideo) {
-      final position = _formatDuration(_position);
-      final duration = _formatDuration(_duration);
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Row(
@@ -195,7 +186,7 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
             IconButton(
               iconSize: 48,
               icon: Icon(
-                _isPlaying
+                isPlaying
                     ? Icons.pause_circle_filled
                     : Icons.play_circle_filled,
                 color: Colors.green,
@@ -216,8 +207,8 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
                       trackHeight: 4,
                     ),
                     child: Slider(
-                      value: _position.inMilliseconds.toDouble(),
-                      max: _duration.inMilliseconds.toDouble().clamp(
+                      value: position.inMilliseconds.toDouble(),
+                      max: duration.inMilliseconds.toDouble().clamp(
                         1,
                         double.infinity,
                       ),
@@ -234,14 +225,14 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          position,
+                          _formatDuration(position),
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.grey[500],
                           ),
                         ),
                         Text(
-                          duration,
+                          _formatDuration(duration),
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.grey[500],
@@ -258,10 +249,48 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
       );
     }
 
-    // Video player - full view with built-in controls
-    return Video(
-      controller: _videoController,
-      // Built-in controls are used by default
+    // Video player - full view with controls
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        AspectRatio(
+          aspectRatio: value.aspectRatio > 0 ? value.aspectRatio : 16 / 9,
+          child: VideoPlayer(controller),
+        ),
+        // Play/Pause overlay
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: _togglePlayPause,
+            child: AnimatedOpacity(
+              opacity: isPlaying ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 200),
+              child: const ColoredBox(
+                color: Colors.black26,
+                child: Icon(
+                  Icons.play_circle_outline,
+                  size: 64,
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Progress bar at bottom
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: VideoProgressIndicator(
+            controller,
+            allowScrubbing: true,
+            colors: const VideoProgressColors(
+              playedColor: Colors.green,
+              bufferedColor: Colors.white24,
+              backgroundColor: Colors.white10,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

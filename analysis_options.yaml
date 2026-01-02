@@ -19,6 +19,9 @@ analyzer:
 
 linter:
   rules:
+    # Pubspec - allow unsorted dependencies
+    sort_pub_dependencies: false
+
     # Documentation - disabled
     public_member_api_docs: false
 

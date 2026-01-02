@@ -15,6 +15,7 @@ import 'package:swaloka_looping_tool/features/video_merger/presentation/state/pr
 import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/drop_zone_widget.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/media_preview_player.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/merge_progress_dialog.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/settings_dialog.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Supported file extensions
@@ -446,19 +447,12 @@ class VideoEditorPage extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.info_outline,
-                  size: 16,
-                  color: Colors.blue[300],
-                ),
+                Icon(Icons.info_outline, size: 16, color: Colors.blue[300]),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Adding an intro video will increase processing time',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.blue[200],
-                    ),
+                    style: TextStyle(fontSize: 11, color: Colors.blue[200]),
                   ),
                 ),
               ],
@@ -498,9 +492,7 @@ class VideoEditorPage extends ConsumerWidget {
                 onSelectionChanged: (Set<IntroAudioMode> newSelection) {
                   ref
                       .read(activeProjectProvider.notifier)
-                      .updateSettings(
-                        introAudioMode: newSelection.first,
-                      );
+                      .updateSettings(introAudioMode: newSelection.first);
                 },
                 style: ButtonStyle(
                   visualDensity: VisualDensity.compact,
@@ -1047,10 +1039,7 @@ class VideoEditorPage extends ConsumerWidget {
               ),
               SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  'Processing...',
-                  style: TextStyle(fontSize: 12),
-                ),
+                child: Text('Processing...', style: TextStyle(fontSize: 12)),
               ),
             ],
           ),
@@ -1100,16 +1089,29 @@ class VideoEditorPage extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          TextButton.icon(
-            onPressed: () => _showDonateDialog(context),
-            icon: const Icon(Icons.favorite, size: 14, color: Colors.redAccent),
-            label: const Text(
-              'Support Development',
-              style: TextStyle(fontSize: 11, color: Colors.white70),
-            ),
-            style: TextButton.styleFrom(
-              minimumSize: const Size(double.infinity, 36),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton.icon(
+                  onPressed: () => _showDonateDialog(context),
+                  icon: const Icon(
+                    Icons.favorite,
+                    size: 14,
+                    color: Colors.redAccent,
+                  ),
+                  label: const Text(
+                    'Support',
+                    style: TextStyle(fontSize: 11, color: Colors.white70),
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () => showSettingsDialog(context),
+                icon: const Icon(Icons.settings, size: 18),
+                tooltip: 'Settings',
+                style: IconButton.styleFrom(foregroundColor: Colors.grey),
+              ),
+            ],
           ),
           const SizedBox(height: 4),
           Text(

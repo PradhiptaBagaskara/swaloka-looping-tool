@@ -1,0 +1,115 @@
+name: Build Windows
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: 'Name for the artifact'
+        required: true
+        type: string
+      version:
+        description: 'Version string for the installer name'
+        required: true
+        type: string
+      set-pr-version:
+        description: 'Whether to set PR version in pubspec.yaml'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set PR version in pubspec.yaml
+        if: ${{ inputs.set-pr-version }}
+        run: |
+          $VERSION = "${{ inputs.version }}"
+          $content = Get-Content pubspec.yaml -Raw
+          $content = $content -replace "^version: .*", "version: $VERSION"
+          Set-Content pubspec.yaml $content
+          Write-Host "✅ Updated version to $VERSION"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
+
+      - name: Build Windows app
+        run: flutter build windows --release
+
+      - name: Create self-signed certificate and sign executables
+        run: |
+          # Find signtool.exe dynamically
+          $signtoolPath = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object -Descending | Select-Object -First 1
+          if (-not $signtoolPath) {
+            Write-Host "⚠️ signtool.exe not found, skipping code signing"
+            exit 0
+          }
+          Write-Host "✅ Found signtool at: $($signtoolPath.FullName)"
+
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=Swaloka, O=Swaloka, C=ID" -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddYears(2)
+
+          $certPath = "certificate.pfx"
+          $certPassword = ConvertTo-SecureString -String "tempPassword123" -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath $certPath -Password $certPassword
+
+          Write-Host "✅ Created self-signed certificate"
+
+          $exePath = "build\windows\x64\runner\Release\swaloka_looping_tool.exe"
+          & $signtoolPath.FullName sign /f $certPath /p "tempPassword123" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $exePath
+
+          Write-Host "✅ Signed main executable"
+
+          Get-ChildItem -Path "build\windows\x64\runner\Release\*.dll" | ForEach-Object {
+              & $signtoolPath.FullName sign /f $certPath /p "tempPassword123" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $_.FullName
+          }
+
+          Write-Host "✅ Signed DLL files"
+
+          # Store signtool path for later steps
+          echo "SIGNTOOL_PATH=$($signtoolPath.FullName)" >> $env:GITHUB_ENV
+
+      - name: Download VC++ Redistributable
+        run: |
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "windows/vc_redist.x64.exe"
+          Write-Host "✅ Downloaded VC++ Redistributable"
+
+      - name: Create EXE installer
+        run: |
+          $VERSION = "${{ inputs.version }}"
+
+          $issContent = Get-Content "windows/installer_script.iss" -Raw
+          $issContent = $issContent -replace "AppVersion=.*", "AppVersion=$VERSION"
+          $issContent = $issContent -replace "OutputBaseFilename=.*", "OutputBaseFilename=Swaloka-Looping-Tool-$VERSION-windows-installer"
+          Set-Content "windows/installer_script.iss" $issContent
+
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "windows\installer_script.iss"
+          Move-Item "Swaloka-Looping-Tool-$VERSION-windows-installer.exe" "build/"
+
+          # Sign the installer using signtool path from previous step
+          if ($env:SIGNTOOL_PATH) {
+            $installerPath = "build\Swaloka-Looping-Tool-$VERSION-windows-installer.exe"
+            & $env:SIGNTOOL_PATH sign /f certificate.pfx /p "tempPassword123" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $installerPath
+            Write-Host "✅ Signed installer"
+          } else {
+            Write-Host "⚠️ Skipping installer signing (signtool not available)"
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: build/Swaloka-Looping-Tool-*-windows-installer.exe
+          retention-days: 7

@@ -178,8 +178,11 @@ brew install ffmpeg
 2. Installer checks if FFmpeg is installed
 3. If not found, you'll be prompted: "Do you want to install FFmpeg now?"
 4. Click **Yes**
-5. Installer downloads and installs FFmpeg automatically
-6. Done! ✨
+5. A PowerShell window opens showing download progress (2-3 minutes)
+6. Wait for "Press any key to continue..." message
+7. Press any key to close the window
+8. Installation continues
+9. Done! ✨
 
 **Option 2: Using Package Manager**
 
@@ -199,11 +202,14 @@ winget install Gyan.FFmpeg
 If you skipped FFmpeg during installation:
 1. Navigate to Swaloka installation folder (usually `C:\Program Files\Swaloka Looping Tool`)
 2. Right-click `setup_ffmpeg.bat` → "Run as administrator"
-3. Follow the prompts
+3. You'll see the download progress in the command window
+4. Wait for completion
 
 **Troubleshooting Windows:**
 - Installer requires administrator privileges for FFmpeg installation
-- After any installation method, FFmpeg is added to System PATH automatically
+- The download may take 2-3 minutes depending on your internet speed
+- If the PowerShell window appears frozen, it's likely downloading - be patient!
+- After installation, FFmpeg is added to System PATH automatically
 - The app also checks common FFmpeg paths automatically
 
 #### **Linux:**

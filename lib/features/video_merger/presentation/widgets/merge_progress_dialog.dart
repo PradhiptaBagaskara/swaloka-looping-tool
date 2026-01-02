@@ -266,9 +266,7 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                   border: Border.all(color: const Color(0xFF333333)),
                 ),
                 child: Center(
-                  child: MediaPreviewPlayer(
-                    path: processingState.outputPath!,
-                  ),
+                  child: MediaPreviewPlayer(path: processingState.outputPath!),
                 ),
               ),
               const SizedBox(height: 24),

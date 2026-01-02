@@ -14,11 +14,8 @@ class ProcessingState {
     this.outputLoopCounts = const {},
   });
 
-  factory ProcessingState.idle() => ProcessingState(
-    isProcessing: false,
-    progress: 0,
-    logs: [],
-  );
+  factory ProcessingState.idle() =>
+      ProcessingState(isProcessing: false, progress: 0, logs: []);
   final bool isProcessing;
   final double progress;
   final List<LogEntry> logs;

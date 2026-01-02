@@ -2,11 +2,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:swaloka_looping_tool/core/services/app_logger.dart';
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/state/settings_notifier.dart';
 
 /// State notifier to track FFmpeg status with auto-check on startup
 class FFmpegStatusNotifier extends Notifier<bool?> {
   @override
   bool? build() {
+    // Watch settings to apply custom FFmpeg path before checking
+    ref.watch(settingsProvider);
+
     // Auto-check FFmpeg on startup (async, non-blocking)
     Future.microtask(checkFFmpeg);
     return null; // null = checking, true = available, false = not available

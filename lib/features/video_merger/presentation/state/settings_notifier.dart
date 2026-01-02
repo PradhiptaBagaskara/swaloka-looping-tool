@@ -1,0 +1,92 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:swaloka_looping_tool/core/services/app_logger.dart';
+import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
+
+/// Keys for settings stored in SharedPreferences
+class SettingsKeys {
+  static const String ffmpegPath = 'ffmpeg_path';
+}
+
+/// Settings state containing user preferences
+class SettingsState {
+  const SettingsState({this.customFfmpegPath});
+
+  /// Custom FFmpeg path set by user (null = auto-detect)
+  final String? customFfmpegPath;
+
+  /// Whether user has set a custom FFmpeg path
+  bool get hasCustomFfmpegPath =>
+      customFfmpegPath != null && customFfmpegPath!.isNotEmpty;
+
+  SettingsState copyWith({
+    String? customFfmpegPath,
+    bool clearFfmpegPath = false,
+  }) {
+    return SettingsState(
+      customFfmpegPath: clearFfmpegPath
+          ? null
+          : customFfmpegPath ?? this.customFfmpegPath,
+    );
+  }
+}
+
+/// Notifier for managing app settings
+class SettingsNotifier extends AsyncNotifier<SettingsState> {
+  @override
+  Future<SettingsState> build() async {
+    return _loadSettings();
+  }
+
+  Future<SettingsState> _loadSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ffmpegPath = prefs.getString(SettingsKeys.ffmpegPath);
+
+      // If custom path is set, apply it to FFmpegService
+      if (ffmpegPath != null && ffmpegPath.isNotEmpty) {
+        FFmpegService.setCustomPath(ffmpegPath);
+        log.i('⚙️ Loaded custom FFmpeg path: $ffmpegPath');
+      }
+
+      return SettingsState(customFfmpegPath: ffmpegPath);
+    } on Exception catch (e) {
+      log.e('Failed to load settings', error: e);
+      return const SettingsState();
+    }
+  }
+
+  /// Set custom FFmpeg path
+  Future<void> setFfmpegPath(String? path) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      if (path == null || path.isEmpty) {
+        // Clear custom path, revert to auto-detect
+        await prefs.remove(SettingsKeys.ffmpegPath);
+        FFmpegService.clearCustomPath();
+        log.i('⚙️ Cleared custom FFmpeg path, using auto-detect');
+        state = AsyncData(state.value!.copyWith(clearFfmpegPath: true));
+      } else {
+        // Set custom path
+        await prefs.setString(SettingsKeys.ffmpegPath, path);
+        FFmpegService.setCustomPath(path);
+        log.i('⚙️ Set custom FFmpeg path: $path');
+        state = AsyncData(state.value!.copyWith(customFfmpegPath: path));
+      }
+    } on Exception catch (e) {
+      log.e('Failed to save FFmpeg path', error: e);
+      rethrow;
+    }
+  }
+
+  /// Validate a FFmpeg path by checking if it exists and is executable
+  Future<bool> validateFfmpegPath(String path) async {
+    return FFmpegService.validatePath(path);
+  }
+}
+
+/// Provider for app settings
+final settingsProvider = AsyncNotifierProvider<SettingsNotifier, SettingsState>(
+  SettingsNotifier.new,
+);
