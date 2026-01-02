@@ -224,19 +224,19 @@ jobs:
 
     steps:
       - name: Download macOS ZIP
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: macos-zip
           path: ./artifacts
 
       - name: Download Windows installer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: windows-installer
           path: ./artifacts
 
       - name: Download Linux archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: linux-archive
           path: ./artifacts
