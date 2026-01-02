@@ -31,6 +31,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          cache: true
 
       - name: Install dependencies
         if: ${{ !startsWith(github.head_ref, 'release-please') }}
@@ -42,4 +43,4 @@ jobs:
 
       - name: Analyze code
         if: ${{ !startsWith(github.head_ref, 'release-please') }}
-        run: flutter analyze
+        run: flutter analyze --no-pub
