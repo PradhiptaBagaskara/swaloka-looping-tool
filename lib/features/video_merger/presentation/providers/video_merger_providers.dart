@@ -17,29 +17,29 @@ final videoMergerServiceProvider = Provider<VideoMergerService>(
 /// Provider for active project state
 final activeProjectProvider =
     NotifierProvider<ActiveProjectNotifier, SwalokaProject?>(
-  () => ActiveProjectNotifier(),
-);
+      () => ActiveProjectNotifier(),
+    );
 
 /// Provider for project files list
 final projectFilesProvider =
     NotifierProvider<ProjectFilesNotifier, List<FileSystemEntity>>(
-  () => ProjectFilesNotifier(),
-);
+      () => ProjectFilesNotifier(),
+    );
 
 /// Provider for processing state
 final processingStateProvider =
     NotifierProvider<ProcessingStateNotifier, ProcessingState>(
-  () => ProcessingStateNotifier(),
-);
+      () => ProcessingStateNotifier(),
+    );
 
 /// Provider for collapsed sections
 final collapsedSectionsProvider =
     NotifierProvider<CollapsedSectionsNotifier, Set<String>>(
-  () => CollapsedSectionsNotifier(),
-);
+      () => CollapsedSectionsNotifier(),
+    );
 
 /// Provider for recent projects
 final recentProjectsProvider =
     NotifierProvider<RecentProjectsNotifier, List<String>>(
-  () => RecentProjectsNotifier(),
-);
+      () => RecentProjectsNotifier(),
+    );

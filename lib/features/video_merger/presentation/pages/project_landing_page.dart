@@ -119,19 +119,21 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
 
                   const SizedBox(height: 64),
                   // Version info
-                  ref.watch(appVersionProvider).when(
-                    data: (version) => Text(
-                      version,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey[700],
-                        letterSpacing: 1,
-                        fontWeight: FontWeight.w500,
+                  ref
+                      .watch(appVersionProvider)
+                      .when(
+                        data: (version) => Text(
+                          version,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey[700],
+                            letterSpacing: 1,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, _) => const SizedBox.shrink(),
                       ),
-                    ),
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, __) => const SizedBox.shrink(),
-                  ),
                 ],
               ),
             ),

@@ -23,7 +23,6 @@ class VideoMergerPage extends ConsumerWidget {
       return const ProjectLandingPage();
     }
 
-
     // Project loaded -> show editor
     return VideoEditorPage(project: project);
   }

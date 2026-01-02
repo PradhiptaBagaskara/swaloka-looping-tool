@@ -148,7 +148,11 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, size: 24, color: Colors.redAccent),
+              const Icon(
+                Icons.error_outline,
+                size: 24,
+                color: Colors.redAccent,
+              ),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(

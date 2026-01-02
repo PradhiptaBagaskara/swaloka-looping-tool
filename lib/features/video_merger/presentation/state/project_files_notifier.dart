@@ -14,7 +14,8 @@ class ProjectFilesNotifier extends Notifier<List<FileSystemEntity>> {
 
     final outputsDir = Directory(effectiveOutputPath);
     if (outputsDir.existsSync()) {
-      state = outputsDir
+      state =
+          outputsDir
               .listSync()
               .where((file) => file.path.endsWith('.mp4'))
               .toList()

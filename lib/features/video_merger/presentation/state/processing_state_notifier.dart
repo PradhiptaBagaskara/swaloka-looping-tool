@@ -24,20 +24,20 @@ class ProcessingStateNotifier extends Notifier<ProcessingState> {
   }
 
   void setSuccess(String outputPath) => state = ProcessingState(
-        isProcessing: false,
-        progress: 1.0,
-        outputPath: outputPath,
-        logs: state.logs,
-        startTime: state.startTime,
-      );
+    isProcessing: false,
+    progress: 1.0,
+    outputPath: outputPath,
+    logs: state.logs,
+    startTime: state.startTime,
+  );
 
   void setError(String error) => state = ProcessingState(
-        isProcessing: false,
-        progress: 0.0,
-        error: error,
-        logs: [...state.logs, LogEntry.error('ERROR: $error')],
-        startTime: state.startTime,
-      );
+    isProcessing: false,
+    progress: 0.0,
+    error: error,
+    logs: [...state.logs, LogEntry.error('ERROR: $error')],
+    startTime: state.startTime,
+  );
 
   void reset() => state = ProcessingState.idle();
 }

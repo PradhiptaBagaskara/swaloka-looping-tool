@@ -8,7 +8,8 @@ class ProcessingState {
   final String? error;
   final String? outputPath;
   final DateTime? startTime;
-  final Map<String, int> outputLoopCounts; // Track loop count for each output file
+  final Map<String, int>
+  outputLoopCounts; // Track loop count for each output file
 
   ProcessingState({
     required this.isProcessing,
@@ -21,11 +22,11 @@ class ProcessingState {
   });
 
   factory ProcessingState.idle() => ProcessingState(
-        isProcessing: false,
-        progress: 0.0,
-        logs: [],
-        outputLoopCounts: const {},
-      );
+    isProcessing: false,
+    progress: 0.0,
+    logs: [],
+    outputLoopCounts: const {},
+  );
 
   ProcessingState copyWith({
     bool? isProcessing,

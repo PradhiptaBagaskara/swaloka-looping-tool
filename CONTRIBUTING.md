@@ -57,6 +57,14 @@ Then open a Pull Request on GitHub.
 flutter pub get
 ```
 
+### Setup Git Hooks
+
+This enables automatic formatting and analysis checks before each commit:
+
+```bash
+dart run tool/setup_hooks.dart
+```
+
 ### Run the App
 
 ```bash

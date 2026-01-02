@@ -172,7 +172,11 @@ class FFmpegErrorPage extends ConsumerWidget {
                       children: [
                         const Row(
                           children: [
-                            Icon(Icons.code, color: Colors.deepPurple, size: 20),
+                            Icon(
+                              Icons.code,
+                              color: Colors.deepPurple,
+                              size: 20,
+                            ),
                             SizedBox(width: 8),
                             Text(
                               'Installation Instructions',

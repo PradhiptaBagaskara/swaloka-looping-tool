@@ -19,7 +19,9 @@ class SystemInfoService {
   /// - For light workloads: 50% of CPU cores
   /// - For balanced workloads: 75% of CPU cores
   /// - For heavy workloads: 100% of CPU cores (or cores - 1)
-  static int getRecommendedConcurrency({ConcurrentWorkload workload = ConcurrentWorkload.balanced}) {
+  static int getRecommendedConcurrency({
+    ConcurrentWorkload workload = ConcurrentWorkload.balanced,
+  }) {
     final cores = cpuCores;
 
     switch (workload) {

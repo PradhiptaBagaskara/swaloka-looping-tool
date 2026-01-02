@@ -11,7 +11,8 @@ class MergeProgressDialog extends ConsumerStatefulWidget {
   const MergeProgressDialog({super.key});
 
   @override
-  ConsumerState<MergeProgressDialog> createState() => _MergeProgressDialogState();
+  ConsumerState<MergeProgressDialog> createState() =>
+      _MergeProgressDialogState();
 }
 
 class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
@@ -95,26 +96,35 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     else if (processingState.error != null)
-                      const Icon(Icons.error_outline,
-                          color: Colors.redAccent, size: 20)
+                      const Icon(
+                        Icons.error_outline,
+                        color: Colors.redAccent,
+                        size: 20,
+                      )
                     else
-                      const Icon(Icons.check_circle_outline,
-                          color: Colors.greenAccent, size: 20),
+                      const Icon(
+                        Icons.check_circle_outline,
+                        color: Colors.greenAccent,
+                        size: 20,
+                      ),
                     const SizedBox(width: 16),
                     Text(
                       processingState.isProcessing
                           ? 'Generating Video Output...'
                           : processingState.error != null
-                              ? 'Export Failed'
-                              : 'Export Successful!',
+                          ? 'Export Failed'
+                          : 'Export Successful!',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black26,
                     borderRadius: BorderRadius.circular(4),
@@ -122,7 +132,11 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.timer_outlined, size: 14, color: Colors.grey),
+                      const Icon(
+                        Icons.timer_outlined,
+                        size: 14,
+                        color: Colors.grey,
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         _formatDuration(_elapsed),
