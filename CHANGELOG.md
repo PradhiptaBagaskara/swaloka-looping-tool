@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
 ### 🎨 Improvements
 
 #### Enhanced Video Playback
@@ -283,6 +284,13 @@ lib/features/video_merger/
 
 
 
+
+
+## [3.7.0] - 2026-01-02
+
+### Changes
+- refactor: improve FFmpeg command execution and enhance video merger service with absolute paths (537d5c1)
+- feat: integrate MediaKit for enhanced video playback and remove legacy video player dependencies (e00113c)
 
 ## [3.6.0] - 2026-01-01
 
