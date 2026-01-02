@@ -15,35 +15,205 @@ class FFmpegErrorPage extends ConsumerWidget {
   String get _installationInstructions {
     if (Platform.isMacOS) {
       return 'Install FFmpeg using Homebrew:\n\n'
-          '```bash\n'
-          'brew install ffmpeg\n'
-          '```\n\n'
+          'brew install ffmpeg\n\n'
           'Or download from: https://evermeet.cx/ffmpeg/';
     } else if (Platform.isLinux) {
       return 'Install FFmpeg using your package manager:\n\n'
           'Ubuntu/Debian:\n'
-          '```bash\n'
-          'sudo apt update\n'
-          'sudo apt install ffmpeg\n'
-          '```\n\n'
+          'sudo apt update && sudo apt install ffmpeg\n\n'
           'Fedora:\n'
-          '```bash\n'
-          'sudo dnf install ffmpeg\n'
-          '```';
+          'sudo dnf install ffmpeg';
     } else if (Platform.isWindows) {
-      return 'Install FFmpeg using one of these methods:\n\n'
-          '1. Using Chocolatey:\n'
-          '```bash\n'
+      return 'Option 1: Use the automatic installer (recommended)\n'
+          'Click "Install FFmpeg" button below\n\n'
+          'Option 2: Package managers\n'
           'choco install ffmpeg\n'
-          '```\n\n'
-          '2. Using Scoop:\n'
-          '```bash\n'
-          'scoop install ffmpeg\n'
-          '```\n\n'
-          '3. Download from: https://www.gyan.dev/ffmpeg/builds/\n\n'
-          'After installation, make sure FFmpeg is added to your System PATH.';
+          'scoop install ffmpeg\n\n'
+          'Option 3: Manual download\n'
+          'https://www.gyan.dev/ffmpeg/builds/';
     }
     return 'Please install FFmpeg and add it to your system PATH.';
+  }
+
+  Future<void> _installFFmpegWindows(BuildContext context) async {
+    // Get the executable directory
+    final exePath = Platform.resolvedExecutable;
+    final exeDir = File(exePath).parent.path;
+    final installerPath = '$exeDir${Platform.pathSeparator}setup_ffmpeg.bat';
+
+    // Check if installer exists
+    if (!File(installerPath).existsSync()) {
+      if (context.mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            title: const Row(
+              children: [
+                Icon(Icons.error, color: Colors.red),
+                SizedBox(width: 8),
+                Text(
+                  'Installer Not Found',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+            content: Text(
+              'FFmpeg installer not found at:\n$installerPath\n\n'
+              'Please install FFmpeg manually using the instructions above.',
+              style: const TextStyle(color: Colors.grey),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text(
+                  'OK',
+                  style: TextStyle(color: Colors.deepPurple),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    if (context.mounted) {
+      // Show instructions dialog
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: const Row(
+            children: [
+              Icon(Icons.info, color: Colors.deepPurple),
+              SizedBox(width: 8),
+              Text(
+                'FFmpeg Installation',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This will run the FFmpeg installer which will:',
+                style: TextStyle(color: Colors.white),
+              ),
+              SizedBox(height: 12),
+              Text(
+                '• Download FFmpeg from gyan.dev\n'
+                '• Install to C:\\ffmpeg\n'
+                '• Add to System PATH\n'
+                '• Require administrator privileges',
+                style: TextStyle(color: Colors.grey, height: 1.5),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'A command prompt will open. Please grant administrator access when prompted.',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+              ),
+              child: const Text('Install FFmpeg'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+
+      // Run the installer
+      try {
+        await Process.start(
+          'cmd',
+          ['/c', 'start', 'cmd', '/k', installerPath],
+          mode: ProcessStartMode.detached,
+        );
+
+        if (context.mounted) {
+          await showDialog<void>(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E),
+              title: const Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green),
+                  SizedBox(width: 8),
+                  Text(
+                    'Installer Started',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+              content: const Text(
+                'The FFmpeg installer has been started in a new window.\n\n'
+                'Follow the prompts in the command window to complete installation.\n\n'
+                'After installation completes, click "Re-check Installation" below.',
+                style: TextStyle(color: Colors.grey, height: 1.5),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text(
+                    'OK',
+                    style: TextStyle(color: Colors.deepPurple),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+      } on Exception catch (e) {
+        if (context.mounted) {
+          await showDialog<void>(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E),
+              title: const Row(
+                children: [
+                  Icon(Icons.error, color: Colors.red),
+                  SizedBox(width: 8),
+                  Text(
+                    'Failed to Start Installer',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+              content: Text(
+                'Error: $e\n\n'
+                'Please run the installer manually:\n$installerPath',
+                style: const TextStyle(color: Colors.grey),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text(
+                    'OK',
+                    style: TextStyle(color: Colors.deepPurple),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    }
   }
 
   Future<void> _openDocumentation() async {
@@ -201,21 +371,32 @@ class FFmpegErrorPage extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _openDocumentation,
-                          icon: const Icon(Icons.open_in_new),
-                          label: const Text('Open FFmpeg Website'),
-                          style: ElevatedButton.styleFrom(
-                            minimumSize: const Size(double.infinity, 48),
-                            backgroundColor: Colors.deepPurple,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
+                  if (Platform.isWindows) ...[
+                    ElevatedButton.icon(
+                      onPressed: () => _installFFmpegWindows(context),
+                      icon: const Icon(Icons.download),
+                      label: const Text('Install FFmpeg Automatically'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
                       ),
-                    ],
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  OutlinedButton.icon(
+                    onPressed: _openDocumentation,
+                    icon: const Icon(Icons.open_in_new),
+                    label: Text(
+                      Platform.isWindows
+                          ? 'Manual Installation Guide'
+                          : 'Open FFmpeg Website',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                      foregroundColor: Colors.deepPurple,
+                      side: const BorderSide(color: Colors.deepPurple),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(

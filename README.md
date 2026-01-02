@@ -171,15 +171,40 @@ brew install ffmpeg
 ```
 
 #### **Windows:**
-```bash
+
+**Option 1: During Installation (Easiest)**
+
+1. Run the Windows installer
+2. Installer checks if FFmpeg is installed
+3. If not found, you'll be prompted: "Do you want to install FFmpeg now?"
+4. Click **Yes**
+5. Installer downloads and installs FFmpeg automatically
+6. Done! ✨
+
+**Option 2: Using Package Manager**
+
+```powershell
 # Using Chocolatey
 choco install ffmpeg
 
 # Using Scoop
 scoop install ffmpeg
 
-# Or download from https://www.gyan.dev/ffmpeg/builds/
+# Using winget (Windows 11)
+winget install Gyan.FFmpeg
 ```
+
+**Option 3: Post-Installation Script**
+
+If you skipped FFmpeg during installation:
+1. Navigate to Swaloka installation folder (usually `C:\Program Files\Swaloka Looping Tool`)
+2. Right-click `setup_ffmpeg.bat` → "Run as administrator"
+3. Follow the prompts
+
+**Troubleshooting Windows:**
+- Installer requires administrator privileges for FFmpeg installation
+- After any installation method, FFmpeg is added to System PATH automatically
+- The app also checks common FFmpeg paths automatically
 
 #### **Linux:**
 ```bash
@@ -400,11 +425,27 @@ macOS security blocks unsigned apps by default. Here's how to open it:
 ### FFmpeg Not Found
 **Error:** "FFmpeg is not installed"
 
-**Solution:**
+**Solutions:**
+
+**Windows:**
+1. Run the automatic installer: `setup_ffmpeg.bat` (in Swaloka installation folder)
+2. Or install via package manager (see Installation section)
+3. **Important:** After installing, restart your terminal or Command Prompt
+4. Verify installation: Open new Command Prompt and run `ffmpeg -version`
+5. If still not working, restart your computer (PATH changes require restart)
+6. Click "Re-check Installation" in the Swaloka app
+
+**macOS/Linux:**
 1. Install FFmpeg (see Installation section)
 2. Restart your terminal/shell
-3. Click "Re-check Installation" in the app
-4. If still not working, restart the app
+3. Verify: Run `ffmpeg -version` in terminal
+4. Click "Re-check Installation" in the app
+5. If still not working, restart the app
+
+**Common Issues:**
+- **Windows:** FFmpeg in PATH but not detected? Restart computer to apply PATH changes
+- **Windows:** Make sure you added `C:\ffmpeg\bin` to PATH, not just `C:\ffmpeg`
+- **All platforms:** The app checks common install locations automatically, so even if PATH is not set, it might still work
 
 ### Processing Stuck or Slow
 **Issue:** Video processing takes too long
