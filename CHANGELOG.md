@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.7.1](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/v3.7.0...v3.7.1) (2026-01-02)
+
+
+### Bug Fixes
+
+* add AppImage creation to Linux release workflow and install additional dependencies ([76a8062](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/76a8062dbdd0c603c3dfdc2b34d8ea1a92838a85))
+* linux build and ci improvement ([#3](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/3)) ([8d98653](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/8d986531a0b334e8950f9a37b8eb23eb31322e88))
+* release-pls token ([#6](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/6)) ([ad7fb65](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/ad7fb652d92e3ed44066451dec50c5a42e74fa78))
+* update CI workflows and .gitignore for better platform support ([#5](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/5)) ([dacdfb9](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/dacdfb9db785029c426562d252de19bd5a83038c))
+
 ## [3.7.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/v3.6.0...v3.7.0) (2026-01-02)
 
 
