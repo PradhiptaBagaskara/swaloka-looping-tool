@@ -12,6 +12,7 @@ class ProcessingState {
     this.outputPath,
     this.startTime,
     this.outputLoopCounts = const {},
+    this.outputDuration,
   });
 
   factory ProcessingState.idle() =>
@@ -23,6 +24,7 @@ class ProcessingState {
   final String? outputPath;
   final DateTime? startTime;
   final Map<String, int> outputLoopCounts;
+  final Duration? outputDuration;
 
   ProcessingState copyWith({
     bool? isProcessing,
@@ -31,6 +33,7 @@ class ProcessingState {
     String? error,
     String? outputPath,
     DateTime? startTime,
+    Duration? outputDuration,
   }) {
     return ProcessingState(
       isProcessing: isProcessing ?? this.isProcessing,
@@ -39,6 +42,7 @@ class ProcessingState {
       error: error ?? this.error,
       outputPath: outputPath ?? this.outputPath,
       startTime: startTime ?? this.startTime,
+      outputDuration: outputDuration ?? this.outputDuration,
     );
   }
 }
