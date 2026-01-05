@@ -23,13 +23,19 @@ class ProcessingStateNotifier extends Notifier<ProcessingState> {
     state = state.copyWith(isProcessing: true, logs: [...state.logs, log]);
   }
 
-  void setSuccess(String outputPath) => state = ProcessingState(
-    isProcessing: false,
-    progress: 1,
-    outputPath: outputPath,
-    logs: state.logs,
-    startTime: state.startTime,
-  );
+  void setSuccess(String outputPath) {
+    state = ProcessingState(
+      isProcessing: false,
+      progress: 1,
+      outputPath: outputPath,
+      logs: state.logs,
+      startTime: state.startTime,
+    );
+  }
+
+  void setOutputDuration(Duration duration) {
+    state = state.copyWith(outputDuration: duration);
+  }
 
   void setError(String error) => state = ProcessingState(
     isProcessing: false,

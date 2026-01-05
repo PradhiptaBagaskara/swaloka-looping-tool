@@ -10,6 +10,7 @@ class VideoMetadata {
     required this.height,
     required this.fps,
     required this.pixFmt,
+    required this.duration,
   });
 
   final String? codec;
@@ -17,6 +18,7 @@ class VideoMetadata {
   final int? height;
   final String? fps;
   final String? pixFmt;
+  final Duration? duration;
 }
 
 /// Service for handling FFmpeg operations
@@ -197,6 +199,7 @@ class FFmpegService {
         'quiet',
         '-print_format',
         'json',
+        '-show_format',
         '-show_streams',
         '-select_streams',
         'v:0',
@@ -248,12 +251,27 @@ class FFmpegService {
         ).firstMatch(jsonStr);
         final pixFmt = pixFmtMatch?.group(1);
 
+        // Parse duration from format section
+        final durationMatch = RegExp(
+          r'"duration":\s*"([^"]+)"',
+        ).firstMatch(jsonStr);
+        Duration? duration;
+        if (durationMatch != null) {
+          final durationSeconds = double.tryParse(durationMatch.group(1)!);
+          if (durationSeconds != null) {
+            duration = Duration(
+              microseconds: (durationSeconds * 1000000).round(),
+            );
+          }
+        }
+
         final metadata = VideoMetadata(
           codec: codec,
           width: width,
           height: height,
           fps: fps,
           pixFmt: pixFmt,
+          duration: duration,
         );
 
         // Cache the result
@@ -269,6 +287,7 @@ class FFmpegService {
       height: null,
       fps: null,
       pixFmt: null,
+      duration: null,
     );
     _metadataCache[filePath] = emptyMetadata;
     return emptyMetadata;

@@ -9,9 +9,11 @@ class MediaPreviewPlayer extends StatefulWidget {
     required this.path,
     super.key,
     this.isVideo = true,
+    this.onDurationAvailable,
   });
   final String path;
   final bool isVideo;
+  final void Function(Duration duration)? onDurationAvailable;
 
   @override
   State<MediaPreviewPlayer> createState() => _MediaPreviewPlayerState();
@@ -59,6 +61,11 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
               setState(() {
                 _initialized = true;
               });
+              // Notify duration when available
+              final duration = controller.value.duration;
+              if (duration > Duration.zero) {
+                widget.onDurationAvailable?.call(duration);
+              }
               // Auto-play when preview opens (skip on Linux - not supported)
               if (!Platform.isLinux) {
                 controller
@@ -275,19 +282,66 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
             ),
           ),
         ),
-        // Progress bar at bottom
+        // Progress bar and duration at bottom
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
-          child: VideoProgressIndicator(
-            controller,
-            allowScrubbing: true,
-            colors: const VideoProgressColors(
-              playedColor: Colors.green,
-              bufferedColor: Colors.white24,
-              backgroundColor: Colors.white10,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              VideoProgressIndicator(
+                controller,
+                allowScrubbing: true,
+                colors: const VideoProgressColors(
+                  playedColor: Colors.green,
+                  bufferedColor: Colors.white24,
+                  backgroundColor: Colors.white10,
+                ),
+              ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black87, Colors.transparent],
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _formatDuration(position),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.white,
+                        fontFamily: 'monospace',
+                        shadows: [
+                          Shadow(
+                            blurRadius: 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      _formatDuration(duration),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.white70,
+                        fontFamily: 'monospace',
+                        shadows: [
+                          Shadow(
+                            blurRadius: 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ],

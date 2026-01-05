@@ -79,6 +79,7 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 600,
+        constraints: const BoxConstraints(maxHeight: 700),
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -221,7 +222,7 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
             ),
             const SizedBox(height: 8),
             Container(
-              height: 250,
+              height: 220,
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -258,7 +259,7 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
               ),
               const SizedBox(height: 8),
               Container(
-                height: 180,
+                height: 160,
                 width: double.infinity,
                 decoration: BoxDecoration(
                   color: Colors.black,
@@ -266,7 +267,14 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                   border: Border.all(color: const Color(0xFF333333)),
                 ),
                 child: Center(
-                  child: MediaPreviewPlayer(path: processingState.outputPath!),
+                  child: MediaPreviewPlayer(
+                    path: processingState.outputPath!,
+                    onDurationAvailable: (duration) {
+                      ref
+                          .read(processingStateProvider.notifier)
+                          .setOutputDuration(duration);
+                    },
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
@@ -274,11 +282,43 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  processingState.isProcessing
-                      ? 'Please do not close the application'
-                      : 'You can now close this window',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        processingState.isProcessing
+                            ? 'Please do not close the application'
+                            : 'You can now close this window',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                      ),
+                      if (!processingState.isProcessing &&
+                          processingState.error == null &&
+                          processingState.outputDuration != null) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.access_time,
+                              size: 12,
+                              color: Colors.grey[600],
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Video Duration: ${_formatDuration(processingState.outputDuration!)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[500],
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
                 if (!processingState.isProcessing)
                   ElevatedButton(
