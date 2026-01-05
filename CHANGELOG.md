@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.1.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v4.0.0...swaloka_looping_tool-v4.1.0) (2026-01-05)
+
+
+### Features
+
+* **video-merger:** add duration handling to video metadata and processing state ([#30](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/30)) ([35b42c3](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/35b42c37207ee86e97af41f5d0d8b1a93e13de9f))
+
 ## [4.0.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v3.10.0...swaloka_looping_tool-v4.0.0) (2026-01-02)
 
 
