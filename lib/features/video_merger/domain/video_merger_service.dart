@@ -267,7 +267,7 @@ class VideoMergerService {
     return preparedIntroPath;
   }
 
-  /// Concatenate intro with main content
+  /// Concatenate intro with main content using stream copy (fast & lossless)
   Future<void> _concatIntroWithMain(
     String introPath,
     String mainPath,
@@ -286,9 +286,9 @@ class VideoMergerService {
     ].join('\n');
     await File(concatListPath).writeAsString(concatContent);
 
-    // Try stream copy first (fastest)
+    // Stream copy (fastest, but requires compatible formats)
+    log.addSubLog(LogEntry.info('Using stream copy for concatenation...'));
     try {
-      log.addSubLog(LogEntry.info('Attempting stream copy concatenation...'));
       await FFmpegService.run(
         [
           '-f',
@@ -307,40 +307,16 @@ class VideoMergerService {
         onLog: log.addSubLog,
       );
       log.addSubLog(LogEntry.success('Stream copy concatenation successful'));
-      return;
-    } on Exception catch (_) {
-      log.addSubLog(
-        LogEntry.warning(
-          'Stream copy failed (likely codec mismatch). Falling back to re-encode...',
-        ),
+    } on Exception catch (e) {
+      // Provide helpful error message
+      throw Exception(
+        'Failed to concatenate intro with main video. '
+        'Videos must have matching formats (codec, resolution, fps). '
+        'Tip: Use "Video Tools" to compress/re-encode your intro video '
+        "to match the main video's format before adding it here. "
+        'Original error: $e',
       );
     }
-
-    // Fallback: Re-encode (slower but more robust)
-    await FFmpegService.run(
-      [
-        '-i',
-        p.absolute(introPath),
-        '-i',
-        p.absolute(mainPath),
-        '-filter_complex',
-        '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]',
-        '-map',
-        '[v]',
-        '-map',
-        '[a]',
-        '-c:v',
-        'libx264', // Re-encode video to H.264
-        '-c:a',
-        'aac', // Re-encode audio to AAC
-        ...metadataFlags,
-        p.absolute(outputPath),
-        '-y',
-      ],
-      errorMessage: 'Re-encode concat failed',
-      onLog: log.addSubLog,
-    );
-    log.addSubLog(LogEntry.success('Re-encode concatenation successful'));
   }
 
   Future<String> processVideoWithAudio({

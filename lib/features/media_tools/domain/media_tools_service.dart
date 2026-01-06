@@ -562,6 +562,76 @@ class MediaToolsService {
     onLog?.call(LogEntry.success('Video compressed to $outputPath'));
   }
 
+  Future<void> reencodeVideo({
+    required String videoPath,
+    required String outputPath,
+    required int width,
+    required int height,
+    required int fps,
+    required String preset,
+    required bool keepAudio,
+    String? hwEncoder, // Optional HW Encoder
+    void Function(LogEntry)? onLog,
+  }) async {
+    final log = LogEntry.info('Re-encoding video ${p.basename(videoPath)}...');
+    onLog?.call(log);
+
+    log.addSubLog(
+      LogEntry.info(
+        'Target format: ${width}x$height @ ${fps}fps',
+      ),
+    );
+
+    // Build filter: scale to exact resolution, set fps, normalize pixel format
+    final filter =
+        'scale=$width:$height:force_original_aspect_ratio=decrease,'
+        'pad=$width:$height:(ow-iw)/2:(oh-ih)/2,'
+        'fps=$fps,'
+        'format=yuv420p,'
+        'setsar=1';
+
+    final cmd = [
+      '-y',
+      '-i',
+      videoPath,
+      '-vf',
+      filter,
+    ];
+
+    // Add Video Encoder settings (use CRF 23 for quality)
+    const crf = 23;
+    if (hwEncoder != null && hwEncoder.isNotEmpty && hwEncoder != 'libx264') {
+      cmd.addAll(['-c:v', hwEncoder]);
+      cmd.addAll(_getHwEncoderArgs(hwEncoder, crf, preset));
+    } else {
+      cmd.addAll([
+        '-c:v',
+        'libx264',
+        '-crf',
+        crf.toString(),
+        '-preset',
+        preset,
+      ]);
+    }
+
+    // Audio handling
+    if (keepAudio) {
+      cmd.addAll(['-c:a', 'aac', '-b:a', '192k']); // Re-encode audio to AAC
+    } else {
+      cmd.add('-an'); // Remove audio
+    }
+
+    cmd.add(outputPath);
+
+    await FFmpegService.run(
+      cmd,
+      errorMessage: 'Failed to re-encode video',
+      onLog: log.addSubLog,
+    );
+
+    onLog?.call(LogEntry.success('Video re-encoded to $outputPath'));
+  }
+
   List<String> _getHwEncoderArgs(String encoder, int crf, String preset) {
     // Map standard CRF (0-51, lower=better) and Preset to HW specific args
 

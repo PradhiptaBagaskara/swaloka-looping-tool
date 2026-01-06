@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/features/media_tools/presentation/providers/media_tools_providers.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
 import 'package:swaloka_looping_tool/widgets/widgets.dart';
@@ -39,16 +40,34 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   bool _useHwAccel = false;
   String _hwAccelEncoder = 'libx264'; // Will be updated in initState
 
+  // Re-encode Video State
+  String? _reencodeVideoPath;
+  int _reencodeWidth = 1920;
+  int _reencodeHeight = 1080;
+  int _reencodeFps = 30;
+  String _reencodePreset = 'veryfast';
+  bool _reencodeKeepAudio = true;
+  bool _reencodeUseHwAccel = false;
+  String _reencodeHwEncoder = 'libx264';
+  String? _reencodeReferenceVideoName;
+
+  // Video Info State
+  String? _infoVideoPath;
+  Map<String, dynamic>? _videoInfo;
+
   @override
   void initState() {
     super.initState();
     // Set default HW encoder based on Platform
     if (Platform.isMacOS) {
       _hwAccelEncoder = 'h264_videotoolbox';
+      _reencodeHwEncoder = 'h264_videotoolbox';
     } else if (Platform.isWindows) {
       _hwAccelEncoder = 'h264_nvenc';
+      _reencodeHwEncoder = 'h264_nvenc';
     } else if (Platform.isLinux) {
       _hwAccelEncoder = 'h264_vaapi';
+      _reencodeHwEncoder = 'h264_vaapi';
     }
   }
 
@@ -164,6 +183,178 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       notifier.setSuccess(outputPath);
     } on Exception catch (e) {
       notifier.setError(e.toString());
+    }
+  }
+
+  Future<void> _pickReencodeVideo() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.video,
+      initialDirectory: widget.initialDirectory,
+    );
+    if (result != null && result.files.single.path != null) {
+      setState(() {
+        _reencodeVideoPath = result.files.single.path;
+      });
+    }
+  }
+
+  Future<void> _copyFormatFromVideo() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.video,
+      initialDirectory: widget.initialDirectory,
+    );
+
+    if (result != null && result.files.single.path != null) {
+      final videoPath = result.files.single.path!;
+
+      try {
+        // Show loading indicator
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Analyzing video format...'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        // Get video metadata
+        final metadata = await FFmpegService.getVideoMetadata(videoPath);
+
+        if (!mounted) return;
+
+        // Parse FPS (it's a string like "30" or "29.97")
+        var fps = 30;
+        if (metadata.fps != null) {
+          final fpsDouble = double.tryParse(metadata.fps!);
+          if (fpsDouble != null) {
+            fps = fpsDouble.round();
+            // Map to closest available FPS option
+            if (fps <= 24) {
+              fps = 24;
+            } else if (fps <= 25) {
+              fps = 25;
+            } else if (fps <= 30) {
+              fps = 30;
+            } else {
+              fps = 60;
+            }
+          }
+        }
+
+        setState(() {
+          if (metadata.width != null) _reencodeWidth = metadata.width!;
+          if (metadata.height != null) _reencodeHeight = metadata.height!;
+          _reencodeFps = fps;
+          _reencodeReferenceVideoName = p.basename(videoPath);
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Format copied: ${metadata.width}x${metadata.height} @ ${fps}fps',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } on Exception catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to analyze video: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _reencodeVideo() async {
+    if (_reencodeVideoPath == null) return;
+
+    final notifier = ref.read(processingStateProvider.notifier);
+    notifier.startProcessing();
+
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const MergeProgressDialog(),
+      ),
+    );
+
+    try {
+      final outputsDir = await _ensureOutputsDir();
+      final name = p.basenameWithoutExtension(_reencodeVideoPath!);
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final outputPath = p.join(
+        outputsDir,
+        '${name}_reencoded_${_reencodeWidth}x${_reencodeHeight}_${_reencodeFps}fps_$timestamp.mp4',
+      );
+
+      await ref
+          .read(mediaToolsServiceProvider)
+          .reencodeVideo(
+            videoPath: _reencodeVideoPath!,
+            outputPath: outputPath,
+            width: _reencodeWidth,
+            height: _reencodeHeight,
+            fps: _reencodeFps,
+            preset: _reencodePreset,
+            keepAudio: _reencodeKeepAudio,
+            hwEncoder: _reencodeUseHwAccel ? _reencodeHwEncoder : null,
+            onLog: notifier.addLog,
+          );
+
+      notifier.setSuccess(outputPath);
+    } on Exception catch (e) {
+      notifier.setError(e.toString());
+    }
+  }
+
+  Future<void> _pickInfoVideo() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.video,
+      initialDirectory: widget.initialDirectory,
+    );
+    if (result != null && result.files.single.path != null) {
+      setState(() {
+        _infoVideoPath = result.files.single.path;
+        _videoInfo = null; // Reset info when new video selected
+      });
+      await _extractVideoInfo();
+    }
+  }
+
+  Future<void> _extractVideoInfo() async {
+    if (_infoVideoPath == null) return;
+
+    try {
+      final metadata = await FFmpegService.getVideoMetadata(_infoVideoPath!);
+      final fileInfo = await File(_infoVideoPath!).stat();
+
+      setState(() {
+        _videoInfo = {
+          'fileName': p.basename(_infoVideoPath!),
+          'filePath': _infoVideoPath,
+          'fileSize': fileInfo.size,
+          'width': metadata.width,
+          'height': metadata.height,
+          'fps': metadata.fps,
+          'codec': metadata.codec,
+          'pixelFormat': metadata.pixFmt,
+          'duration': metadata.duration,
+          'hasAudio': metadata.hasAudio,
+          'metadataTags': metadata.metadataTags,
+        };
+      });
+    } on Exception catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to extract video info: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -326,7 +517,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 4,
       child: Column(
         children: [
           ColoredBox(
@@ -341,6 +532,14 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                   text: 'Compress Video',
                   icon: Icon(Icons.compress, size: 20),
                 ),
+                Tab(
+                  text: 'Re-encode Video',
+                  icon: Icon(Icons.settings_backup_restore, size: 20),
+                ),
+                Tab(
+                  text: 'Video Info',
+                  icon: Icon(Icons.info_outline, size: 20),
+                ),
               ],
               labelColor: Colors.deepPurple[200],
               unselectedLabelColor: Colors.grey,
@@ -354,6 +553,8 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               children: [
                 _buildTabContent(_buildConcatContent()),
                 _buildTabContent(_buildCompressContent()),
+                _buildTabContent(_buildReencodeContent()),
+                _buildTabContent(_buildVideoInfoContent()),
               ],
             ),
           ),
@@ -944,6 +1145,669 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         ),
       ],
     );
+  }
+
+  Widget _buildReencodeContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_reencodeVideoPath == null)
+          DropZoneWidget(
+            label: 'Drop Video Here (or Click)',
+            icon: Icons.movie,
+            onTap: _pickReencodeVideo,
+            onFilesDropped: (files) {
+              final video = files.firstWhere(
+                (f) => _videoExtensions.contains(
+                  p.extension(f.path).replaceAll('.', '').toLowerCase(),
+                ),
+                orElse: () => files.first,
+              );
+              setState(() {
+                _reencodeVideoPath = video.path;
+              });
+            },
+          )
+        else
+          _buildMediaItem(
+            context,
+            _reencodeVideoPath!,
+            Icons.movie,
+            onRemove: () => setState(() => _reencodeVideoPath = null),
+          ),
+        const SizedBox(height: 24),
+        // Info box
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, size: 16, color: Colors.blue[300]),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Use this to convert videos to specific resolution & frame rate. Perfect for preparing intro videos to match your main video format!',
+                  style: TextStyle(fontSize: 11, color: Colors.blue[200]),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Group: Output Format Settings
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.black12,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Output Format',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _copyFormatFromVideo,
+                    icon: const Icon(Icons.content_copy, size: 16),
+                    label: const Text('Copy from Video'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.deepPurple[200],
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (_reencodeReferenceVideoName != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: Colors.green.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle,
+                        size: 14,
+                        color: Colors.green[300],
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Format copied from: $_reencodeReferenceVideoName',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.green[200],
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 16),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () {
+                          setState(() => _reencodeReferenceVideoName = null);
+                        },
+                        color: Colors.green[300],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Width',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          initialValue: _reencodeWidth.toString(),
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
+                          decoration: InputDecoration(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            filled: true,
+                            fillColor: Colors.black26,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(
+                                color: Colors.deepPurple,
+                                width: 1.5,
+                              ),
+                            ),
+                            suffixText: 'px',
+                            suffixStyle: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                          onChanged: (value) {
+                            final intValue = int.tryParse(value);
+                            if (intValue != null && intValue > 0) {
+                              setState(() => _reencodeWidth = intValue);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 24),
+                    child: Icon(Icons.close, size: 16, color: Colors.grey),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Height',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          initialValue: _reencodeHeight.toString(),
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
+                          decoration: InputDecoration(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            filled: true,
+                            fillColor: Colors.black26,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(
+                                color: Colors.deepPurple,
+                                width: 1.5,
+                              ),
+                            ),
+                            suffixText: 'px',
+                            suffixStyle: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                          onChanged: (value) {
+                            final intValue = int.tryParse(value);
+                            if (intValue != null && intValue > 0) {
+                              setState(() => _reencodeHeight = intValue);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Frame Rate (FPS)',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        CompactDropdown<int>(
+                          value: _reencodeFps,
+                          label: '',
+                          icon: Icons.speed,
+                          items: const [
+                            DropdownMenuItem(value: 24, child: Text('24 fps')),
+                            DropdownMenuItem(value: 25, child: Text('25 fps')),
+                            DropdownMenuItem(value: 30, child: Text('30 fps')),
+                            DropdownMenuItem(value: 60, child: Text('60 fps')),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => _reencodeFps = v ?? 30),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              CompactDropdown<String>(
+                value: _reencodePreset,
+                label: 'Encoding Speed:',
+                icon: Icons.speed,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'ultrafast',
+                    child: Text('Ultrafast'),
+                  ),
+                  DropdownMenuItem(value: 'veryfast', child: Text('Very Fast')),
+                  DropdownMenuItem(value: 'fast', child: Text('Fast')),
+                  DropdownMenuItem(value: 'medium', child: Text('Medium')),
+                  DropdownMenuItem(value: 'slow', child: Text('Slow')),
+                ],
+                onChanged: (v) =>
+                    setState(() => _reencodePreset = v ?? 'veryfast'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Group: Audio & Hardware Acceleration
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.black12,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            children: [
+              CheckboxListTile(
+                title: const Text(
+                  'Keep Audio',
+                  style: TextStyle(color: Colors.white, fontSize: 13),
+                ),
+                subtitle: const Text(
+                  'Re-encode audio to AAC format',
+                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                ),
+                value: _reencodeKeepAudio,
+                onChanged: (v) =>
+                    setState(() => _reencodeKeepAudio = v ?? true),
+                contentPadding: EdgeInsets.zero,
+                activeColor: Colors.deepPurple,
+                dense: true,
+              ),
+              const Divider(color: Colors.white10),
+              CheckboxListTile(
+                title: const Text(
+                  'Hardware Acceleration',
+                  style: TextStyle(color: Colors.white, fontSize: 13),
+                ),
+                subtitle: const Text(
+                  'Use GPU for faster encoding',
+                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                ),
+                value: _reencodeUseHwAccel,
+                onChanged: (v) =>
+                    setState(() => _reencodeUseHwAccel = v ?? false),
+                contentPadding: EdgeInsets.zero,
+                activeColor: Colors.deepPurple,
+                dense: true,
+              ),
+              if (_reencodeUseHwAccel) ...[
+                const SizedBox(height: 12),
+                CompactDropdown<String>(
+                  value: _reencodeHwEncoder,
+                  label: 'Encoder:',
+                  icon: Icons.memory,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'libx264',
+                      child: Text('Default (CPU)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'h264_videotoolbox',
+                      child: Text('macOS (Apple/Intel)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'h264_nvenc',
+                      child: Text('NVIDIA (Win/Linux)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'h264_amf',
+                      child: Text('AMD (Windows)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'h264_qsv',
+                      child: Text('Intel QuickSync'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'h264_vaapi',
+                      child: Text('VAAPI (Linux)'),
+                    ),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) {
+                      setState(() => _reencodeHwEncoder = v);
+                    }
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: ElevatedButton.icon(
+            onPressed: _reencodeVideoPath != null ? _reencodeVideo : null,
+            icon: const Icon(Icons.settings_backup_restore),
+            label: const Text('Re-encode Video'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVideoInfoContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_infoVideoPath == null)
+          DropZoneWidget(
+            label: 'Drop Video Here (or Click)',
+            icon: Icons.movie,
+            onTap: _pickInfoVideo,
+            onFilesDropped: (files) {
+              final video = files.firstWhere(
+                (f) => _videoExtensions.contains(
+                  p.extension(f.path).replaceAll('.', '').toLowerCase(),
+                ),
+                orElse: () => files.first,
+              );
+              setState(() {
+                _infoVideoPath = video.path;
+                _videoInfo = null;
+              });
+              _extractVideoInfo();
+            },
+          )
+        else ...[
+          _buildMediaItem(
+            context,
+            _infoVideoPath!,
+            Icons.movie,
+            onRemove: () => setState(() {
+              _infoVideoPath = null;
+              _videoInfo = null;
+            }),
+          ),
+          const SizedBox(height: 24),
+          if (_videoInfo != null) ...[
+            // File Information
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.black12,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'File Information',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildInfoRow(
+                    'File Name',
+                    (_videoInfo!['fileName'] as String?) ?? 'Unknown',
+                  ),
+                  _buildInfoRow(
+                    'File Size',
+                    _formatFileSize((_videoInfo!['fileSize'] as int?) ?? 0),
+                  ),
+                  _buildInfoRow(
+                    'Duration',
+                    _formatDuration(_videoInfo!['duration'] as Duration?),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Video Stream Information
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.black12,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.videocam, color: Colors.blue[300], size: 18),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Video Stream',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildInfoRow(
+                    'Resolution',
+                    '${_videoInfo!['width'] ?? 'N/A'} x ${_videoInfo!['height'] ?? 'N/A'}',
+                  ),
+                  _buildInfoRow(
+                    'Frame Rate',
+                    '${_videoInfo!['fps'] ?? 'N/A'} fps',
+                  ),
+                  _buildInfoRow(
+                    'Codec',
+                    (_videoInfo!['codec'] as String?) ?? 'Unknown',
+                  ),
+                  _buildInfoRow(
+                    'Pixel Format',
+                    (_videoInfo!['pixelFormat'] as String?) ?? 'Unknown',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Audio Stream Information
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.black12,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.audiotrack,
+                        color: Colors.green[300],
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Audio Stream',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildInfoRow(
+                    'Audio Present',
+                    _videoInfo!['hasAudio'] == true ? 'Yes' : 'No',
+                  ),
+                ],
+              ),
+            ),
+            // Metadata Tags Section
+            if (_videoInfo!['metadataTags'] != null &&
+                _videoInfo!['metadataTags'] is Map) ...[
+              if ((_videoInfo!['metadataTags'] as Map)
+                  .cast<String, String>()
+                  .isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.label_outline,
+                            color: Colors.purple[300],
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Metadata Tags',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      ...(_videoInfo!['metadataTags'] as Map)
+                          .cast<String, String>()
+                          .entries
+                          .map(
+                            (entry) => _buildInfoRow(entry.key, entry.value),
+                          ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 12,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  String _formatDuration(Duration? duration) {
+    if (duration == null) return 'Unknown';
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+    if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
   String _getPresetHint(String preset) {
