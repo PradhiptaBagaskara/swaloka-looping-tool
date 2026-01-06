@@ -26,6 +26,9 @@ class _DropZoneWidgetState extends State<DropZoneWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final baseFontSize = Theme.of(context).textTheme.bodyMedium!.fontSize!;
+    final borderRadius = baseFontSize * 0.86;
+
     return DropTarget(
       onDragDone: (details) {
         debugPrint('DND: Dropped ${details.files.length} files');
@@ -50,20 +53,22 @@ class _DropZoneWidgetState extends State<DropZoneWidget> {
         children: [
           InkWell(
             onTap: widget.onTap,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(borderRadius),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              height: 100,
+              height: baseFontSize * 7.14,
               width: double.infinity,
               decoration: BoxDecoration(
                 color: _isDragging
-                    ? Colors.deepPurple.withValues(alpha: 0.15)
-                    : Colors.black26,
-                borderRadius: BorderRadius.circular(12),
+                    ? Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.15)
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(borderRadius),
                 border: Border.all(
                   color: _isDragging
-                      ? Colors.deepPurpleAccent
-                      : const Color(0xFF333333),
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.outline,
                   width: _isDragging ? 2 : 1,
                 ),
               ),
@@ -76,17 +81,18 @@ class _DropZoneWidgetState extends State<DropZoneWidget> {
                     child: Icon(
                       widget.icon,
                       color: _isDragging
-                          ? Colors.deepPurpleAccent
-                          : Colors.grey[600],
-                      size: 32,
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                      size: baseFontSize * 2.29,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: baseFontSize * 0.86),
                   Text(
                     widget.label,
-                    style: TextStyle(
-                      color: _isDragging ? Colors.white : Colors.grey[600],
-                      fontSize: 13,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: _isDragging
+                          ? Theme.of(context).colorScheme.onSurface
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                       fontWeight: _isDragging
                           ? FontWeight.bold
                           : FontWeight.normal,
@@ -98,21 +104,23 @@ class _DropZoneWidgetState extends State<DropZoneWidget> {
           ),
           if (widget.onClear != null)
             Positioned(
-              top: 8,
-              right: 8,
+              top: baseFontSize * 0.57,
+              right: baseFontSize * 0.57,
               child: InkWell(
                 onTap: widget.onClear,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(borderRadius),
                 child: Container(
-                  padding: const EdgeInsets.all(4),
+                  padding: EdgeInsets.all(baseFontSize * 0.29),
                   decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(12),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surface.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(borderRadius),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.close,
-                    size: 16,
-                    color: Colors.white70,
+                    size: baseFontSize * 1.14,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
               ),

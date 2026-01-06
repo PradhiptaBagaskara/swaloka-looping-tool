@@ -15,12 +15,16 @@ class SettingsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseFontSize = Theme.of(context).textTheme.bodyMedium!.fontSize!;
+
     return Container(
-      padding: padding ?? const EdgeInsets.all(16),
+      padding: padding ?? EdgeInsets.all(baseFontSize * 1.14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF333333)),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(baseFontSize * 0.86),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
       child: title != null
           ? Column(
@@ -28,13 +32,11 @@ class SettingsCard extends StatelessWidget {
               children: [
                 Text(
                   title!,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: baseFontSize * 1.14),
                 child,
               ],
             )

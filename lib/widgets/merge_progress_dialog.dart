@@ -90,9 +90,11 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.black26,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF333333)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,16 +104,15 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
               Icon(
                 Icons.folder_open,
                 size: 14,
-                color: Colors.grey[500],
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: 8),
               Text(
                 'OUTPUT PATH',
-                style: TextStyle(
-                  fontSize: 10,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey[600],
                   letterSpacing: 1.2,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -125,18 +126,15 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                   children: [
                     Text(
                       fileName,
-                      style: const TextStyle(
-                        fontSize: 12,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       directory,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey[500],
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -152,17 +150,23 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                   child: InkWell(
                     onTap: () => _openInFileExplorer(outputPath),
                     borderRadius: BorderRadius.circular(6),
-                    hoverColor: Colors.white.withValues(alpha: 0.1),
+                    hoverColor: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.1),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.deepPurple.withValues(alpha: 0.2),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.primary.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: Colors.deepPurple.withValues(alpha: 0.3),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Row(
@@ -171,14 +175,14 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                           Icon(
                             Icons.open_in_new,
                             size: 12,
-                            color: Colors.deepPurple[200],
+                            color: Theme.of(context).colorScheme.primary,
                           ),
                           const SizedBox(width: 6),
                           Text(
                             'Show in Folder',
                             style: TextStyle(
                               fontSize: 11,
-                              color: Colors.deepPurple[200],
+                              color: Theme.of(context).colorScheme.primary,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -203,7 +207,7 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
     return Dialog(
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 600,
@@ -255,25 +259,29 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.black26,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.white10),
+                    border: Border.all(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outline.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.timer_outlined,
                         size: 14,
-                        color: Colors.grey,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                       const SizedBox(width: 6),
                       Text(
                         _formatDuration(_elapsed),
-                        style: const TextStyle(
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
                           fontFamily: 'monospace',
-                          fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: Colors.white70,
                         ),
                       ),
                     ],
@@ -293,7 +301,9 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
               children: [
                 Text(
                   'Overall Progress',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 Text(
                   '${(processingState.progress * 100).toStringAsFixed(1)}%',
@@ -314,7 +324,7 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    color: Colors.grey[600],
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     letterSpacing: 1.2,
                   ),
                 ),
@@ -358,9 +368,11 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.black,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF333333)),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
                 ),
                 child: Theme(
                   data: ThemeData.dark(),
@@ -397,9 +409,11 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                 height: 160,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.black,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF333333)),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
                 ),
                 child: Center(
                   child: MediaPreviewPlayer(
@@ -430,7 +444,9 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                         processingState.isProcessing
                             ? 'Please do not close the application'
                             : 'You can now close this window',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       if (!processingState.isProcessing &&
                           processingState.error == null &&
@@ -441,17 +457,21 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                             Icon(
                               Icons.access_time,
                               size: 12,
-                              color: Colors.grey[600],
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                             const SizedBox(width: 4),
                             Text(
                               'Duration: ${_formatDuration(processingState.outputDuration!)}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey[500],
-                                fontFamily: 'monospace',
-                                fontWeight: FontWeight.w500,
-                              ),
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.w500,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
                             ),
                           ],
                         ),
@@ -463,8 +483,10 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                   ElevatedButton(
                     onPressed: () => Navigator.of(context).pop(),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white10,
-                      foregroundColor: Colors.white,
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      foregroundColor: Theme.of(context).colorScheme.onSurface,
                     ),
                     child: const Text('Close'),
                   ),

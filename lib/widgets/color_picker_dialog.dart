@@ -63,7 +63,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
     final currentColor = _hsvColor.toColor();
 
     return Dialog(
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 320,
@@ -75,11 +75,9 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
             // Header
             Row(
               children: [
-                const Text(
+                Text(
                   'Pick Color',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -91,7 +89,9 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                   decoration: BoxDecoration(
                     color: currentColor,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white24),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                   ),
                 ),
               ],
@@ -133,9 +133,9 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
             const SizedBox(height: 20),
 
             // Quick presets
-            const Text(
+            Text(
               'Quick Colors',
-              style: TextStyle(color: Colors.grey, fontSize: 11),
+              style: Theme.of(context).textTheme.labelSmall,
             ),
             const SizedBox(height: 8),
             _QuickColors(
@@ -151,18 +151,18 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
             // Hex input
             Row(
               children: [
-                const Text(
+                Text(
                   '#',
-                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(width: 4),
                 Expanded(
                   child: TextField(
                     controller: _hexController,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontFamily: 'monospace',
-                      fontSize: 14,
                     ),
                     decoration: InputDecoration(
                       hintText: 'FFFFFF',
@@ -175,7 +175,9 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                         vertical: 10,
                       ),
                       filled: true,
-                      fillColor: Colors.black26,
+                      fillColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide.none,
@@ -215,8 +217,8 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                 ElevatedButton(
                   onPressed: () => Navigator.pop(context, currentColor),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
                   ),
                   child: const Text('Select'),
                 ),
@@ -255,7 +257,11 @@ class _SaturationValuePicker extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.3),
+              ),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -357,7 +363,11 @@ class _HueSlider extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.3),
+              ),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -452,7 +462,9 @@ class _QuickColors extends StatelessWidget {
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: Colors.white24),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outline,
+              ),
             ),
           ),
         );

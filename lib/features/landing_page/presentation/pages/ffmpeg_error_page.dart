@@ -47,28 +47,32 @@ class FFmpegErrorPage extends ConsumerWidget {
         await showDialog<void>(
           context: context,
           builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFF1E1E1E),
-            title: const Row(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            title: Row(
               children: [
-                Icon(Icons.error, color: Colors.red),
-                SizedBox(width: 8),
+                Icon(Icons.error, color: Theme.of(context).colorScheme.error),
+                const SizedBox(width: 8),
                 Text(
                   'Installer Not Found',
-                  style: TextStyle(color: Colors.white),
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
               ],
             ),
             content: Text(
               'FFmpeg installer not found at:\n$installerPath\n\n'
               'Please install FFmpeg manually using the instructions above.',
-              style: const TextStyle(color: Colors.grey),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text(
+                child: Text(
                   'OK',
-                  style: TextStyle(color: Colors.deepPurple),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               ),
             ],
@@ -83,38 +87,41 @@ class FFmpegErrorPage extends ConsumerWidget {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          title: const Row(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          title: Row(
             children: [
-              Icon(Icons.info, color: Colors.deepPurple),
-              SizedBox(width: 8),
+              Icon(Icons.info, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
               Text(
                 'FFmpeg Installation',
-                style: TextStyle(color: Colors.white),
+                style: Theme.of(context).textTheme.titleLarge,
               ),
             ],
           ),
-          content: const Column(
+          content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'This will run the FFmpeg installer which will:',
-                style: TextStyle(color: Colors.white),
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
               Text(
                 '• Download FFmpeg from gyan.dev\n'
                 '• Install to C:\\ffmpeg\n'
                 '• Add to System PATH\n'
                 '• Require administrator privileges',
-                style: TextStyle(color: Colors.grey, height: 1.5),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.5,
+                ),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Text(
                 'A command prompt will open. Please grant administrator access when prompted.',
-                style: TextStyle(
-                  color: Colors.orange,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.orange, // Keep warning orange
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -123,12 +130,17 @@ class FFmpegErrorPage extends ConsumerWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
             ElevatedButton(
               onPressed: () => Navigator.of(context).pop(true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
+                backgroundColor: Theme.of(context).colorScheme.primary,
               ),
               child: const Text('Install FFmpeg'),
             ),
@@ -152,29 +164,34 @@ class FFmpegErrorPage extends ConsumerWidget {
           await showDialog<void>(
             context: context,
             builder: (context) => AlertDialog(
-              backgroundColor: const Color(0xFF1E1E1E),
-              title: const Row(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              title: Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.green),
-                  SizedBox(width: 8),
+                  const Icon(Icons.check_circle, color: Colors.green),
+                  const SizedBox(width: 8),
                   Text(
                     'Installer Started',
-                    style: TextStyle(color: Colors.white),
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ],
               ),
-              content: const Text(
+              content: Text(
                 'The FFmpeg installer has been started in a new window.\n\n'
                 'Follow the prompts in the command window to complete installation.\n\n'
                 'After installation completes, click "Re-check Installation" below.',
-                style: TextStyle(color: Colors.grey, height: 1.5),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.5,
+                ),
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text(
+                  child: Text(
                     'OK',
-                    style: TextStyle(color: Colors.deepPurple),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                 ),
               ],
@@ -186,28 +203,32 @@ class FFmpegErrorPage extends ConsumerWidget {
           await showDialog<void>(
             context: context,
             builder: (context) => AlertDialog(
-              backgroundColor: const Color(0xFF1E1E1E),
-              title: const Row(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              title: Row(
                 children: [
-                  Icon(Icons.error, color: Colors.red),
-                  SizedBox(width: 8),
+                  Icon(Icons.error, color: Theme.of(context).colorScheme.error),
+                  const SizedBox(width: 8),
                   Text(
                     'Failed to Start Installer',
-                    style: TextStyle(color: Colors.white),
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ],
               ),
               content: Text(
                 'Error: $e\n\n'
                 'Please run the installer manually:\n$installerPath',
-                style: const TextStyle(color: Colors.grey),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text(
+                  child: Text(
                     'OK',
-                    style: TextStyle(color: Colors.deepPurple),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                 ),
               ],
@@ -226,6 +247,7 @@ class FFmpegErrorPage extends ConsumerWidget {
   }
 
   static Widget _buildTroubleshootingStep(
+    BuildContext context,
     String number,
     String title,
     String description,
@@ -233,9 +255,11 @@ class FFmpegErrorPage extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.2)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,14 +268,16 @@ class FFmpegErrorPage extends ConsumerWidget {
             width: 24,
             height: 24,
             decoration: BoxDecoration(
-              color: Colors.deepPurple.withValues(alpha: 0.2),
+              color: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
             child: Center(
               child: Text(
                 number,
-                style: const TextStyle(
-                  color: Colors.deepPurple,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
@@ -265,18 +291,15 @@ class FFmpegErrorPage extends ConsumerWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   description,
-                  style: const TextStyle(
-                    color: Colors.grey,
-                    fontSize: 12,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     height: 1.4,
                   ),
                 ),
@@ -308,47 +331,47 @@ class FFmpegErrorPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 32),
-          const Text(
+          Text(
             'FFmpeg Not Found',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 28,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.bold,
             ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'FFmpeg is required to use this application but it is not installed on your system.',
-            style: TextStyle(color: Colors.grey, fontSize: 16),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 32),
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.deepPurple.withValues(alpha: 0.3),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.3),
               ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
                     Icon(
                       Icons.code,
-                      color: Colors.deepPurple,
+                      color: Theme.of(context).colorScheme.primary,
                       size: 20,
                     ),
-                    SizedBox(width: 8),
+                    const SizedBox(width: 8),
                     Text(
                       'Installation Instructions',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -357,9 +380,8 @@ class FFmpegErrorPage extends ConsumerWidget {
                 const SizedBox(height: 16),
                 Text(
                   _installationInstructions,
-                  style: const TextStyle(
-                    color: Colors.grey,
-                    fontSize: 14,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     height: 1.5,
                   ),
                 ),
@@ -374,8 +396,9 @@ class FFmpegErrorPage extends ConsumerWidget {
               label: const Text('Install FFmpeg Automatically'),
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 48),
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
+                backgroundColor:
+                    Colors.green, // Keep green for "Install" action
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
               ),
             ),
             const SizedBox(height: 12),
@@ -390,8 +413,8 @@ class FFmpegErrorPage extends ConsumerWidget {
             ),
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(double.infinity, 48),
-              foregroundColor: Colors.deepPurple,
-              side: const BorderSide(color: Colors.deepPurple),
+              foregroundColor: Theme.of(context).colorScheme.primary,
+              side: BorderSide(color: Theme.of(context).colorScheme.primary),
             ),
           ),
           const SizedBox(height: 12),
@@ -402,21 +425,21 @@ class FFmpegErrorPage extends ConsumerWidget {
                 showDialog<void>(
                   context: context,
                   barrierDismissible: false,
-                  builder: (context) => const AlertDialog(
-                    backgroundColor: Color(0xFF1E1E1E),
+                  builder: (context) => AlertDialog(
+                    backgroundColor: Theme.of(context).colorScheme.surface,
                     content: Padding(
-                      padding: EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(16),
                       child: Row(
                         children: [
                           CircularProgressIndicator(
                             valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.deepPurple,
+                              Theme.of(context).colorScheme.primary,
                             ),
                           ),
-                          SizedBox(width: 20),
+                          const SizedBox(width: 20),
                           Text(
                             'Checking FFmpeg...',
-                            style: TextStyle(color: Colors.white),
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
                       ),
@@ -445,14 +468,14 @@ class FFmpegErrorPage extends ConsumerWidget {
                   showDialog<void>(
                     context: context,
                     builder: (context) => AlertDialog(
-                      backgroundColor: const Color(0xFF1E1E1E),
-                      title: const Row(
+                      backgroundColor: Theme.of(context).colorScheme.surface,
+                      title: Row(
                         children: [
-                          Icon(Icons.warning, color: Colors.orange),
-                          SizedBox(width: 8),
+                          const Icon(Icons.warning, color: Colors.orange),
+                          const SizedBox(width: 8),
                           Text(
                             'FFmpeg Still Not Found',
-                            style: TextStyle(color: Colors.white),
+                            style: Theme.of(context).textTheme.titleLarge,
                           ),
                         ],
                       ),
@@ -461,30 +484,39 @@ class FFmpegErrorPage extends ConsumerWidget {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'FFmpeg is still not detected. Please try the following:',
-                              style: TextStyle(color: Colors.grey),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
                             ),
                             const SizedBox(height: 16),
                             _buildTroubleshootingStep(
+                              context,
                               '1',
                               'Verify FFmpeg is installed',
                               'Open your terminal and run:\nffmpeg -version',
                             ),
                             const SizedBox(height: 12),
                             _buildTroubleshootingStep(
+                              context,
                               '2',
                               'Check System PATH',
                               'Make sure FFmpeg is added to your system PATH environment variable.',
                             ),
                             const SizedBox(height: 12),
                             _buildTroubleshootingStep(
+                              context,
                               '3',
                               'Restart Terminal/Shell',
                               'If you just installed FFmpeg, restart your terminal or shell session.',
                             ),
                             const SizedBox(height: 12),
                             _buildTroubleshootingStep(
+                              context,
                               '4',
                               'Restart This App',
                               "If the above steps don't work, try restarting this application.",
@@ -495,9 +527,11 @@ class FFmpegErrorPage extends ConsumerWidget {
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.of(context).pop(),
-                          child: const Text(
+                          child: Text(
                             'OK',
-                            style: TextStyle(color: Colors.deepPurple),
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                           ),
                         ),
                       ],
@@ -514,8 +548,8 @@ class FFmpegErrorPage extends ConsumerWidget {
             label: const Text('Re-check Installation'),
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(double.infinity, 48),
-              foregroundColor: Colors.deepPurple,
-              side: const BorderSide(color: Colors.deepPurple),
+              foregroundColor: Theme.of(context).colorScheme.primary,
+              side: BorderSide(color: Theme.of(context).colorScheme.primary),
             ),
           ),
           const SizedBox(height: 24),
@@ -523,26 +557,27 @@ class FFmpegErrorPage extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.1),
+                color: Theme.of(context).colorScheme.errorContainer,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: Colors.red.withValues(alpha: 0.3),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.error.withValues(alpha: 0.3),
                 ),
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.info_outline,
-                    color: Colors.red,
+                    color: Theme.of(context).colorScheme.error,
                     size: 20,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Error: $error',
-                      style: const TextStyle(
-                        color: Colors.red,
-                        fontSize: 12,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
                       ),
                     ),
                   ),

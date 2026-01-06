@@ -8,12 +8,17 @@ class LandingLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseFontSize = Theme.of(context).textTheme.bodyMedium!.fontSize!;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SizedBox.expand(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(vertical: 64, horizontal: 32),
+            padding: EdgeInsets.symmetric(
+              vertical: baseFontSize * 4.57,
+              horizontal: baseFontSize * 2.29,
+            ),
             child: Container(
               width: double.infinity,
               alignment: Alignment.center,

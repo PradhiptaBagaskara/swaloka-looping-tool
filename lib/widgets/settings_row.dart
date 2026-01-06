@@ -17,11 +17,17 @@ class SettingsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseFontSize = Theme.of(context).textTheme.bodyMedium!.fontSize!;
+
     return Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 16, color: Colors.grey[600]),
-          const SizedBox(width: 12),
+          Icon(
+            icon,
+            size: baseFontSize * 1.14,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          SizedBox(width: baseFontSize * 0.86),
         ],
         Expanded(
           child: Column(
@@ -29,17 +35,15 @@ class SettingsRow extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: 12,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey[300],
                 ),
               ),
               if (hint != null) ...[
-                const SizedBox(height: 4),
+                SizedBox(height: baseFontSize * 0.29),
                 Text(
                   hint!,
-                  style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
               ],
             ],
@@ -66,40 +70,47 @@ class SettingsNumberInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseFontSize = Theme.of(context).textTheme.bodyMedium!.fontSize!;
+
     return SizedBox(
       width: width,
       child: TextFormField(
         initialValue: initialValue,
         keyboardType: TextInputType.number,
         textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 14,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
           fontWeight: FontWeight.bold,
         ),
         decoration: InputDecoration(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 10,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: baseFontSize * 0.86,
+            vertical: baseFontSize * 0.71,
           ),
           filled: true,
-          fillColor: const Color(0xFF1A1A1A),
+          fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+            borderRadius: BorderRadius.circular(baseFontSize * 0.57),
+            borderSide: BorderSide(
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+            borderRadius: BorderRadius.circular(baseFontSize * 0.57),
+            borderSide: BorderSide(
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Colors.deepPurple, width: 2),
+            borderRadius: BorderRadius.circular(baseFontSize * 0.57),
+            borderSide: BorderSide(
+              color: Theme.of(context).colorScheme.primary,
+              width: 2,
+            ),
           ),
           suffixIcon: Icon(
             Icons.edit,
-            size: 14,
-            color: Colors.grey[500],
+            size: baseFontSize,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
         onChanged: onChanged,

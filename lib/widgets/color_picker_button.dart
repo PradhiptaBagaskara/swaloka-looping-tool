@@ -38,9 +38,11 @@ class ColorPickerButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.white12),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -103,18 +105,16 @@ class ColorPickerButton extends StatelessWidget {
                   children: [
                     Text(
                       _colorToHex(color),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         fontFamily: 'monospace',
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     Text(
                       _getColorName(color),
-                      style: TextStyle(
-                        color: Colors.grey.withValues(alpha: 0.7),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         fontSize: 9,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -124,7 +124,7 @@ class ColorPickerButton extends StatelessWidget {
                   Icon(
                     Icons.expand_more,
                     size: 16,
-                    color: Colors.grey.withValues(alpha: 0.7),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ],
               ],

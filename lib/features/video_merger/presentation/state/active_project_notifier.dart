@@ -10,6 +10,7 @@ import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka
 /// Session-only data (file selections, metadata) are managed in UI state
 class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
   static const _lastProjectPathKey = 'last_project_path';
+  static const _projectSettingFileName = 'project.swaloka';
 
   @override
   SwalokaProject? build() {
@@ -62,7 +63,7 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     // Normalize the rootPath for the current platform
     final normalizedRootPath = p.normalize(rootPath);
 
-    final file = File(p.join(normalizedRootPath, 'project.swaloka'));
+    final file = File(p.join(normalizedRootPath, _projectSettingFileName));
     if (await file.exists()) {
       final json = jsonDecode(await file.readAsString());
       final loadedProject = SwalokaProject.fromJson(
@@ -114,7 +115,7 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
   }
 
   Future<void> _saveProjectToFile(SwalokaProject project) async {
-    final file = File(p.join(project.rootPath, 'project.swaloka'));
+    final file = File(p.join(project.rootPath, _projectSettingFileName));
     await file.writeAsString(jsonEncode(project.toJson()));
   }
 

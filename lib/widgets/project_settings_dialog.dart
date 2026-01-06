@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
+import 'package:swaloka_looping_tool/core/theme/theme.dart';
 import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/ffmpeg_provider.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
@@ -36,10 +37,10 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
           widget.project.customOutputPath ??
           p.join(widget.project.rootPath, 'outputs'),
     );
-    _loadFfmpegSettings();
+    _loadGlobalSettings();
   }
 
-  void _loadFfmpegSettings() {
+  void _loadGlobalSettings() {
     final settings = ref.read(settingsProvider);
     settings.whenData((value) {
       _ffmpegController.text = value.customFfmpegPath ?? '';
@@ -66,6 +67,12 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
     }
   }
 
+  void _resetOutputToDefault() {
+    setState(() {
+      _outputPathController.text = p.join(widget.project.rootPath, 'outputs');
+    });
+  }
+
   Future<void> _browseFfmpeg() async {
     final result = await FilePicker.platform.pickFiles(
       dialogTitle: 'Select FFmpeg executable',
@@ -76,12 +83,6 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
         _ffmpegError = null;
       });
     }
-  }
-
-  void _resetOutputToDefault() {
-    setState(() {
-      _outputPathController.text = p.join(widget.project.rootPath, 'outputs');
-    });
   }
 
   void _resetFfmpegToDefault() {
@@ -98,7 +99,7 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
     });
 
     try {
-      // Validate FFmpeg path if provided
+      // Validate FFmpeg path if provided (global setting)
       final ffmpegPath = _ffmpegController.text.trim();
       if (ffmpegPath.isNotEmpty) {
         final isValid = await FFmpegService.validatePath(ffmpegPath);
@@ -112,7 +113,7 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
         }
       }
 
-      // Save FFmpeg settings (global)
+      // Save global settings (FFmpeg)
       await ref
           .read(settingsProvider.notifier)
           .setFfmpegPath(ffmpegPath.isEmpty ? null : ffmpegPath);
@@ -156,7 +157,7 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
     final ffmpegStatus = ref.watch(ffmpegStatusProvider);
 
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       title: Row(
         children: [
           Icon(Icons.settings, color: Theme.of(context).colorScheme.primary),
@@ -171,10 +172,208 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Global Settings Header
+              Row(
+                children: [
+                  Icon(
+                    Icons.public,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.tertiary,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'GLOBAL SETTINGS',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                      color: Theme.of(context).colorScheme.tertiary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Container(
+                      height: 1,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.tertiary.withValues(alpha: 0.3),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'These settings apply to all projects',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Theme Section (Global)
+              _buildSectionHeader(context, 'Appearance'),
+              const SizedBox(height: 12),
+              Consumer(
+                builder: (context, ref, child) {
+                  final themeMode = ref.watch(themeModeProvider);
+                  final isDark = themeMode == ThemeMode.dark;
+
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
+                    child: SwitchListTile(
+                      title: Text(
+                        isDark ? 'Dark Theme' : 'Light Theme',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
+                      ),
+                      subtitle: Text(
+                        isDark
+                            ? 'Darker interface for low-light environments'
+                            : 'Brighter interface for well-lit environments',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                      value: isDark,
+                      onChanged: (_) {
+                        ref.read(themeModeProvider.notifier).toggleTheme();
+                      },
+                      secondary: Icon(
+                        isDark ? Icons.dark_mode : Icons.light_mode,
+                        color: Theme.of(context).colorScheme.tertiary,
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 24),
+              Divider(color: Theme.of(context).colorScheme.outline),
+              const SizedBox(height: 16),
+
+              // FFmpeg Section (Global)
+              _buildSectionHeader(context, 'FFmpeg Path'),
+              const SizedBox(height: 8),
+              Text(
+                'By default, FFmpeg is auto-detected from system PATH.',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // FFmpeg status
+              settings.when(
+                data: (value) =>
+                    _buildFfmpegStatus(context, value, ffmpegStatus),
+                loading: () => const LinearProgressIndicator(),
+                error: (e, _) => Text(
+                  'Error: $e',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _ffmpegController,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      decoration: _inputDecoration(
+                        context,
+                        hint: 'Auto-detect (leave empty)',
+                        errorText: _ffmpegError,
+                      ),
+                      onChanged: (_) => setState(() => _ffmpegError = null),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: _browseFfmpeg,
+                    icon: const Icon(Icons.folder_open),
+                    tooltip: 'Browse...',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                    ),
+                  ),
+                ],
+              ),
+              if (_ffmpegController.text.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: TextButton.icon(
+                    onPressed: _resetFfmpegToDefault,
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Reset to auto-detect'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(
+                        context,
+                      ).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 32),
+              Divider(
+                color: Theme.of(context).colorScheme.outline,
+                thickness: 2,
+              ),
+              const SizedBox(height: 24),
+
+              // Project Settings Header
+              Row(
+                children: [
+                  Icon(
+                    Icons.folder,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'PROJECT SETTINGS',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Container(
+                      height: 1,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.3),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'These settings apply only to this project',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              const SizedBox(height: 16),
+
               // Project Info Section
-              _buildSectionHeader('Project Information'),
+              _buildSectionHeader(context, 'Project Information'),
               const SizedBox(height: 12),
               _buildTextField(
+                context,
                 label: 'Project Name',
                 controller: _projectNameController,
                 enabled: false, // Read-only for now
@@ -183,21 +382,25 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
               const SizedBox(height: 8),
               Text(
                 'Location: ${widget.project.rootPath}',
-                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
 
               const SizedBox(height: 24),
-              const Divider(color: Color(0xFF333333)),
+              Divider(color: Theme.of(context).colorScheme.outline),
               const SizedBox(height: 16),
 
               // Output Directory Section
-              _buildSectionHeader('Output Directory'),
+              _buildSectionHeader(context, 'Output Directory'),
               const SizedBox(height: 8),
               Text(
                 'Where generated videos will be saved.',
-                style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 12),
               Row(
@@ -205,8 +408,9 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
                   Expanded(
                     child: TextField(
                       controller: _outputPathController,
-                      style: const TextStyle(fontSize: 13),
+                      style: Theme.of(context).textTheme.bodyMedium,
                       decoration: _inputDecoration(
+                        context,
                         hint: 'Output directory path',
                       ),
                     ),
@@ -217,7 +421,9 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
                     icon: const Icon(Icons.folder_open),
                     tooltip: 'Browse...',
                     style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFF2A2A2A),
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                     ),
                   ),
                 ],
@@ -231,68 +437,9 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
                     icon: const Icon(Icons.refresh, size: 16),
                     label: const Text('Reset to default'),
                     style: TextButton.styleFrom(
-                      foregroundColor: Colors.grey[400],
-                    ),
-                  ),
-                ),
-
-              const SizedBox(height: 24),
-              const Divider(color: Color(0xFF333333)),
-              const SizedBox(height: 16),
-
-              // FFmpeg Section
-              _buildSectionHeader('FFmpeg Path'),
-              const SizedBox(height: 8),
-              Text(
-                'By default, FFmpeg is auto-detected from system PATH.',
-                style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-              ),
-              const SizedBox(height: 12),
-
-              // FFmpeg status
-              settings.when(
-                data: (value) => _buildFfmpegStatus(value, ffmpegStatus),
-                loading: () => const LinearProgressIndicator(),
-                error: (e, _) => Text(
-                  'Error: $e',
-                  style: const TextStyle(color: Colors.red),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _ffmpegController,
-                      style: const TextStyle(fontSize: 13),
-                      decoration: _inputDecoration(
-                        hint: 'Auto-detect (leave empty)',
-                        errorText: _ffmpegError,
-                      ),
-                      onChanged: (_) => setState(() => _ffmpegError = null),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: _browseFfmpeg,
-                    icon: const Icon(Icons.folder_open),
-                    tooltip: 'Browse...',
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFF2A2A2A),
-                    ),
-                  ),
-                ],
-              ),
-              if (_ffmpegController.text.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: TextButton.icon(
-                    onPressed: _resetFfmpegToDefault,
-                    icon: const Icon(Icons.refresh, size: 16),
-                    label: const Text('Reset to auto-detect'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.grey[400],
+                      foregroundColor: Theme.of(
+                        context,
+                      ).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -319,18 +466,17 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  Widget _buildSectionHeader(BuildContext context, String title) {
     return Text(
       title,
-      style: TextStyle(
-        fontSize: 14,
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(
         fontWeight: FontWeight.bold,
-        color: Colors.grey[300],
       ),
     );
   }
 
-  Widget _buildTextField({
+  Widget _buildTextField(
+    BuildContext context, {
     required String label,
     required TextEditingController controller,
     bool enabled = true,
@@ -341,29 +487,38 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
       children: [
         Text(
           label,
-          style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 6),
         TextField(
           controller: controller,
           enabled: enabled,
-          style: TextStyle(
-            fontSize: 13,
-            color: enabled ? Colors.white : Colors.grey[500],
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: enabled
+                ? Theme.of(context).colorScheme.onSurface
+                : Theme.of(context).colorScheme.onSurfaceVariant,
           ),
-          decoration: _inputDecoration(hint: hint),
+          decoration: _inputDecoration(context, hint: hint),
         ),
       ],
     );
   }
 
-  InputDecoration _inputDecoration({String? hint, String? errorText}) {
+  InputDecoration _inputDecoration(
+    BuildContext context, {
+    String? hint,
+    String? errorText,
+  }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: Colors.grey[600]),
+      hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
       errorText: errorText,
       filled: true,
-      fillColor: const Color(0xFF2A2A2A),
+      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
         borderSide: BorderSide.none,
@@ -372,7 +527,11 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
     );
   }
 
-  Widget _buildFfmpegStatus(SettingsState settings, bool? ffmpegStatus) {
+  Widget _buildFfmpegStatus(
+    BuildContext context,
+    SettingsState settings,
+    bool? ffmpegStatus,
+  ) {
     final isAvailable = ffmpegStatus ?? false;
     final currentPath = FFmpegService.ffmpegPath;
     final isCustom = settings.hasCustomFfmpegPath;
@@ -404,15 +563,19 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
               children: [
                 Text(
                   isAvailable ? 'FFmpeg detected' : 'FFmpeg not found',
-                  style: TextStyle(
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w500,
-                    color: isAvailable ? Colors.green[300] : Colors.orange[300],
+                    color: isAvailable
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.error,
                   ),
                 ),
                 if (isAvailable)
                   Text(
                     currentPath,
-                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -421,7 +584,7 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
                     '(Custom path)',
                     style: TextStyle(
                       fontSize: 10,
-                      color: Theme.of(context).colorScheme.primary,
+                      color: Theme.of(context).colorScheme.tertiary,
                     ),
                   ),
               ],

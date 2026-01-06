@@ -61,8 +61,10 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
         Expanded(
           flex: 6,
           child: Container(
-            decoration: const BoxDecoration(
-              border: Border(right: BorderSide(color: Color(0xFF333333))),
+            decoration: BoxDecoration(
+              border: Border(
+                right: BorderSide(color: Theme.of(context).colorScheme.outline),
+              ),
             ),
             child: ListView(
               padding: const EdgeInsets.all(24),
@@ -108,7 +110,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                           onPressed: () => setState(() => _audioFiles = []),
                           icon: const Icon(Icons.delete_sweep, size: 18),
                           tooltip: 'Remove all audio tracks',
-                          color: Colors.grey[500],
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                           splashRadius: 16,
@@ -167,9 +169,11 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.black12,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white10),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
                 ),
                 child: Column(
                   children: [
@@ -179,28 +183,39 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Parallel Processing',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey[300],
-                                ),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Parallel Processing',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelMedium
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  CompactTooltip(
+                                    message:
+                                        '${SystemInfoService.getCpuInfo()}.\n\n'
+                                        '• Higher values = faster\n'
+                                        '• Lower values = less CPU load',
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 'Simultaneous encoding tasks',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey[600],
-                                ),
+                                style: Theme.of(context).textTheme.labelSmall,
                               ),
                             ],
                           ),
                         ),
+                        const SizedBox(width: 12),
                         SettingsNumberInput(
                           initialValue: widget.project.concurrencyLimit
                               .toString(),
+                          width: 85,
                           onChanged: (value) {
                             final intValue = int.tryParse(value);
                             if (intValue != null && intValue > 0) {
@@ -212,64 +227,45 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: Colors.blue.withValues(alpha: 0.1),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 12,
-                            color: Colors.blue[300],
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '${SystemInfoService.getCpuInfo()}. Higher values speed up processing but increase CPU usage.',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.blue[200],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Divider(color: Colors.white10, height: 24),
+                    const Divider(height: 24),
                     Row(
                       children: [
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Loop Audio Sequence',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey[300],
-                                ),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Loop Audio Sequence',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelMedium
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const CompactTooltip(
+                                    message:
+                                        'Repeats the audio playlist.\n\n'
+                                        'Useful when video is longer\n'
+                                        'than your audio tracks.',
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 'Repeat count for audio playlist',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey[600],
-                                ),
+                                style: Theme.of(context).textTheme.labelSmall,
                               ),
                             ],
                           ),
                         ),
+                        const SizedBox(width: 12),
                         SettingsNumberInput(
                           initialValue: _audioLoopCount.toString(),
+                          width: 85,
                           onChanged: (value) {
                             final intValue = int.tryParse(value);
                             if (intValue != null && intValue >= 1) {
@@ -296,8 +292,12 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Theme.of(context).colorScheme.primary,
                     foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    disabledBackgroundColor: Colors.grey.withValues(alpha: 0.2),
-                    disabledForegroundColor: Colors.grey.withValues(alpha: 0.5),
+                    disabledBackgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    disabledForegroundColor: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant,
                     elevation: 4,
                     shadowColor: Theme.of(
                       context,
@@ -323,18 +323,22 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     Widget? action,
     bool isCollapsible = true,
   }) {
+    final baseFontSize = Theme.of(context).textTheme.bodyMedium!.fontSize!;
+
     if (!isCollapsible) {
       return Row(
         children: [
-          Icon(icon, size: 16, color: Colors.deepPurple[200]),
-          const SizedBox(width: 12),
+          Icon(
+            icon,
+            size: baseFontSize * 1.14,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          SizedBox(width: baseFontSize * 0.86),
           Expanded(
             child: Text(
               title.toUpperCase(),
-              style: TextStyle(
-                fontSize: 11,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: Colors.grey[600],
                 letterSpacing: 1.2,
               ),
             ),
@@ -351,56 +355,74 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
       cursor: SystemMouseCursors.click,
       child: InkWell(
         onTap: () => ref.read(collapsedSectionsProvider.notifier).toggle(title),
-        borderRadius: BorderRadius.circular(8),
-        hoverColor: Colors.deepPurple.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(baseFontSize * 0.57),
+        hoverColor: Theme.of(
+          context,
+        ).colorScheme.primary.withValues(alpha: 0.1),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: EdgeInsets.symmetric(
+            horizontal: baseFontSize * 0.86,
+            vertical: baseFontSize * 0.71,
+          ),
           decoration: BoxDecoration(
-            color: Colors.black12,
-            borderRadius: BorderRadius.circular(8),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(baseFontSize * 0.57),
             border: Border.all(
               color: isCollapsed
-                  ? Colors.grey.withValues(alpha: 0.2)
-                  : Colors.deepPurple.withValues(alpha: 0.3),
+                  ? Theme.of(context).colorScheme.outline.withValues(alpha: 0.5)
+                  : Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.5),
             ),
           ),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: EdgeInsets.all(baseFontSize * 0.43),
                 decoration: BoxDecoration(
-                  color: Colors.deepPurple.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(baseFontSize * 0.43),
                 ),
-                child: Icon(icon, size: 16, color: Colors.deepPurple[200]),
+                child: Icon(
+                  icon,
+                  size: baseFontSize * 1.14,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: baseFontSize * 0.86),
               Expanded(
                 child: Text(
                   title.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 11,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: Colors.grey[400],
                     letterSpacing: 1.2,
                   ),
                 ),
               ),
-              if (action != null) ...[action, const SizedBox(width: 8)],
+              if (action != null) ...[
+                action,
+                SizedBox(width: baseFontSize * 0.57),
+              ],
               Container(
-                padding: const EdgeInsets.all(4),
+                padding: EdgeInsets.all(baseFontSize * 0.29),
                 decoration: BoxDecoration(
                   color: isCollapsed
-                      ? Colors.grey.withValues(alpha: 0.1)
-                      : Colors.deepPurple.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
+                      ? Theme.of(
+                          context,
+                        ).colorScheme.outline.withValues(alpha: 0.2)
+                      : Theme.of(
+                          context,
+                        ).colorScheme.primary.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(baseFontSize * 0.29),
                 ),
                 child: Icon(
                   isCollapsed ? Icons.expand_more : Icons.expand_less,
-                  size: 18,
+                  size: baseFontSize * 1.29,
                   color: isCollapsed
-                      ? Colors.grey[500]
-                      : Colors.deepPurple[300],
+                      ? Theme.of(context).colorScheme.onSurfaceVariant
+                      : Theme.of(context).colorScheme.primary,
                 ),
               ),
             ],
@@ -414,9 +436,11 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF333333)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -425,18 +449,28 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.blue.withValues(alpha: 0.1),
+              color: Theme.of(
+                context,
+              ).colorScheme.primaryContainer.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primaryContainer,
+              ),
             ),
             child: Row(
               children: [
-                Icon(Icons.info_outline, size: 16, color: Colors.blue[300]),
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Adding an intro video will increase processing time',
-                    style: TextStyle(fontSize: 11, color: Colors.blue[200]),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
                   ),
                 ),
               ],
@@ -445,10 +479,9 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
           const SizedBox(height: 12),
           Text(
             'Intro Audio',
-            style: TextStyle(
-              fontSize: 12,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
               fontWeight: FontWeight.bold,
-              color: Colors.grey[300],
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 12),
@@ -491,10 +524,12 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
           const SizedBox(height: 8),
           Text(
             _getIntroAudioDescription(widget.project.introAudioMode),
-            style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 16),
-          const Divider(height: 1, color: Color(0xFF333333)),
+          const Divider(height: 1),
           const SizedBox(height: 16),
           if (_introVideo != null)
             _buildMediaItem(
@@ -586,9 +621,11 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.black12,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -596,18 +633,28 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.blue.withValues(alpha: 0.05),
+              color: Theme.of(
+                context,
+              ).colorScheme.primaryContainer.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: Colors.blue.withValues(alpha: 0.1)),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primaryContainer,
+              ),
             ),
             child: Row(
               children: [
-                Icon(Icons.info_outline, size: 12, color: Colors.blue[300]),
+                Icon(
+                  Icons.info_outline,
+                  size: 12,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'These details will be embedded into the video metadata.',
-                    style: TextStyle(fontSize: 10, color: Colors.blue[200]),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
                   ),
                 ),
               ],
@@ -650,32 +697,37 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
       children: [
         Text(
           label,
-          style: TextStyle(
-            fontSize: 13,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
             fontWeight: FontWeight.bold,
-            color: Colors.grey[300],
           ),
         ),
         const SizedBox(height: 8),
         TextFormField(
           initialValue: initialValue,
-          style: const TextStyle(color: Colors.white, fontSize: 13),
+          style: Theme.of(context).textTheme.labelMedium,
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: Colors.grey[600], fontSize: 12),
+            hintStyle: Theme.of(context).textTheme.labelSmall,
             filled: true,
-            fillColor: const Color(0xFF1A1A1A),
+            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+              borderSide: BorderSide(
+                color: Theme.of(context).colorScheme.outline,
+              ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+              borderSide: BorderSide(
+                color: Theme.of(context).colorScheme.outline,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Colors.deepPurple, width: 2),
+              borderSide: BorderSide(
+                color: Theme.of(context).colorScheme.primary,
+                width: 2,
+              ),
             ),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 12,
@@ -702,9 +754,11 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF333333)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
       child: Row(
         children: [
@@ -714,15 +768,16 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
               width: 24,
               height: 24,
               decoration: BoxDecoration(
-                color: Colors.deepPurple.withValues(alpha: 0.2),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: Center(
                 child: Text(
                   '$index',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.deepPurple[200],
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -734,20 +789,26 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: isVideo
-                  ? Colors.blue.withValues(alpha: 0.1)
-                  : Colors.green.withValues(alpha: 0.1),
+                  ? Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer.withValues(alpha: 0.5)
+                  : Theme.of(
+                      context,
+                    ).colorScheme.tertiaryContainer.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: isVideo
-                    ? Colors.blue.withValues(alpha: 0.3)
-                    : Colors.green.withValues(alpha: 0.3),
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : Theme.of(context).colorScheme.tertiaryContainer,
                 width: 0.5,
               ),
             ),
             child: Icon(
               icon,
               size: 16,
-              color: isVideo ? Colors.blue[300] : Colors.green[300],
+              color: isVideo
+                  ? Theme.of(context).colorScheme.onPrimaryContainer
+                  : Theme.of(context).colorScheme.onTertiaryContainer,
             ),
           ),
           const SizedBox(width: 12),
@@ -766,7 +827,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 ),
                 Text(
                   isVideo ? 'Video' : 'Audio',
-                  style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
               ],
             ),
@@ -776,13 +837,17 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
             icon: Icon(
               Icons.play_circle_outline,
               size: 20,
-              color: Colors.grey[500],
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
             onPressed: () => _showPreview(context, path, isVideo: isVideo),
             tooltip: 'Preview',
           ),
           IconButton(
-            icon: Icon(Icons.close, size: 16, color: Colors.grey[600]),
+            icon: Icon(
+              Icons.close,
+              size: 16,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
             onPressed: onRemove,
             tooltip: 'Remove',
           ),
@@ -803,7 +868,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
             maxHeight: isVideo ? 600 : 200,
           ),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -811,14 +876,18 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFF333333))),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       isVideo ? Icons.videocam : Icons.audiotrack,
-                      color: isVideo ? Colors.blue : Colors.green,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -852,7 +921,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -860,24 +929,27 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
+                    color: Theme.of(context).colorScheme.errorContainer,
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
-                      color: Colors.red.withValues(alpha: 0.3),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.error.withValues(alpha: 0.3),
                     ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Intro',
-                        style: TextStyle(fontSize: 9, color: Colors.red),
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
                       ),
                       Text(
                         introVal,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.white,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -885,15 +957,21 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                   ),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Icon(Icons.arrow_forward, size: 16, color: Colors.grey),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(
+                  Icons.arrow_forward,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
+                    color: Colors.green.withValues(
+                      alpha: 0.1,
+                    ), // Keep green for success/background
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
                       color: Colors.green.withValues(alpha: 0.3),
@@ -908,9 +986,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                       ),
                       Text(
                         bgVal,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.white,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -929,20 +1005,20 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black26,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
           Text(
             codec.toUpperCase(),
-            style: const TextStyle(
-              fontSize: 11,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
               fontWeight: FontWeight.bold,
-              color: Colors.white,
             ),
           ),
         ],
@@ -1021,54 +1097,62 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
         final shouldProceed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
-            title: const Row(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            title: Row(
               children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                SizedBox(width: 12),
-                Text('Codec Mismatch', style: TextStyle(color: Colors.white)),
+                const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                const SizedBox(width: 12),
+                Text(
+                  'Codec Mismatch',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
               ],
             ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'The intro video and background video have different codecs. This may cause issues during merging.',
-                  style: TextStyle(color: Colors.grey),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 _buildCodecInfo('Intro Video', introMeta.codec!),
                 const SizedBox(height: 8),
                 _buildCodecInfo('Background Video', bgMeta.codec!),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Recommendation:',
-                  style: TextStyle(
-                    color: Colors.white,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Please convert your intro video to match the background video codec (e.g., using HandBrake to convert both to H.264/MP4).',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text(
+                child: Text(
                   'Cancel',
-                  style: TextStyle(color: Colors.grey),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  foregroundColor: Colors.white,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 ),
                 child: const Text('I Understand, Try Anyway'),
               ),
@@ -1127,14 +1211,14 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
         final shouldProceed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
-            title: const Row(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            title: Row(
               children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                SizedBox(width: 12),
+                const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                const SizedBox(width: 12),
                 Text(
                   'Potential Glitch Detected',
-                  style: TextStyle(color: Colors.white),
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
             ),
@@ -1142,32 +1226,38 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'The intro video and background video have mismatched properties. This will likely cause the merged video to glitch or fail.',
-                  style: TextStyle(color: Colors.grey),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 ...issues,
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'It is recommended to manually convert your intro video to match the background video parameters before merging.',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false), // Cancel
-                child: const Text(
+                child: Text(
                   'Cancel',
-                  style: TextStyle(color: Colors.grey),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true), // Process Anyway
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  foregroundColor: Colors.white,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 ),
                 child: const Text('Process Anyway'),
               ),

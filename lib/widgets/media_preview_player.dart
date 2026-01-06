@@ -154,7 +154,9 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
               Flexible(
                 child: Text(
                   'Unable to play this file',
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -219,8 +221,10 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
                         1,
                         double.infinity,
                       ),
-                      activeColor: Colors.green,
-                      inactiveColor: Colors.grey[700],
+                      activeColor: Theme.of(context).colorScheme.primary,
+                      inactiveColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       onChanged: (v) {
                         _seekTo(Duration(milliseconds: v.toInt()));
                       },
@@ -233,17 +237,21 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
                       children: [
                         Text(
                           _formatDuration(position),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[500],
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                         Text(
                           _formatDuration(duration),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[500],
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                       ],
                     ),
@@ -271,12 +279,16 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
             child: AnimatedOpacity(
               opacity: isPlaying ? 0.0 : 1.0,
               duration: const Duration(milliseconds: 200),
-              child: const ColoredBox(
-                color: Colors.black26,
+              child: ColoredBox(
+                color: Theme.of(
+                  context,
+                ).colorScheme.surface.withValues(alpha: 0.3),
                 child: Icon(
                   Icons.play_circle_outline,
                   size: 64,
-                  color: Colors.white70,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.7),
                 ),
               ),
             ),
@@ -293,20 +305,29 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
               VideoProgressIndicator(
                 controller,
                 allowScrubbing: true,
-                colors: const VideoProgressColors(
-                  playedColor: Colors.green,
-                  bufferedColor: Colors.white24,
-                  backgroundColor: Colors.white10,
+                colors: VideoProgressColors(
+                  playedColor: Theme.of(context).colorScheme.primary,
+                  bufferedColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest,
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.outline.withValues(alpha: 0.3),
                 ),
               ),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [Colors.black87, Colors.transparent],
+                    colors: [
+                      Theme.of(
+                        context,
+                      ).colorScheme.surface.withValues(alpha: 0.8),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
                 child: Row(
@@ -314,11 +335,9 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
                   children: [
                     Text(
                       _formatDuration(position),
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.white,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         fontFamily: 'monospace',
-                        shadows: [
+                        shadows: const [
                           Shadow(
                             blurRadius: 2,
                           ),
@@ -327,11 +346,12 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
                     ),
                     Text(
                       _formatDuration(duration),
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.white70,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.7),
                         fontFamily: 'monospace',
-                        shadows: [
+                        shadows: const [
                           Shadow(
                             blurRadius: 2,
                           ),

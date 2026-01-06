@@ -370,7 +370,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             maxHeight: isVideo ? 600 : 200,
           ),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -378,14 +378,20 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFF333333))),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       isVideo ? Icons.videocam : Icons.audiotrack,
-                      color: isVideo ? Colors.blue : Colors.green,
+                      color: isVideo
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.tertiary,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -427,9 +433,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF333333)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
       child: Row(
         children: [
@@ -438,15 +446,16 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               width: 24,
               height: 24,
               decoration: BoxDecoration(
-                color: Colors.deepPurple.withValues(alpha: 0.2),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: Center(
                 child: Text(
                   '$index',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.deepPurple[200],
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -458,20 +467,26 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: isVideo
-                  ? Colors.blue.withValues(alpha: 0.1)
-                  : Colors.green.withValues(alpha: 0.1),
+                  ? Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer.withValues(alpha: 0.5)
+                  : Theme.of(
+                      context,
+                    ).colorScheme.tertiaryContainer.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: isVideo
-                    ? Colors.blue.withValues(alpha: 0.3)
-                    : Colors.green.withValues(alpha: 0.3),
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : Theme.of(context).colorScheme.tertiaryContainer,
                 width: 0.5,
               ),
             ),
             child: Icon(
               icon,
               size: 16,
-              color: isVideo ? Colors.blue[300] : Colors.green[300],
+              color: isVideo
+                  ? Theme.of(context).colorScheme.onPrimaryContainer
+                  : Theme.of(context).colorScheme.onTertiaryContainer,
             ),
           ),
           const SizedBox(width: 12),
@@ -481,8 +496,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               children: [
                 Text(
                   fileName,
-                  style: const TextStyle(
-                    fontSize: 12,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w500,
                   ),
                   maxLines: 1,
@@ -490,7 +504,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 ),
                 Text(
                   isVideo ? 'Video' : 'Audio',
-                  style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
               ],
             ),
@@ -499,13 +513,17 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             icon: Icon(
               Icons.play_circle_outline,
               size: 20,
-              color: Colors.grey[500],
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
             onPressed: () => _showPreview(context, path, isVideo: isVideo),
             tooltip: 'Preview',
           ),
           IconButton(
-            icon: Icon(Icons.close, size: 16, color: Colors.grey[600]),
+            icon: Icon(
+              Icons.close,
+              size: 16,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
             onPressed: onRemove,
             tooltip: 'Remove',
           ),
@@ -521,7 +539,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       child: Column(
         children: [
           ColoredBox(
-            color: const Color(0xFF1A1A1A),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: TabBar(
               tabs: const [
                 Tab(
@@ -541,11 +559,13 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                   icon: Icon(Icons.info_outline, size: 20),
                 ),
               ],
-              labelColor: Colors.deepPurple[200],
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Colors.deepPurple,
+              labelColor: Theme.of(context).colorScheme.primary,
+              unselectedLabelColor: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant,
+              indicatorColor: Theme.of(context).colorScheme.primary,
               indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: const Color(0xFF333333),
+              dividerColor: Theme.of(context).colorScheme.outline,
             ),
           ),
           Expanded(
@@ -569,9 +589,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF333333)),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outline,
+          ),
         ),
         child: content,
       ),
@@ -614,8 +636,10 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 icon: const Icon(Icons.delete_sweep, size: 16),
                 label: const Text('Clear All'),
                 style: TextButton.styleFrom(
-                  foregroundColor: Colors.grey,
-                  textStyle: const TextStyle(fontSize: 12),
+                  foregroundColor: Theme.of(
+                    context,
+                  ).colorScheme.onSurfaceVariant,
+                  textStyle: Theme.of(context).textTheme.labelMedium,
                 ),
               ),
             ],
@@ -646,42 +670,44 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.black12,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white10),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
           child: Column(
             children: [
               CheckboxListTile(
-                title: const Text(
+                title: Text(
                   'Keep Audio',
-                  style: TextStyle(color: Colors.white, fontSize: 13),
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Preserves audio tracks in merged video',
-                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _keepAudio,
                 onChanged: (v) => setState(() => _keepAudio = v ?? true),
                 contentPadding: EdgeInsets.zero,
-                activeColor: Colors.deepPurple,
+                activeColor: Theme.of(context).colorScheme.primary,
                 dense: true,
               ),
-              const Divider(color: Colors.white10),
+              const Divider(),
               CheckboxListTile(
-                title: const Text(
+                title: Text(
                   'Smooth Transition (Crossfade)',
-                  style: TextStyle(color: Colors.white, fontSize: 13),
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Adds 1s crossfade between clips. Requires re-encoding.',
-                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _smoothTransition,
                 onChanged: (v) =>
                     setState(() => _smoothTransition = v ?? false),
                 contentPadding: EdgeInsets.zero,
-                activeColor: Colors.deepPurple,
+                activeColor: Theme.of(context).colorScheme.primary,
                 dense: true,
               ),
             ],
@@ -692,28 +718,25 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.black12,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white10),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Fade Effects',
-                style: TextStyle(
-                  color: Colors.white,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                  fontSize: 14,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 'Great for creating loop-friendly videos',
-                style: TextStyle(
-                  color: Colors.grey.withValues(alpha: 0.7),
-                  fontSize: 10,
-                ),
+                style: Theme.of(context).textTheme.labelSmall,
               ),
               const SizedBox(height: 12),
               // Fade In Row
@@ -725,14 +748,14 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     child: Checkbox(
                       value: _fadeIn,
                       onChanged: (v) => setState(() => _fadeIn = v ?? false),
-                      activeColor: Colors.deepPurple,
+                      activeColor: Theme.of(context).colorScheme.primary,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'Fade In',
-                    style: TextStyle(color: Colors.white, fontSize: 12),
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   if (_fadeIn) ...[
                     const SizedBox(width: 16),
@@ -755,14 +778,14 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     child: Checkbox(
                       value: _fadeOut,
                       onChanged: (v) => setState(() => _fadeOut = v ?? false),
-                      activeColor: Colors.deepPurple,
+                      activeColor: Theme.of(context).colorScheme.primary,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'Fade Out',
-                    style: TextStyle(color: Colors.white, fontSize: 12),
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   if (_fadeOut) ...[
                     const SizedBox(width: 16),
@@ -784,28 +807,25 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.black12,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outline,
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Encoding Settings',
-                  style: TextStyle(
-                    color: Colors.white,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Required when using effects',
-                  style: TextStyle(
-                    color: Colors.grey.withValues(alpha: 0.7),
-                    fontSize: 10,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
                 const SizedBox(height: 16),
                 CompactDropdown<String>(
@@ -831,26 +851,25 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     _getPresetHint(_encodingPreset),
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 10,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
-                const Divider(color: Colors.white10, height: 24),
+                const Divider(height: 24),
                 CheckboxListTile(
-                  title: const Text(
+                  title: Text(
                     'Hardware Acceleration',
-                    style: TextStyle(color: Colors.white, fontSize: 13),
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
-                  subtitle: const Text(
+                  subtitle: Text(
                     'Use GPU for faster encoding',
-                    style: TextStyle(color: Colors.grey, fontSize: 10),
+                    style: Theme.of(context).textTheme.labelSmall,
                   ),
                   value: _useHwAccel,
                   onChanged: (v) => setState(() => _useHwAccel = v ?? false),
                   contentPadding: EdgeInsets.zero,
-                  activeColor: Colors.deepPurple,
+                  activeColor: Theme.of(context).colorScheme.primary,
                   dense: true,
                 ),
                 if (_useHwAccel) ...[
@@ -937,19 +956,19 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.black12,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white10),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Compression Settings',
-                style: TextStyle(
-                  color: Colors.white,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                  fontSize: 14,
                 ),
               ),
               const SizedBox(height: 16),
@@ -988,10 +1007,12 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                         const SizedBox(height: 6),
                         Text(
                           _getCrfHint(_compressCrf),
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            fontSize: 10,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                       ],
                     ),
@@ -1033,10 +1054,12 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                         const SizedBox(height: 6),
                         Text(
                           _getPresetHint(_compressPreset),
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            fontSize: 10,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                       ],
                     ),
@@ -1051,42 +1074,44 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.black12,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white10),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
           child: Column(
             children: [
               CheckboxListTile(
-                title: const Text(
+                title: Text(
                   'Keep Audio',
-                  style: TextStyle(color: Colors.white, fontSize: 13),
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Copies original audio stream (No quality loss)',
-                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _compressKeepAudio,
                 onChanged: (v) =>
                     setState(() => _compressKeepAudio = v ?? true),
                 contentPadding: EdgeInsets.zero,
-                activeColor: Colors.deepPurple,
+                activeColor: Theme.of(context).colorScheme.primary,
                 dense: true,
               ),
-              const Divider(color: Colors.white10),
+              const Divider(),
               CheckboxListTile(
-                title: const Text(
+                title: Text(
                   'Hardware Acceleration',
-                  style: TextStyle(color: Colors.white, fontSize: 13),
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Use GPU for faster encoding',
-                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _useHwAccel,
                 onChanged: (v) => setState(() => _useHwAccel = v ?? false),
                 contentPadding: EdgeInsets.zero,
-                activeColor: Colors.deepPurple,
+                activeColor: Theme.of(context).colorScheme.primary,
                 dense: true,
               ),
               if (_useHwAccel) ...[
@@ -1138,8 +1163,8 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             icon: const Icon(Icons.compress),
             label: const Text('Compress Video'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
             ),
           ),
         ),
@@ -1180,18 +1205,28 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.blue.withValues(alpha: 0.05),
+            color: Theme.of(
+              context,
+            ).colorScheme.primaryContainer.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.primaryContainer,
+            ),
           ),
           child: Row(
             children: [
-              Icon(Icons.info_outline, size: 16, color: Colors.blue[300]),
+              Icon(
+                Icons.info_outline,
+                size: 16,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Use this to convert videos to specific resolution & frame rate. Perfect for preparing intro videos to match your main video format!',
-                  style: TextStyle(fontSize: 11, color: Colors.blue[200]),
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
                 ),
               ),
             ],
@@ -1202,9 +1237,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.black12,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white10),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1212,12 +1249,10 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Output Format',
-                    style: TextStyle(
-                      color: Colors.white,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      fontSize: 14,
                     ),
                   ),
                   TextButton.icon(
@@ -1225,7 +1260,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     icon: const Icon(Icons.content_copy, size: 16),
                     label: const Text('Copy from Video'),
                     style: TextButton.styleFrom(
-                      foregroundColor: Colors.deepPurple[200],
+                      foregroundColor: Theme.of(context).colorScheme.primary,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 6,
@@ -1239,10 +1274,12 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.tertiaryContainer.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: Colors.green.withValues(alpha: 0.3),
+                      color: Theme.of(context).colorScheme.tertiaryContainer,
                     ),
                   ),
                   child: Row(
@@ -1250,16 +1287,20 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       Icon(
                         Icons.check_circle,
                         size: 14,
-                        color: Colors.green[300],
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onTertiaryContainer,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           'Format copied from: $_reencodeReferenceVideoName',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.green[200],
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onTertiaryContainer,
+                              ),
                         ),
                       ),
                       IconButton(
@@ -1269,7 +1310,9 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                         onPressed: () {
                           setState(() => _reencodeReferenceVideoName = null);
                         },
-                        color: Colors.green[300],
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onTertiaryContainer,
                       ),
                     ],
                   ),
@@ -1283,29 +1326,27 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Width',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.w500,
+                              ),
                         ),
                         const SizedBox(height: 8),
                         TextFormField(
                           initialValue: _reencodeWidth.toString(),
                           keyboardType: TextInputType.number,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                          ),
+                          style: Theme.of(context).textTheme.bodyLarge,
                           decoration: InputDecoration(
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 12,
                             ),
                             filled: true,
-                            fillColor: Colors.black26,
+                            fillColor: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                               borderSide: BorderSide.none,
@@ -1318,10 +1359,9 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                               ),
                             ),
                             suffixText: 'px',
-                            suffixStyle: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 12,
-                            ),
+                            suffixStyle: Theme.of(
+                              context,
+                            ).textTheme.labelMedium,
                           ),
                           onChanged: (value) {
                             final intValue = int.tryParse(value);
@@ -1334,9 +1374,13 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Padding(
-                    padding: EdgeInsets.only(top: 24),
-                    child: Icon(Icons.close, size: 16, color: Colors.grey),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 24),
+                    child: Icon(
+                      Icons.close,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1344,29 +1388,27 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Height',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.w500,
+                              ),
                         ),
                         const SizedBox(height: 8),
                         TextFormField(
                           initialValue: _reencodeHeight.toString(),
                           keyboardType: TextInputType.number,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                          ),
+                          style: Theme.of(context).textTheme.bodyLarge,
                           decoration: InputDecoration(
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 12,
                             ),
                             filled: true,
-                            fillColor: Colors.black26,
+                            fillColor: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                               borderSide: BorderSide.none,
@@ -1379,10 +1421,9 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                               ),
                             ),
                             suffixText: 'px',
-                            suffixStyle: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 12,
-                            ),
+                            suffixStyle: Theme.of(
+                              context,
+                            ).textTheme.labelMedium,
                           ),
                           onChanged: (value) {
                             final intValue = int.tryParse(value);
@@ -1400,13 +1441,12 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Frame Rate (FPS)',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.w500,
+                              ),
                         ),
                         const SizedBox(height: 8),
                         CompactDropdown<int>(
@@ -1453,43 +1493,45 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.black12,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white10),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
           child: Column(
             children: [
               CheckboxListTile(
-                title: const Text(
+                title: Text(
                   'Keep Audio',
-                  style: TextStyle(color: Colors.white, fontSize: 13),
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Re-encode audio to AAC format',
-                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _reencodeKeepAudio,
                 onChanged: (v) =>
                     setState(() => _reencodeKeepAudio = v ?? true),
                 contentPadding: EdgeInsets.zero,
-                activeColor: Colors.deepPurple,
+                activeColor: Theme.of(context).colorScheme.primary,
                 dense: true,
               ),
-              const Divider(color: Colors.white10),
+              const Divider(),
               CheckboxListTile(
-                title: const Text(
+                title: Text(
                   'Hardware Acceleration',
-                  style: TextStyle(color: Colors.white, fontSize: 13),
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Use GPU for faster encoding',
-                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _reencodeUseHwAccel,
                 onChanged: (v) =>
                     setState(() => _reencodeUseHwAccel = v ?? false),
                 contentPadding: EdgeInsets.zero,
-                activeColor: Colors.deepPurple,
+                activeColor: Theme.of(context).colorScheme.primary,
                 dense: true,
               ),
               if (_reencodeUseHwAccel) ...[
@@ -1543,8 +1585,8 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             icon: const Icon(Icons.settings_backup_restore),
             label: const Text('Re-encode Video'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
             ),
           ),
         ),
@@ -1591,20 +1633,18 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.black12,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white10),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'File Information',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 16),
                   _buildInfoRow(
@@ -1627,24 +1667,25 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.black12,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white10),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.videocam, color: Colors.blue[300], size: 18),
+                      Icon(
+                        Icons.videocam,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                       const SizedBox(width: 8),
-                      const Text(
+                      Text(
                         'Video Stream',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ],
                   ),
@@ -1673,9 +1714,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.black12,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white10),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1684,17 +1727,12 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     children: [
                       Icon(
                         Icons.audiotrack,
-                        color: Colors.green[300],
-                        size: 18,
+                        color: Theme.of(context).colorScheme.tertiary,
                       ),
                       const SizedBox(width: 8),
-                      const Text(
+                      Text(
                         'Audio Stream',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ],
                   ),
@@ -1716,9 +1754,13 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.black12,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white10),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1728,16 +1770,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                           Icon(
                             Icons.label_outline,
                             color: Colors.purple[300],
-                            size: 18,
                           ),
                           const SizedBox(width: 8),
-                          const Text(
+                          Text(
                             'Metadata Tags',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
+                            style: Theme.of(context).textTheme.titleMedium,
                           ),
                         ],
                       ),
@@ -1766,21 +1803,16 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 120,
+            width: 140,
             child: Text(
               label,
-              style: TextStyle(
-                color: Colors.grey[400],
-                fontSize: 12,
-              ),
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w500,
               ),
             ),

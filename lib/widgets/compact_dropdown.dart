@@ -26,7 +26,11 @@ class CompactDropdown<T> extends StatelessWidget {
     return Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 14, color: Colors.grey),
+          Icon(
+            icon,
+            size: 14,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 6),
         ],
         if (label != null) ...[
@@ -34,9 +38,8 @@ class CompactDropdown<T> extends StatelessWidget {
             label!,
             style:
                 labelStyle ??
-                const TextStyle(
-                  color: Colors.grey,
-                  fontSize: 11,
+                Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
           ),
           const SizedBox(width: 8),
@@ -47,19 +50,20 @@ class CompactDropdown<T> extends StatelessWidget {
             vertical: isDense ? 2 : 4,
           ),
           decoration: BoxDecoration(
-            color: Colors.black26,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(isDense ? 6 : 8),
             border: Border.all(
-              color: Colors.grey.withValues(alpha: 0.3),
+              color: Theme.of(context).colorScheme.outline,
             ),
           ),
           child: DropdownButton<T>(
             value: value,
             underline: const SizedBox(),
-            dropdownColor: const Color(0xFF2A2A2A),
+            dropdownColor: Theme.of(
+              context,
+            ).colorScheme.surfaceContainerHighest,
             isDense: isDense,
-            style: TextStyle(
-              color: Colors.white,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               fontSize: isDense ? 12 : 14,
             ),
             items: items,

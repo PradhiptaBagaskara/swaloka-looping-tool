@@ -69,15 +69,16 @@ class _LogEntryWidgetState extends State<LogEntryWidget> {
   }
 
   Color _getLevelColor(LogLevel level) {
+    final colorScheme = Theme.of(context).colorScheme;
     switch (level) {
       case LogLevel.info:
-        return Colors.blue.shade400;
+        return colorScheme.primary;
       case LogLevel.success:
-        return Colors.green.shade400;
+        return Colors.green.shade400; // Keep success green
       case LogLevel.warning:
-        return Colors.orange.shade400;
+        return Colors.orange.shade400; // Keep warning orange
       case LogLevel.error:
-        return Colors.red.shade400;
+        return colorScheme.error;
     }
   }
 

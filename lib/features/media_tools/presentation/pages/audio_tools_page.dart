@@ -181,7 +181,7 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
             maxHeight: isVideo ? 600 : 200,
           ),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -189,14 +189,20 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFF333333))),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       isVideo ? Icons.videocam : Icons.audiotrack,
-                      color: isVideo ? Colors.blue : Colors.green,
+                      color: isVideo
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.tertiary,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -238,9 +244,11 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF333333)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
       child: Row(
         children: [
@@ -250,15 +258,16 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
               width: 24,
               height: 24,
               decoration: BoxDecoration(
-                color: Colors.deepPurple.withValues(alpha: 0.2),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: Center(
                 child: Text(
                   '$index',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.deepPurple[200],
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -270,20 +279,26 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: isVideo
-                  ? Colors.blue.withValues(alpha: 0.1)
-                  : Colors.green.withValues(alpha: 0.1),
+                  ? Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer.withValues(alpha: 0.5)
+                  : Theme.of(
+                      context,
+                    ).colorScheme.tertiaryContainer.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: isVideo
-                    ? Colors.blue.withValues(alpha: 0.3)
-                    : Colors.green.withValues(alpha: 0.3),
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : Theme.of(context).colorScheme.tertiaryContainer,
                 width: 0.5,
               ),
             ),
             child: Icon(
               icon,
               size: 16,
-              color: isVideo ? Colors.blue[300] : Colors.green[300],
+              color: isVideo
+                  ? Theme.of(context).colorScheme.onPrimaryContainer
+                  : Theme.of(context).colorScheme.onTertiaryContainer,
             ),
           ),
           const SizedBox(width: 12),
@@ -293,8 +308,7 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
               children: [
                 Text(
                   fileName,
-                  style: const TextStyle(
-                    fontSize: 12,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w500,
                   ),
                   maxLines: 1,
@@ -302,7 +316,7 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
                 ),
                 Text(
                   isVideo ? 'Video' : 'Audio',
-                  style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
               ],
             ),
@@ -312,13 +326,17 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
             icon: Icon(
               Icons.play_circle_outline,
               size: 20,
-              color: Colors.grey[500],
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
             onPressed: () => _showPreview(context, path, isVideo: isVideo),
             tooltip: 'Preview',
           ),
           IconButton(
-            icon: Icon(Icons.close, size: 16, color: Colors.grey[600]),
+            icon: Icon(
+              Icons.close,
+              size: 16,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
             onPressed: onRemove,
             tooltip: 'Remove',
           ),
@@ -334,7 +352,7 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
       child: Column(
         children: [
           ColoredBox(
-            color: const Color(0xFF1A1A1A),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: TabBar(
               tabs: const [
                 Tab(
@@ -350,11 +368,13 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
                   icon: Icon(Icons.transform, size: 20),
                 ),
               ],
-              labelColor: Colors.deepPurple[200],
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Colors.deepPurple,
+              labelColor: Theme.of(context).colorScheme.primary,
+              unselectedLabelColor: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant,
+              indicatorColor: Theme.of(context).colorScheme.primary,
               indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: const Color(0xFF333333),
+              dividerColor: Theme.of(context).colorScheme.outline,
             ),
           ),
           Expanded(
@@ -377,9 +397,11 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF333333)),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outline,
+          ),
         ),
         child: content,
       ),
@@ -464,8 +486,10 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
                 icon: const Icon(Icons.delete_sweep, size: 16),
                 label: const Text('Clear All'),
                 style: TextButton.styleFrom(
-                  foregroundColor: Colors.grey,
-                  textStyle: const TextStyle(fontSize: 12),
+                  foregroundColor: Theme.of(
+                    context,
+                  ).colorScheme.onSurfaceVariant,
+                  textStyle: Theme.of(context).textTheme.labelMedium,
                 ),
               ),
             ],
