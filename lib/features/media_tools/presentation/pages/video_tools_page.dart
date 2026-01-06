@@ -121,7 +121,10 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     try {
       final outputsDir = await _ensureOutputsDir();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final outputPath = p.join(outputsDir, 'merged_videos_$timestamp.mp4');
+      final prefix = _videoPaths.length == 1
+          ? 'processed_video'
+          : 'merged_videos';
+      final outputPath = p.join(outputsDir, '${prefix}_$timestamp.mp4');
 
       await ref
           .read(mediaToolsServiceProvider)
@@ -543,7 +546,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             child: TabBar(
               tabs: const [
                 Tab(
-                  text: 'Concatenate Videos',
+                  text: 'Combine & Effects',
                   icon: Icon(Icons.video_library, size: 20),
                 ),
                 Tab(
@@ -606,8 +609,8 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       children: [
         DropZoneWidget(
           label: _videoPaths.isNotEmpty
-              ? '${_videoPaths.length} files selected'
-              : 'Drop Video Files Here (or Click)',
+              ? '${_videoPaths.length} ${_videoPaths.length == 1 ? "file" : "files"} selected'
+              : 'Drop Video File(s) Here (or Click)',
           icon: Icons.movie,
           onTap: _pickVideos,
           onFilesDropped: (files) {
@@ -666,6 +669,40 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           ),
         ],
         const SizedBox(height: 16),
+        // Info box for single video processing
+        if (_videoPaths.length == 1) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.primaryContainer.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primaryContainer,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Single video mode: You can add fade in/out effects. Smooth transitions require 2+ videos.',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         // Group: Audio & Transitions
         Container(
           padding: const EdgeInsets.all(16),
@@ -700,12 +737,15 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
-                  'Adds 1s crossfade between clips. Requires re-encoding.',
+                  _videoPaths.length <= 1
+                      ? 'Requires 2 or more videos'
+                      : 'Adds 1s crossfade between clips. Requires re-encoding.',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _smoothTransition,
-                onChanged: (v) =>
-                    setState(() => _smoothTransition = v ?? false),
+                onChanged: _videoPaths.length > 1
+                    ? (v) => setState(() => _smoothTransition = v ?? false)
+                    : null,
                 contentPadding: EdgeInsets.zero,
                 activeColor: Theme.of(context).colorScheme.primary,
                 dense: true,
@@ -753,16 +793,31 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    'Fade In',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Fade In',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        Text(
+                          'Fades from color at the start (1s)',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
                   if (_fadeIn) ...[
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 8),
                     ColorPickerButton(
                       color: _fadeInColor,
                       onColorChanged: (c) => setState(() => _fadeInColor = c),
-                      size: 22,
                       showDropdownIcon: false,
                     ),
                   ],
@@ -783,16 +838,31 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    'Fade Out',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Fade Out',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        Text(
+                          'Fades to color at the end (1s)',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
                   if (_fadeOut) ...[
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 8),
                     ColorPickerButton(
                       color: _fadeOutColor,
                       onColorChanged: (c) => setState(() => _fadeOutColor = c),
-                      size: 22,
                       showDropdownIcon: false,
                     ),
                   ],
@@ -914,10 +984,20 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           ),
         ],
         const SizedBox(height: 16),
-        ElevatedButton.icon(
-          onPressed: _videoPaths.length > 1 ? _concatVideos : null,
-          icon: const Icon(Icons.merge_type),
-          label: const Text('Merge Videos'),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: ElevatedButton.icon(
+            onPressed: _videoPaths.isNotEmpty ? _concatVideos : null,
+            icon: const Icon(Icons.merge_type),
+            label: Text(
+              _videoPaths.length == 1 ? 'Process Video' : 'Merge Videos',
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            ),
+          ),
         ),
       ],
     );

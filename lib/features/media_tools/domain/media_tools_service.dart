@@ -124,7 +124,9 @@ class MediaToolsService {
       onLog: onLog,
     );
 
-    final log = LogEntry.info('Concatenating ${videoPaths.length} videos...');
+    final log = videoPaths.length == 1
+        ? LogEntry.info('Processing single video with effects...')
+        : LogEntry.info('Concatenating ${videoPaths.length} videos...');
     onLog?.call(log);
 
     try {
@@ -504,7 +506,10 @@ class MediaToolsService {
         );
       }
 
-      onLog?.call(LogEntry.success('Videos concatenated to $outputPath'));
+      final successMsg = videoPaths.length == 1
+          ? 'Video processed successfully: $outputPath'
+          : 'Videos concatenated to $outputPath';
+      onLog?.call(LogEntry.success(successMsg));
     } finally {
       if (await tempDir.exists()) {
         await tempDir.delete(recursive: true);
