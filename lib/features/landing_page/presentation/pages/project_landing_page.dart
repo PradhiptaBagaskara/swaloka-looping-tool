@@ -5,10 +5,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:swaloka_looping_tool/features/video_merger/presentation/pages/ffmpeg_error_page.dart';
+import 'package:swaloka_looping_tool/features/landing_page/presentation/pages/ffmpeg_error_page.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/ffmpeg_provider.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
-import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/settings_dialog.dart';
+import 'package:swaloka_looping_tool/widgets/settings_dialog.dart';
 
 /// Landing page for creating or opening projects
 class ProjectLandingPage extends ConsumerStatefulWidget {
@@ -24,165 +24,173 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
     final recentProjects = ref.watch(recentProjectsProvider);
     final ffmpegStatus = ref.watch(ffmpegStatusProvider);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      body: SizedBox.expand(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(vertical: 64, horizontal: 32),
-            child: Container(
-              width: double.infinity,
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // FFmpeg status banner
-                  if (ffmpegStatus == null)
-                    _buildFFmpegCheckingBanner(context)
-                  else if (!ffmpegStatus)
-                    _buildFFmpegWarning(context),
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // FFmpeg status banner
+        if (ffmpegStatus == null)
+          _buildFFmpegCheckingBanner(context)
+        else if (!ffmpegStatus)
+          _buildFFmpegWarning(context),
 
-                  // Logo
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.movie_filter,
-                      size: 80,
-                      color: Colors.deepPurple,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Title
-                  Text(
-                    'SWALOKA LOOPING TOOL',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 4,
-                    ),
-                  ),
-                  const SizedBox(height: 56),
-
-                  // Action buttons - use Wrap for responsive layout
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 24,
-                    runSpacing: 24,
-                    children: [
-                      _buildLandingCard(
-                        context,
-                        title: 'Create New Project',
-                        description: 'Start a new video project from scratch',
-                        icon: Icons.add_to_photos_outlined,
-                        onTap: () => _createNewProject(context),
-                      ),
-                      _buildLandingCard(
-                        context,
-                        title: 'Open Existing Project',
-                        description: 'Continue working on a saved project',
-                        icon: Icons.folder_open_outlined,
-                        onTap: () => _openProject(context),
-                      ),
-                    ],
-                  ),
-
-                  // Recent projects
-                  if (recentProjects.isNotEmpty) ...[
-                    const SizedBox(height: 64),
-                    Container(
-                      constraints: const BoxConstraints(maxWidth: 504),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8, bottom: 16),
-                            child: Text(
-                              'Recent Projects',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey[600],
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                          ),
-                          ...recentProjects.map(
-                            (path) => _buildRecentProjectItem(context, path),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 64),
-                  // Version info and settings
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ref
-                          .watch(appVersionProvider)
-                          .when(
-                            data: (version) => Text(
-                              version,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.grey[700],
-                                letterSpacing: 1,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            loading: () => const SizedBox.shrink(),
-                            error: (_, _) => const SizedBox.shrink(),
-                          ),
-                      const SizedBox(width: 16),
-                      IconButton(
-                        onPressed: () => showSettingsDialog(context),
-                        icon: const Icon(Icons.settings, size: 16),
-                        tooltip: 'Settings',
-                        style: IconButton.styleFrom(
-                          foregroundColor: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+        // Logo
+        Container(
+          padding: EdgeInsets.all(
+            Theme.of(context).textTheme.headlineLarge!.fontSize! * 0.75,
+          ),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.movie_filter,
+            size: Theme.of(context).textTheme.headlineLarge!.fontSize! * 2.5,
+            color: Theme.of(context).colorScheme.primary,
           ),
         ),
-      ),
+        SizedBox(height: Theme.of(context).textTheme.headlineLarge!.fontSize),
+
+        // Title
+        Text(
+          'SWALOKA LOOPING TOOL',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w900,
+            letterSpacing: 4,
+          ),
+        ),
+        SizedBox(
+          height: Theme.of(context).textTheme.headlineLarge!.fontSize! * 1.75,
+        ),
+
+        // Action buttons - use Wrap for responsive layout
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: Theme.of(context).textTheme.bodyMedium!.fontSize!,
+          runSpacing: Theme.of(context).textTheme.bodyMedium!.fontSize!,
+          children: [
+            _buildLandingCard(
+              context,
+              title: 'Create Project',
+              description: 'Start a new video project from scratch',
+              icon: Icons.add_to_photos_outlined,
+              onTap: () => _createNewProject(context),
+            ),
+            _buildLandingCard(
+              context,
+              title: 'Open Project',
+              description: 'Continue working on a saved project',
+              icon: Icons.folder_open_outlined,
+              onTap: () => _openProject(context),
+            ),
+          ],
+        ),
+
+        // Recent projects
+        if (recentProjects.isNotEmpty) ...[
+          SizedBox(
+            height: Theme.of(context).textTheme.headlineLarge!.fontSize! * 2,
+          ),
+          Container(
+            constraints: BoxConstraints(
+              maxWidth:
+                  Theme.of(context).textTheme.titleLarge!.fontSize! * 25.2,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(
+                    left:
+                        Theme.of(context).textTheme.bodySmall!.fontSize! * 0.67,
+                    bottom:
+                        Theme.of(context).textTheme.bodyMedium!.fontSize! *
+                        1.14,
+                  ),
+                  child: Text(
+                    'Recent Projects',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ),
+                ...recentProjects.map(
+                  (path) => _buildRecentProjectItem(context, path),
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        SizedBox(
+          height: Theme.of(context).textTheme.headlineLarge!.fontSize! * 2,
+        ),
+        // Version info and settings
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ref
+                .watch(appVersionProvider)
+                .when(
+                  data: (version) => Text(
+                    version,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      letterSpacing: 1,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, _) => const SizedBox.shrink(),
+                ),
+            SizedBox(
+              width: Theme.of(context).textTheme.bodyMedium!.fontSize! * 1.14,
+            ),
+            IconButton(
+              onPressed: () => showSettingsDialog(context),
+              icon: Icon(
+                Icons.settings,
+                size: Theme.of(context).textTheme.bodyMedium!.fontSize! * 1.14,
+              ),
+              tooltip: 'Settings',
+              style: IconButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
   Widget _buildFFmpegCheckingBanner(BuildContext context) {
+    final baseFontSize = Theme.of(context).textTheme.bodyMedium!.fontSize!;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      padding: const EdgeInsets.all(16),
+      margin: EdgeInsets.only(bottom: baseFontSize * 1.71),
+      padding: EdgeInsets.all(baseFontSize * 1.14),
       decoration: BoxDecoration(
         color: Colors.blue.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(baseFontSize * 0.86),
         border: Border.all(color: Colors.blue.withValues(alpha: 0.3), width: 2),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
+            width: baseFontSize * 1.71,
+            height: baseFontSize * 1.71,
+            child: const CircularProgressIndicator(
               strokeWidth: 2,
               color: Colors.blue,
             ),
           ),
-          SizedBox(width: 16),
+          SizedBox(width: baseFontSize * 1.14),
           Text(
             'Checking FFmpeg installation...',
-            style: TextStyle(color: Colors.blue, fontSize: 14),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Colors.blue,
+            ),
           ),
         ],
       ),
@@ -190,12 +198,14 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
   }
 
   Widget _buildFFmpegWarning(BuildContext context) {
+    final baseFontSize = Theme.of(context).textTheme.bodyMedium!.fontSize!;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      padding: const EdgeInsets.all(16),
+      margin: EdgeInsets.only(bottom: baseFontSize * 1.71),
+      padding: EdgeInsets.all(baseFontSize * 1.14),
       decoration: BoxDecoration(
         color: Colors.orange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(baseFontSize * 0.86),
         border: Border.all(
           color: Colors.orange.withValues(alpha: 0.3),
           width: 2,
@@ -204,31 +214,32 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.warning_amber_rounded,
             color: Colors.orange,
-            size: 32,
+            size: baseFontSize * 2.29,
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: baseFontSize * 1.14),
           Flexible(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   'FFmpeg Not Found',
-                  style: TextStyle(
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: Colors.orange,
-                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 4),
-                const Text(
+                SizedBox(height: baseFontSize * 0.29),
+                Text(
                   'FFmpeg is required for video processing. Please install it to continue.',
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: baseFontSize * 0.57),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -246,7 +257,7 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
                       ),
                       child: const Text('Installation Guide'),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: baseFontSize * 0.57),
                     TextButton(
                       onPressed: () {
                         ref.read(ffmpegStatusProvider.notifier).recheckFFmpeg();
@@ -270,32 +281,59 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
     required IconData icon,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 240,
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF333333)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 40, color: Colors.deepPurple[200]),
-            const SizedBox(height: 24),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    final baseFontSize = Theme.of(context).textTheme.labelMedium!.fontSize!;
+    final cardWidth = baseFontSize * 16; // Compact card width
+    final cardPadding = baseFontSize * 2; // Compact padding
+    final iconSize = baseFontSize * 3; // Icon size
+
+    return SizedBox(
+      width: cardWidth,
+      child: Material(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: EdgeInsets.all(cardPadding),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outline,
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              description,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: iconSize,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                SizedBox(height: baseFontSize * 0.8),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: baseFontSize * 0.4),
+                Text(
+                  description,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: baseFontSize * 0.85,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -307,9 +345,10 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
     final projectName = p.basename(normalizedPath);
     final projectFile = File(p.join(normalizedPath, 'project.swaloka'));
     final isCompatible = projectFile.existsSync();
+    final baseFontSize = Theme.of(context).textTheme.bodyMedium!.fontSize!;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: baseFontSize * 0.57),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -317,53 +356,62 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
           onSecondaryTapDown: (details) {
             _showProjectContextMenu(context, path, details);
           },
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(baseFontSize * 0.86),
           child: Container(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(baseFontSize * 1.14),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF333333)),
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(baseFontSize * 0.86),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outline,
+              ),
             ),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: EdgeInsets.all(baseFontSize * 0.71),
                   decoration: BoxDecoration(
                     color: isCompatible
                         ? Theme.of(context).colorScheme.primary
-                        : Colors.grey.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
+                        : Theme.of(
+                            context,
+                          ).colorScheme.outline.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(baseFontSize * 0.57),
                   ),
                   child: Icon(
                     isCompatible ? Icons.movie_filter : Icons.folder_outlined,
-                    size: 20,
-                    color: isCompatible ? Colors.black : Colors.grey,
+                    size: baseFontSize * 1.43,
+                    color: isCompatible
+                        ? Theme.of(context).colorScheme.onPrimary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(width: 16),
+                SizedBox(width: baseFontSize * 1.14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         projectName,
-                        style: const TextStyle(
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.bold,
-                          fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      SizedBox(height: baseFontSize * 0.14),
                       Text(
                         normalizedPath,
-                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                        style: Theme.of(context).textTheme.labelMedium,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right, size: 16, color: Colors.grey[800]),
+                Icon(
+                  Icons.chevron_right,
+                  size: baseFontSize * 1.14,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ],
             ),
           ),
@@ -388,7 +436,7 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
       items: [
         const PopupMenuItem(
           value: 'remove',
-          child: Text('Remove from Recents'),
+          child: Text('Remove from Recent'),
         ),
       ],
     ).then((val) {
@@ -441,23 +489,21 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
         showDialog<void>(
           context: context,
           builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: const BorderSide(color: Color(0xFF333333)),
-            ),
-            title: const Text(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            title: Text(
               'Confirm Project Name',
-              style: TextStyle(color: Colors.white),
+              style: Theme.of(context).textTheme.titleLarge,
             ),
             content: TextField(
               controller: nameController,
               autofocus: true,
-              style: const TextStyle(color: Colors.white),
+              style: Theme.of(context).textTheme.bodyLarge,
               decoration: InputDecoration(
                 hintText: 'Project Name',
                 filled: true,
-                fillColor: Colors.black26,
+                fillColor: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),

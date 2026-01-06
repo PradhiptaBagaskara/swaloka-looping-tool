@@ -3,46 +3,11 @@ import 'dart:math';
 import 'package:path/path.dart' as p;
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
+import 'package:swaloka_looping_tool/core/utils/temp_directory_helper.dart';
 import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
 
 /// Service for merging background video with sequential audio files
 class VideoMergerService {
-  // create temp directory
-  Future<Directory> _createTempDirectory(
-    String projectRootPath,
-    void Function(LogEntry log)? onLog,
-  ) async {
-    onLog?.call(LogEntry.info('Creating temp directory...'));
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-
-    Directory tempDir;
-
-    // On macOS/Linux: use system temp (potentially faster, no indexing)
-    // On Windows: use project temp (avoid path length limits, antivirus issues)
-    if (!Platform.isWindows) {
-      try {
-        final systemTemp = Directory.systemTemp;
-        tempDir = Directory(p.join(systemTemp.path, 'swaloka_temp_$timestamp'));
-        await tempDir.create(recursive: true);
-      } on Exception catch (_) {
-        // Fall back to project directory
-        tempDir = Directory(
-          p.join(projectRootPath, 'temp', 'swaloka_temp_$timestamp'),
-        );
-        await tempDir.create(recursive: true);
-      }
-    } else {
-      // Windows: always use project temp
-      tempDir = Directory(
-        p.join(projectRootPath, 'temp', 'swaloka_temp_$timestamp'),
-      );
-      await tempDir.create(recursive: true);
-    }
-
-    onLog?.call(LogEntry.success('Temp directory created: ${tempDir.path}'));
-    return tempDir;
-  }
-
   // Concat audio files
   Future<String> _concatAudioFiles(
     List<String> audioFiles,
@@ -302,7 +267,7 @@ class VideoMergerService {
     return preparedIntroPath;
   }
 
-  /// Concatenate intro with main content
+  /// Concatenate intro with main content using stream copy (fast & lossless)
   Future<void> _concatIntroWithMain(
     String introPath,
     String mainPath,
@@ -321,9 +286,9 @@ class VideoMergerService {
     ].join('\n');
     await File(concatListPath).writeAsString(concatContent);
 
-    // Try stream copy first (fastest)
+    // Stream copy (fastest, but requires compatible formats)
+    log.addSubLog(LogEntry.info('Using stream copy for concatenation...'));
     try {
-      log.addSubLog(LogEntry.info('Attempting stream copy concatenation...'));
       await FFmpegService.run(
         [
           '-f',
@@ -342,40 +307,16 @@ class VideoMergerService {
         onLog: log.addSubLog,
       );
       log.addSubLog(LogEntry.success('Stream copy concatenation successful'));
-      return;
-    } on Exception catch (_) {
-      log.addSubLog(
-        LogEntry.warning(
-          'Stream copy failed (likely codec mismatch). Falling back to re-encode...',
-        ),
+    } on Exception catch (e) {
+      // Provide helpful error message
+      throw Exception(
+        'Failed to concatenate intro with main video. '
+        'Videos must have matching formats (codec, resolution, fps). '
+        'Tip: Use "Video Tools" to compress/re-encode your intro video '
+        "to match the main video's format before adding it here. "
+        'Original error: $e',
       );
     }
-
-    // Fallback: Re-encode (slower but more robust)
-    await FFmpegService.run(
-      [
-        '-i',
-        p.absolute(introPath),
-        '-i',
-        p.absolute(mainPath),
-        '-filter_complex',
-        '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]',
-        '-map',
-        '[v]',
-        '-map',
-        '[a]',
-        '-c:v',
-        'libx264', // Re-encode video to H.264
-        '-c:a',
-        'aac', // Re-encode audio to AAC
-        ...metadataFlags,
-        p.absolute(outputPath),
-        '-y',
-      ],
-      errorMessage: 'Re-encode concat failed',
-      onLog: log.addSubLog,
-    );
-    log.addSubLog(LogEntry.success('Re-encode concatenation successful'));
   }
 
   Future<String> processVideoWithAudio({
@@ -396,7 +337,11 @@ class VideoMergerService {
     await FFmpegService.verifyInstallation(onLog);
     onProgress?.call(0.1);
 
-    final tempDir = await _createTempDirectory(projectRootPath, onLog);
+    final tempDir = await TempDirectoryHelper.create(
+      fallbackBasePath: projectRootPath,
+      prefix: 'swaloka_merger',
+      onLog: onLog,
+    );
     try {
       // 1. Concat audio files
       final concatFilePath = await _concatAudioFiles(

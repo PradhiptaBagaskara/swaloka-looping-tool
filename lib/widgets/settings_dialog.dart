@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
+import 'package:swaloka_looping_tool/core/theme/theme.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/ffmpeg_provider.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/state/settings_notifier.dart';
 
@@ -109,7 +110,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     final ffmpegStatus = ref.watch(ffmpegStatusProvider);
 
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       title: Row(
         children: [
           Icon(Icons.settings, color: Theme.of(context).colorScheme.primary),
@@ -123,19 +124,86 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Theme Section
+            Text(
+              'Appearance',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Choose between light and dark theme.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Consumer(
+              builder: (context, ref, child) {
+                final themeMode = ref.watch(themeModeProvider);
+                final isDark = themeMode == ThemeMode.dark;
+
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
+                  child: SwitchListTile(
+                    title: Text(
+                      isDark ? 'Dark Theme' : 'Light Theme',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    subtitle: Text(
+                      isDark
+                          ? 'Darker interface for low-light environments'
+                          : 'Brighter interface for well-lit environments',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    value: isDark,
+                    onChanged: (_) {
+                      ref.read(themeModeProvider.notifier).toggleTheme();
+                    },
+                    secondary: Icon(
+                      isDark ? Icons.dark_mode : Icons.light_mode,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 16),
             // FFmpeg Path Section
             Text(
               'FFmpeg Path',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: Colors.grey[300],
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               'By default, FFmpeg is auto-detected from system PATH. '
               'You can set a custom path if needed.',
-              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 16),
 
@@ -156,9 +224,13 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                     controller: _ffmpegController,
                     decoration: InputDecoration(
                       hintText: 'Auto-detect (leave empty)',
-                      hintStyle: TextStyle(color: Colors.grey[600]),
+                      hintStyle: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                       filled: true,
-                      fillColor: const Color(0xFF2A2A2A),
+                      fillColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide.none,
@@ -181,7 +253,9 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   icon: const Icon(Icons.folder_open),
                   tooltip: 'Browse...',
                   style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFF2A2A2A),
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                   ),
                 ),
               ],
@@ -197,7 +271,9 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   icon: const Icon(Icons.refresh, size: 16),
                   label: const Text('Reset to auto-detect'),
                   style: TextButton.styleFrom(
-                    foregroundColor: Colors.grey[400],
+                    foregroundColor: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
