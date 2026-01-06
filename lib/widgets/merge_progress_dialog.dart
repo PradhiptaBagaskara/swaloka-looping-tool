@@ -1,11 +1,14 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
-import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/log_entry_widget.dart';
-import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/media_preview_player.dart';
+import 'package:swaloka_looping_tool/widgets/log_entry_widget.dart';
+import 'package:swaloka_looping_tool/widgets/media_preview_player.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MergeProgressDialog extends ConsumerStatefulWidget {
   const MergeProgressDialog({super.key});
@@ -67,6 +70,131 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
     return '${twoDigits(d.inHours)}:$twoDigitMinutes:$twoDigitSeconds';
   }
 
+  bool _isAudioFile(String path) {
+    final ext = p.extension(path).toLowerCase();
+    return ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac'].contains(ext);
+  }
+
+  Future<void> _openInFileExplorer(String filePath) async {
+    final directory = p.dirname(filePath);
+    final uri = Uri.directory(directory);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  Widget _buildOutputPathRow(String outputPath) {
+    final fileName = p.basename(outputPath);
+    final directory = p.dirname(outputPath);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF333333)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.folder_open,
+                size: 14,
+                color: Colors.grey[500],
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'OUTPUT PATH',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[600],
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fileName,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      directory,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey[500],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Tooltip(
+                message: 'Open in File Explorer',
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _openInFileExplorer(outputPath),
+                    borderRadius: BorderRadius.circular(6),
+                    hoverColor: Colors.white.withValues(alpha: 0.1),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: Colors.deepPurple.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.open_in_new,
+                            size: 12,
+                            color: Colors.deepPurple[200],
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Show in Folder',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.deepPurple[200],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final processingState = ref.watch(processingStateProvider);
@@ -111,10 +239,10 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                     const SizedBox(width: 16),
                     Text(
                       processingState.isProcessing
-                          ? 'Generating Video Output...'
+                          ? 'Processing...'
                           : processingState.error != null
-                          ? 'Export Failed'
-                          : 'Export Successful!',
+                          ? 'Operation Failed'
+                          : 'Operation Successful!',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -221,26 +349,33 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
               ],
             ),
             const SizedBox(height: 8),
-            Container(
-              height: 220,
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFF333333)),
-              ),
-              child: Theme(
-                data: ThemeData.dark(),
-                child: Scrollbar(
-                  controller: _textScrollController,
-                  thumbVisibility: true,
-                  child: ListView.builder(
+            Flexible(
+              child: Container(
+                constraints: const BoxConstraints(
+                  minHeight: 150,
+                  maxHeight: 220,
+                ),
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF333333)),
+                ),
+                child: Theme(
+                  data: ThemeData.dark(),
+                  child: Scrollbar(
                     controller: _textScrollController,
-                    itemCount: processingState.logs.length,
-                    itemBuilder: (context, index) {
-                      return LogEntryWidget(entry: processingState.logs[index]);
-                    },
+                    thumbVisibility: true,
+                    child: ListView.builder(
+                      controller: _textScrollController,
+                      itemCount: processingState.logs.length,
+                      itemBuilder: (context, index) {
+                        return LogEntryWidget(
+                          entry: processingState.logs[index],
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
@@ -269,6 +404,7 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                 child: Center(
                   child: MediaPreviewPlayer(
                     path: processingState.outputPath!,
+                    isVideo: !_isAudioFile(processingState.outputPath!),
                     onDurationAvailable: (duration) {
                       ref
                           .read(processingStateProvider.notifier)
@@ -277,7 +413,10 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+              // Output path - clickable to open in Finder/Explorer
+              _buildOutputPathRow(processingState.outputPath!),
+              const SizedBox(height: 16),
             ],
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -306,7 +445,7 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              'Video Duration: ${_formatDuration(processingState.outputDuration!)}',
+                              'Duration: ${_formatDuration(processingState.outputDuration!)}',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.grey[500],

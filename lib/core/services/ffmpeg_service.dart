@@ -11,6 +11,7 @@ class VideoMetadata {
     required this.fps,
     required this.pixFmt,
     required this.duration,
+    required this.hasAudio,
   });
 
   final String? codec;
@@ -19,6 +20,7 @@ class VideoMetadata {
   final String? fps;
   final String? pixFmt;
   final Duration? duration;
+  final bool hasAudio;
 }
 
 /// Service for handling FFmpeg operations
@@ -265,6 +267,9 @@ class FFmpegService {
           }
         }
 
+        // Check for audio streams with a separate call
+        final hasAudio = await _hasAudioStream(filePath);
+
         final metadata = VideoMetadata(
           codec: codec,
           width: width,
@@ -272,6 +277,7 @@ class FFmpegService {
           fps: fps,
           pixFmt: pixFmt,
           duration: duration,
+          hasAudio: hasAudio,
         );
 
         // Cache the result
@@ -288,9 +294,33 @@ class FFmpegService {
       fps: null,
       pixFmt: null,
       duration: null,
+      hasAudio: false,
     );
     _metadataCache[filePath] = emptyMetadata;
     return emptyMetadata;
+  }
+
+  /// Check if a file has an audio stream
+  static Future<bool> _hasAudioStream(String filePath) async {
+    try {
+      final result = await Process.run(ffprobePath, [
+        '-v',
+        'quiet',
+        '-select_streams',
+        'a:0',
+        '-show_entries',
+        'stream=codec_type',
+        '-of',
+        'csv=p=0',
+        filePath,
+      ], environment: extendedEnvironment);
+
+      if (result.exitCode == 0) {
+        final output = (result.stdout as String).trim();
+        return output.isNotEmpty && output.contains('audio');
+      }
+    } on Exception catch (_) {}
+    return false;
   }
 
   /// Regex pattern for FFmpeg progress lines

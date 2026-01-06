@@ -5,10 +5,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:swaloka_looping_tool/features/video_merger/presentation/pages/ffmpeg_error_page.dart';
+import 'package:swaloka_looping_tool/features/landing_page/presentation/pages/ffmpeg_error_page.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/ffmpeg_provider.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
-import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/settings_dialog.dart';
+import 'package:swaloka_looping_tool/widgets/settings_dialog.dart';
 
 /// Landing page for creating or opening projects
 class ProjectLandingPage extends ConsumerStatefulWidget {
@@ -24,138 +24,124 @@ class _ProjectLandingPageState extends ConsumerState<ProjectLandingPage> {
     final recentProjects = ref.watch(recentProjectsProvider);
     final ffmpegStatus = ref.watch(ffmpegStatusProvider);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      body: SizedBox.expand(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(vertical: 64, horizontal: 32),
-            child: Container(
-              width: double.infinity,
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // FFmpeg status banner
-                  if (ffmpegStatus == null)
-                    _buildFFmpegCheckingBanner(context)
-                  else if (!ffmpegStatus)
-                    _buildFFmpegWarning(context),
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // FFmpeg status banner
+        if (ffmpegStatus == null)
+          _buildFFmpegCheckingBanner(context)
+        else if (!ffmpegStatus)
+          _buildFFmpegWarning(context),
 
-                  // Logo
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.movie_filter,
-                      size: 80,
-                      color: Colors.deepPurple,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Title
-                  Text(
-                    'SWALOKA LOOPING TOOL',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 4,
-                    ),
-                  ),
-                  const SizedBox(height: 56),
-
-                  // Action buttons - use Wrap for responsive layout
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 24,
-                    runSpacing: 24,
-                    children: [
-                      _buildLandingCard(
-                        context,
-                        title: 'Create New Project',
-                        description: 'Start a new video project from scratch',
-                        icon: Icons.add_to_photos_outlined,
-                        onTap: () => _createNewProject(context),
-                      ),
-                      _buildLandingCard(
-                        context,
-                        title: 'Open Existing Project',
-                        description: 'Continue working on a saved project',
-                        icon: Icons.folder_open_outlined,
-                        onTap: () => _openProject(context),
-                      ),
-                    ],
-                  ),
-
-                  // Recent projects
-                  if (recentProjects.isNotEmpty) ...[
-                    const SizedBox(height: 64),
-                    Container(
-                      constraints: const BoxConstraints(maxWidth: 504),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8, bottom: 16),
-                            child: Text(
-                              'Recent Projects',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey[600],
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                          ),
-                          ...recentProjects.map(
-                            (path) => _buildRecentProjectItem(context, path),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 64),
-                  // Version info and settings
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ref
-                          .watch(appVersionProvider)
-                          .when(
-                            data: (version) => Text(
-                              version,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.grey[700],
-                                letterSpacing: 1,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            loading: () => const SizedBox.shrink(),
-                            error: (_, _) => const SizedBox.shrink(),
-                          ),
-                      const SizedBox(width: 16),
-                      IconButton(
-                        onPressed: () => showSettingsDialog(context),
-                        icon: const Icon(Icons.settings, size: 16),
-                        tooltip: 'Settings',
-                        style: IconButton.styleFrom(
-                          foregroundColor: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+        // Logo
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.deepPurple.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.movie_filter,
+            size: 80,
+            color: Colors.deepPurple,
           ),
         ),
-      ),
+        const SizedBox(height: 32),
+
+        // Title
+        Text(
+          'SWALOKA LOOPING TOOL',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w900,
+            letterSpacing: 4,
+          ),
+        ),
+        const SizedBox(height: 56),
+
+        // Action buttons - use Wrap for responsive layout
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 24,
+          runSpacing: 24,
+          children: [
+            _buildLandingCard(
+              context,
+              title: 'Create New Project',
+              description: 'Start a new video project from scratch',
+              icon: Icons.add_to_photos_outlined,
+              onTap: () => _createNewProject(context),
+            ),
+            _buildLandingCard(
+              context,
+              title: 'Open Existing Project',
+              description: 'Continue working on a saved project',
+              icon: Icons.folder_open_outlined,
+              onTap: () => _openProject(context),
+            ),
+          ],
+        ),
+
+        // Recent projects
+        if (recentProjects.isNotEmpty) ...[
+          const SizedBox(height: 64),
+          Container(
+            constraints: const BoxConstraints(maxWidth: 504),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, bottom: 16),
+                  child: Text(
+                    'Recent Projects',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[600],
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ),
+                ...recentProjects.map(
+                  (path) => _buildRecentProjectItem(context, path),
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 64),
+        // Version info and settings
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ref
+                .watch(appVersionProvider)
+                .when(
+                  data: (version) => Text(
+                    version,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[700],
+                      letterSpacing: 1,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, _) => const SizedBox.shrink(),
+                ),
+            const SizedBox(width: 16),
+            IconButton(
+              onPressed: () => showSettingsDialog(context),
+              icon: const Icon(Icons.settings, size: 16),
+              tooltip: 'Settings',
+              style: IconButton.styleFrom(
+                foregroundColor: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 

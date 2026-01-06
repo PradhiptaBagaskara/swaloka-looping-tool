@@ -3,46 +3,11 @@ import 'dart:math';
 import 'package:path/path.dart' as p;
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
+import 'package:swaloka_looping_tool/core/utils/temp_directory_helper.dart';
 import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
 
 /// Service for merging background video with sequential audio files
 class VideoMergerService {
-  // create temp directory
-  Future<Directory> _createTempDirectory(
-    String projectRootPath,
-    void Function(LogEntry log)? onLog,
-  ) async {
-    onLog?.call(LogEntry.info('Creating temp directory...'));
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-
-    Directory tempDir;
-
-    // On macOS/Linux: use system temp (potentially faster, no indexing)
-    // On Windows: use project temp (avoid path length limits, antivirus issues)
-    if (!Platform.isWindows) {
-      try {
-        final systemTemp = Directory.systemTemp;
-        tempDir = Directory(p.join(systemTemp.path, 'swaloka_temp_$timestamp'));
-        await tempDir.create(recursive: true);
-      } on Exception catch (_) {
-        // Fall back to project directory
-        tempDir = Directory(
-          p.join(projectRootPath, 'temp', 'swaloka_temp_$timestamp'),
-        );
-        await tempDir.create(recursive: true);
-      }
-    } else {
-      // Windows: always use project temp
-      tempDir = Directory(
-        p.join(projectRootPath, 'temp', 'swaloka_temp_$timestamp'),
-      );
-      await tempDir.create(recursive: true);
-    }
-
-    onLog?.call(LogEntry.success('Temp directory created: ${tempDir.path}'));
-    return tempDir;
-  }
-
   // Concat audio files
   Future<String> _concatAudioFiles(
     List<String> audioFiles,
@@ -396,7 +361,11 @@ class VideoMergerService {
     await FFmpegService.verifyInstallation(onLog);
     onProgress?.call(0.1);
 
-    final tempDir = await _createTempDirectory(projectRootPath, onLog);
+    final tempDir = await TempDirectoryHelper.create(
+      fallbackBasePath: projectRootPath,
+      prefix: 'swaloka_merger',
+      onLog: onLog,
+    );
     try {
       // 1. Concat audio files
       final concatFilePath = await _concatAudioFiles(
