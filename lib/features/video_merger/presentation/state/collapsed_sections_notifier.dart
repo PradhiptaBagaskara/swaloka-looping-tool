@@ -3,9 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Notifier for managing collapsed/expanded sections in UI
 class CollapsedSectionsNotifier extends Notifier<Set<String>> {
   static const Set<String> _defaultCollapsed = {
-    'Advanced Looper Settings',
+    'Advanced Looping Settings',
     'Video Tags Metadata (Optional)',
-    // 'Intro Video (Optional)' - now expanded by default for better UX
   };
 
   @override

@@ -102,7 +102,7 @@ class _ProjectLayoutState extends ConsumerState<ProjectLayout> {
               children: [
                 _buildSectionTitle(context, 'Navigation'),
                 SizedBox(height: baseFontSize * 0.86),
-                _buildNavButton(0, 'Project Looper', Icons.loop),
+                _buildNavButton(0, 'Looping Tools', Icons.loop),
                 _buildNavButton(1, 'Audio Tools', Icons.audio_file),
                 _buildNavButton(2, 'Video Tools', Icons.video_library),
                 SizedBox(height: baseFontSize * 2.29),

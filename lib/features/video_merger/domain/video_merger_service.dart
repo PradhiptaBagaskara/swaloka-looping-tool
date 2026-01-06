@@ -197,29 +197,41 @@ class VideoMergerService {
     final List<String> command;
 
     if (introKeepAudio) {
-      // Check if intro has audio (naive check by trying to copy audio)
-      // We'll just try to convert to AAC. If input has no audio, this might fail or produce silent audio.
-      // Safer approach: Use a complex filter that mixes with nullsrc, but that requires re-encoding.
-      // For now, let's try strict AAC conversion. If the input has no audio stream, FFmpeg will likely complain.
-      // A robust way: use -f lavfi -i anullsrc and map it IF audio is missing.
-      // But we can't easily detect if audio is missing without probing.
-      //
-      // Compromise: Assume intro has audio if user says "Keep Audio".
-      // If they say "Keep Audio" but file has none, we might want to fail-safe to silence.
-      //
-      // Let's implement the "mute" logic clearly first.
-      command = [
-        '-i',
-        p.absolute(introVideoPath),
-        '-c:v',
-        'copy', // Copy video stream
-        '-c:a',
-        'aac', // Transcode audio to AAC
-        '-b:a',
-        '192k',
-        p.absolute(preparedIntroPath),
-        '-y',
-      ];
+      // Check if audio is already AAC - if yes, use stream copy (much faster!)
+      final metadata = await FFmpegService.getVideoMetadata(introVideoPath);
+      final isAAC = metadata.audioCodec?.toLowerCase() == 'aac';
+
+      if (isAAC) {
+        log.addSubLog(
+          LogEntry.info('Audio already in AAC format, using stream copy...'),
+        );
+        command = [
+          '-i',
+          p.absolute(introVideoPath),
+          '-c:v',
+          'copy', // Copy video stream
+          '-c:a',
+          'copy', // Copy audio stream (already AAC)
+          p.absolute(preparedIntroPath),
+          '-y',
+        ];
+      } else {
+        log.addSubLog(
+          LogEntry.info('Transcoding audio to AAC format...'),
+        );
+        command = [
+          '-i',
+          p.absolute(introVideoPath),
+          '-c:v',
+          'copy', // Copy video stream
+          '-c:a',
+          'aac', // Transcode audio to AAC
+          '-b:a',
+          '192k',
+          p.absolute(preparedIntroPath),
+          '-y',
+        ];
+      }
     } else {
       // Mute audio: Generate silence
       command = [
@@ -376,26 +388,30 @@ class VideoMergerService {
         // If intro exists:
         // a. Generate looped content to temp file
         final loopedContentPath = p.join(tempDir.path, 'looped_content.mp4');
-        await _mergeVideoWithAudioFiles(
-          backgroundVideoPath,
-          loopedContentPath,
-          mergedAudioPath,
-          [], // Metadata applied at final stage
-          onLog,
-        );
-        onProgress?.call(0.7);
 
         // b. Prepare intro (standardize audio)
         // If overlayPlaylist mode, we use silent audio for intro to allow clean concat
         // before we replace the audio track completely.
         final shouldKeepAudio = introAudioMode == IntroAudioMode.keepOriginal;
 
-        final preparedIntroPath = await _prepareIntro(
-          introVideoPath,
-          shouldKeepAudio,
-          tempDir,
-          onLog,
-        );
+        // Process looped content and intro in parallel (independent operations)
+        final results = await Future.wait<String>([
+          _mergeVideoWithAudioFiles(
+            backgroundVideoPath,
+            loopedContentPath,
+            mergedAudioPath,
+            [], // Metadata applied at final stage
+            onLog,
+          ),
+          _prepareIntro(
+            introVideoPath,
+            shouldKeepAudio,
+            tempDir,
+            onLog,
+          ),
+        ]);
+
+        final preparedIntroPath = results[1];
         onProgress?.call(0.8);
 
         if (introAudioMode == IntroAudioMode.overlayPlaylist) {
