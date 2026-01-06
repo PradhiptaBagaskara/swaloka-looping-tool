@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [5.0.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v4.1.0...swaloka_looping_tool-v5.0.0) (2026-01-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** enhance project structure and add new features ([#33](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/33))
+
+### Features
+
+* **core:** enhance project structure and add new features ([#33](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/33)) ([d7b8d5f](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/d7b8d5fb101039fe2cc03410d34f4fdfe59caf64))
+
 ## [4.1.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v4.0.0...swaloka_looping_tool-v4.1.0) (2026-01-05)
 
 
