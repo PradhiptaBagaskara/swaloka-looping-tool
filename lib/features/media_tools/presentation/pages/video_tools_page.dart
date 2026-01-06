@@ -42,8 +42,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
 
   // Re-encode Video State
   String? _reencodeVideoPath;
-  int _reencodeWidth = 1920;
-  int _reencodeHeight = 1080;
+  String _reencodeResolution = '1080p'; // 480p, 720p, 1080p, 2K, 4K, 8K
   int _reencodeFps = 30;
   String _reencodePreset = 'veryfast';
   bool _reencodeKeepAudio = true;
@@ -244,9 +243,27 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           }
         }
 
+        // Map video height to closest resolution preset
+        var resolution = '1080p'; // Default
+        if (metadata.height != null) {
+          final height = metadata.height!;
+          if (height <= 480) {
+            resolution = '480p';
+          } else if (height <= 720) {
+            resolution = '720p';
+          } else if (height <= 1080) {
+            resolution = '1080p';
+          } else if (height <= 1440) {
+            resolution = '2K';
+          } else if (height <= 2160) {
+            resolution = '4K';
+          } else {
+            resolution = '8K';
+          }
+        }
+
         setState(() {
-          if (metadata.width != null) _reencodeWidth = metadata.width!;
-          if (metadata.height != null) _reencodeHeight = metadata.height!;
+          _reencodeResolution = resolution;
           _reencodeFps = fps;
           _reencodeReferenceVideoName = p.basename(videoPath);
         });
@@ -254,7 +271,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Format copied: ${metadata.width}x${metadata.height} @ ${fps}fps',
+              'Format copied: $resolution @ ${fps}fps',
             ),
             backgroundColor: Colors.green,
           ),
@@ -289,9 +306,10 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       final outputsDir = await _ensureOutputsDir();
       final name = p.basenameWithoutExtension(_reencodeVideoPath!);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final dimensions = _getResolutionDimensions(_reencodeResolution);
       final outputPath = p.join(
         outputsDir,
-        '${name}_reencoded_${_reencodeWidth}x${_reencodeHeight}_${_reencodeFps}fps_$timestamp.mp4',
+        '${name}_reencoded_${_reencodeResolution}_${_reencodeFps}fps_$timestamp.mp4',
       );
 
       await ref
@@ -299,8 +317,8 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           .reencodeVideo(
             videoPath: _reencodeVideoPath!,
             outputPath: outputPath,
-            width: _reencodeWidth,
-            height: _reencodeHeight,
+            width: dimensions.width,
+            height: dimensions.height,
             fps: _reencodeFps,
             preset: _reencodePreset,
             keepAudio: _reencodeKeepAudio,
@@ -554,7 +572,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                   icon: Icon(Icons.compress, size: 20),
                 ),
                 Tab(
-                  text: 'Re-encode Video',
+                  text: 'Convert Resolution',
                   icon: Icon(Icons.settings_backup_restore, size: 20),
                 ),
                 Tab(
@@ -1354,22 +1372,18 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.tertiaryContainer.withValues(alpha: 0.3),
+                    color: Colors.green.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: Theme.of(context).colorScheme.tertiaryContainer,
+                      color: Colors.green.withValues(alpha: 0.3),
                     ),
                   ),
                   child: Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.check_circle,
                         size: 14,
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onTertiaryContainer,
+                        color: Colors.green,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -1377,9 +1391,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                           'Format copied from: $_reencodeReferenceVideoName',
                           style: Theme.of(context).textTheme.labelSmall
                               ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onTertiaryContainer,
+                                color: Colors.green.shade800,
                               ),
                         ),
                       ),
@@ -1390,9 +1402,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                         onPressed: () {
                           setState(() => _reencodeReferenceVideoName = null);
                         },
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onTertiaryContainer,
+                        color: Colors.green.shade700,
                       ),
                     ],
                   ),
@@ -1402,127 +1412,61 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               Row(
                 children: [
                   Expanded(
-                    flex: 2,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Width',
+                          'Resolution',
                           style: Theme.of(context).textTheme.labelLarge
                               ?.copyWith(
                                 fontWeight: FontWeight.w500,
                               ),
                         ),
                         const SizedBox(height: 8),
-                        TextFormField(
-                          initialValue: _reencodeWidth.toString(),
-                          keyboardType: TextInputType.number,
-                          style: Theme.of(context).textTheme.bodyLarge,
-                          decoration: InputDecoration(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
+                        CompactDropdown<String>(
+                          value: _reencodeResolution,
+                          label: '',
+                          icon: Icons.aspect_ratio,
+                          items: const [
+                            DropdownMenuItem(
+                              value: '480p',
+                              child: Text('480p (854x480)'),
                             ),
-                            filled: true,
-                            fillColor: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide.none,
+                            DropdownMenuItem(
+                              value: '720p',
+                              child: Text('720p (1280x720)'),
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: Colors.deepPurple,
-                                width: 1.5,
-                              ),
+                            DropdownMenuItem(
+                              value: '1080p',
+                              child: Text('1080p (1920x1080)'),
                             ),
-                            suffixText: 'px',
-                            suffixStyle: Theme.of(
-                              context,
-                            ).textTheme.labelMedium,
+                            DropdownMenuItem(
+                              value: '2K',
+                              child: Text('2K (2560x1440)'),
+                            ),
+                            DropdownMenuItem(
+                              value: '4K',
+                              child: Text('4K (3840x2160)'),
+                            ),
+                            DropdownMenuItem(
+                              value: '8K',
+                              child: Text('8K (7680x4320)'),
+                            ),
+                          ],
+                          onChanged: (v) => setState(
+                            () => _reencodeResolution = v ?? '1080p',
                           ),
-                          onChanged: (value) {
-                            final intValue = int.tryParse(value);
-                            if (intValue != null && intValue > 0) {
-                              setState(() => _reencodeWidth = intValue);
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 24),
-                    child: Icon(
-                      Icons.close,
-                      size: 16,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Height',
-                          style: Theme.of(context).textTheme.labelLarge
-                              ?.copyWith(
-                                fontWeight: FontWeight.w500,
-                              ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          initialValue: _reencodeHeight.toString(),
-                          keyboardType: TextInputType.number,
-                          style: Theme.of(context).textTheme.bodyLarge,
-                          decoration: InputDecoration(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                            filled: true,
-                            fillColor: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: Colors.deepPurple,
-                                width: 1.5,
-                              ),
-                            ),
-                            suffixText: 'px',
-                            suffixStyle: Theme.of(
-                              context,
-                            ).textTheme.labelMedium,
-                          ),
-                          onChanged: (value) {
-                            final intValue = int.tryParse(value);
-                            if (intValue != null && intValue > 0) {
-                              setState(() => _reencodeHeight = intValue);
-                            }
-                          },
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    flex: 2,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Frame Rate (FPS)',
+                          'Frame Rate',
                           style: Theme.of(context).textTheme.labelLarge
                               ?.copyWith(
                                 fontWeight: FontWeight.w500,
@@ -1663,7 +1607,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           child: ElevatedButton.icon(
             onPressed: _reencodeVideoPath != null ? _reencodeVideo : null,
             icon: const Icon(Icons.settings_backup_restore),
-            label: const Text('Re-encode Video'),
+            label: const Text('Process Video'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.primary,
               foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -1957,5 +1901,24 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     final g = color.g.toInt().toRadixString(16).padLeft(2, '0');
     final b = color.b.toInt().toRadixString(16).padLeft(2, '0');
     return '#${r.toUpperCase()}${g.toUpperCase()}${b.toUpperCase()}';
+  }
+
+  ({int width, int height}) _getResolutionDimensions(String resolution) {
+    switch (resolution) {
+      case '480p':
+        return (width: 854, height: 480);
+      case '720p':
+        return (width: 1280, height: 720);
+      case '1080p':
+        return (width: 1920, height: 1080);
+      case '2K':
+        return (width: 2560, height: 1440);
+      case '4K':
+        return (width: 3840, height: 2160);
+      case '8K':
+        return (width: 7680, height: 4320);
+      default:
+        return (width: 1920, height: 1080);
+    }
   }
 }

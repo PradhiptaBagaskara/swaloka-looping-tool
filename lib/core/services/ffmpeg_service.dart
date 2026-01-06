@@ -12,6 +12,7 @@ class VideoMetadata {
     required this.pixFmt,
     required this.duration,
     required this.hasAudio,
+    this.audioCodec,
     this.metadataTags = const {},
   });
 
@@ -22,6 +23,7 @@ class VideoMetadata {
   final String? pixFmt;
   final Duration? duration;
   final bool hasAudio;
+  final String? audioCodec;
   final Map<String, String> metadataTags;
 }
 
@@ -34,7 +36,7 @@ class FFmpegService {
   static String? _customFfmpegPath;
 
   /// Cache version - increment this when VideoMetadata schema changes
-  static const int _cacheVersion = 2;
+  static const int _cacheVersion = 3;
 
   /// Cache for video metadata to avoid multiple ffprobe calls
   static final Map<String, VideoMetadata> _metadataCache = {};
@@ -281,8 +283,8 @@ class FFmpegService {
           }
         }
 
-        // Check for audio streams with a separate call
-        final hasAudio = await _hasAudioStream(filePath);
+        // Check for audio streams and get audio codec
+        final audioInfo = await _getAudioInfo(filePath);
 
         // Extract metadata tags
         final metadataTags = _extractMetadataTags(jsonStr);
@@ -294,7 +296,8 @@ class FFmpegService {
           fps: fps,
           pixFmt: pixFmt,
           duration: duration,
-          hasAudio: hasAudio,
+          hasAudio: audioInfo.hasAudio,
+          audioCodec: audioInfo.codec,
           metadataTags: metadataTags,
         );
 
@@ -318,8 +321,10 @@ class FFmpegService {
     return emptyMetadata;
   }
 
-  /// Check if a file has an audio stream
-  static Future<bool> _hasAudioStream(String filePath) async {
+  /// Get audio stream information (has audio and codec)
+  static Future<({bool hasAudio, String? codec})> _getAudioInfo(
+    String filePath,
+  ) async {
     try {
       final result = await Process.run(ffprobePath, [
         '-v',
@@ -327,18 +332,20 @@ class FFmpegService {
         '-select_streams',
         'a:0',
         '-show_entries',
-        'stream=codec_type',
+        'stream=codec_name',
         '-of',
         'csv=p=0',
         filePath,
       ], environment: extendedEnvironment);
 
       if (result.exitCode == 0) {
-        final output = (result.stdout as String).trim();
-        return output.isNotEmpty && output.contains('audio');
+        final codec = (result.stdout as String).trim();
+        if (codec.isNotEmpty) {
+          return (hasAudio: true, codec: codec);
+        }
       }
     } on Exception catch (_) {}
-    return false;
+    return (hasAudio: false, codec: null);
   }
 
   /// Extract metadata tags from ffprobe JSON output
