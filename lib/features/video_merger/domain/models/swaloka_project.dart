@@ -12,28 +12,18 @@ enum IntroAudioMode {
   overlayPlaylist,
 }
 
-/// Model representing a Swaloka video merger project
+/// Model representing a Swaloka video merger project (persisted settings only)
+/// Session-only data (file selections, metadata) are managed in UI state
 class SwalokaProject {
   SwalokaProject({
     required this.name,
     required this.rootPath,
     this.customOutputPath,
-    this.audioFiles = const [],
-    this.backgroundVideo,
-    this.introVideo,
     this.introAudioMode = IntroAudioMode.overlayPlaylist,
-    this.title,
-    this.author,
-    this.comment,
     this.concurrencyLimit = 4,
-    this.audioLoopCount = 1,
   });
 
   factory SwalokaProject.fromJson(Map<String, dynamic> json) {
-    // Normalize paths for current platform
-    String? normalizePath(String? path) =>
-        path != null ? p.normalize(path) : null;
-
     // Handle intro audio mode migration
     var mode = IntroAudioMode.keepOriginal;
     if (json['introAudioMode'] != null) {
@@ -51,53 +41,29 @@ class SwalokaProject {
     return SwalokaProject(
       name: json['name'] as String,
       rootPath: p.normalize(json['rootPath'] as String),
-      customOutputPath: normalizePath(json['customOutputPath'] as String?),
-      audioFiles:
-          (json['audioFiles'] as List<dynamic>?)
-              ?.map((e) => p.normalize(e as String))
-              .toList() ??
-          [],
-      backgroundVideo: normalizePath(json['backgroundVideo'] as String?),
-      introVideo: normalizePath(json['introVideo'] as String?),
+      customOutputPath: json['customOutputPath'] != null
+          ? p.normalize(json['customOutputPath'] as String)
+          : null,
       introAudioMode: mode,
-      title: json['title'] as String?,
-      author: json['author'] as String?,
-      comment: json['comment'] as String?,
       concurrencyLimit: json['concurrencyLimit'] as int? ?? 4,
-      audioLoopCount: json['audioLoopCount'] as int? ?? 1,
     );
   }
+
   final String name;
   final String rootPath;
   final String? customOutputPath;
-  final List<String> audioFiles;
-  final String? backgroundVideo;
-  final String? introVideo;
   final IntroAudioMode introAudioMode;
-  final String? title;
-  final String? author;
-  final String? comment;
   final int concurrencyLimit;
-  final int audioLoopCount;
 
   Map<String, dynamic> toJson() {
-    // Normalize paths for consistent storage
-    String? normalizePath(String? path) =>
-        path != null ? p.normalize(path) : null;
-
     return {
       'name': name,
       'rootPath': p.normalize(rootPath),
-      'customOutputPath': normalizePath(customOutputPath),
-      'audioFiles': audioFiles.map(p.normalize).toList(),
-      'backgroundVideo': normalizePath(backgroundVideo),
-      'introVideo': normalizePath(introVideo),
+      'customOutputPath': customOutputPath != null
+          ? p.normalize(customOutputPath!)
+          : null,
       'introAudioMode': introAudioMode.name,
-      'title': title,
-      'author': author,
-      'comment': comment,
       'concurrencyLimit': concurrencyLimit,
-      'audioLoopCount': audioLoopCount,
     };
   }
 
@@ -109,27 +75,9 @@ class SwalokaProject {
     String? rootPath,
     String? customOutputPath,
     bool clearCustomOutputPath = false,
-    List<String>? audioFiles,
-    String? backgroundVideo,
-    bool clearBackgroundVideo = false,
-    String? introVideo,
-    bool clearIntroVideo = false,
     IntroAudioMode? introAudioMode,
-    String? title,
-    String? author,
-    String? comment,
     int? concurrencyLimit,
-    int? audioLoopCount,
   }) {
-    // Normalize paths for consistency
-    final normalizedAudioFiles = audioFiles?.map(p.normalize).toList();
-    final normalizedBackgroundVideo = backgroundVideo != null
-        ? p.normalize(backgroundVideo)
-        : null;
-    final normalizedIntroVideo = introVideo != null
-        ? p.normalize(introVideo)
-        : null;
-
     return SwalokaProject(
       name: name ?? this.name,
       rootPath: rootPath != null ? p.normalize(rootPath) : this.rootPath,
@@ -138,19 +86,8 @@ class SwalokaProject {
           : (customOutputPath != null
                 ? p.normalize(customOutputPath)
                 : this.customOutputPath),
-      audioFiles: normalizedAudioFiles ?? this.audioFiles,
-      backgroundVideo: clearBackgroundVideo
-          ? null
-          : (normalizedBackgroundVideo ?? this.backgroundVideo),
-      introVideo: clearIntroVideo
-          ? null
-          : (normalizedIntroVideo ?? this.introVideo),
       introAudioMode: introAudioMode ?? this.introAudioMode,
-      title: title ?? this.title,
-      author: author ?? this.author,
-      comment: comment ?? this.comment,
       concurrencyLimit: concurrencyLimit ?? this.concurrencyLimit,
-      audioLoopCount: audioLoopCount ?? this.audioLoopCount,
     );
   }
 }

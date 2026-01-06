@@ -11,6 +11,8 @@ class VideoMetadata {
     required this.fps,
     required this.pixFmt,
     required this.duration,
+    required this.hasAudio,
+    this.metadataTags = const {},
   });
 
   final String? codec;
@@ -19,6 +21,8 @@ class VideoMetadata {
   final String? fps;
   final String? pixFmt;
   final Duration? duration;
+  final bool hasAudio;
+  final Map<String, String> metadataTags;
 }
 
 /// Service for handling FFmpeg operations
@@ -29,8 +33,12 @@ class FFmpegService {
   /// Custom FFmpeg path set by user (takes priority over auto-detect)
   static String? _customFfmpegPath;
 
+  /// Cache version - increment this when VideoMetadata schema changes
+  static const int _cacheVersion = 2;
+
   /// Cache for video metadata to avoid multiple ffprobe calls
   static final Map<String, VideoMetadata> _metadataCache = {};
+  static int _currentCacheVersion = 0;
 
   /// Set a custom FFmpeg path (overrides auto-detection)
   static void setCustomPath(String path) {
@@ -178,16 +186,24 @@ class FFmpegService {
   static void resetCache() {
     _ffmpegPath = null;
     _metadataCache.clear();
+    _currentCacheVersion = 0;
   }
 
   /// Clear video metadata cache (useful when files are modified)
   static void clearMetadataCache() {
     _metadataCache.clear();
+    _currentCacheVersion = _cacheVersion;
   }
 
   /// Get comprehensive video metadata using a single ffprobe call
   /// Results are cached to avoid redundant calls for the same file
   static Future<VideoMetadata> getVideoMetadata(String filePath) async {
+    // Clear cache if schema version changed
+    if (_currentCacheVersion != _cacheVersion) {
+      _metadataCache.clear();
+      _currentCacheVersion = _cacheVersion;
+    }
+
     // Check cache first
     if (_metadataCache.containsKey(filePath)) {
       return _metadataCache[filePath]!;
@@ -265,6 +281,12 @@ class FFmpegService {
           }
         }
 
+        // Check for audio streams with a separate call
+        final hasAudio = await _hasAudioStream(filePath);
+
+        // Extract metadata tags
+        final metadataTags = _extractMetadataTags(jsonStr);
+
         final metadata = VideoMetadata(
           codec: codec,
           width: width,
@@ -272,6 +294,8 @@ class FFmpegService {
           fps: fps,
           pixFmt: pixFmt,
           duration: duration,
+          hasAudio: hasAudio,
+          metadataTags: metadataTags,
         );
 
         // Cache the result
@@ -288,9 +312,85 @@ class FFmpegService {
       fps: null,
       pixFmt: null,
       duration: null,
+      hasAudio: false,
     );
     _metadataCache[filePath] = emptyMetadata;
     return emptyMetadata;
+  }
+
+  /// Check if a file has an audio stream
+  static Future<bool> _hasAudioStream(String filePath) async {
+    try {
+      final result = await Process.run(ffprobePath, [
+        '-v',
+        'quiet',
+        '-select_streams',
+        'a:0',
+        '-show_entries',
+        'stream=codec_type',
+        '-of',
+        'csv=p=0',
+        filePath,
+      ], environment: extendedEnvironment);
+
+      if (result.exitCode == 0) {
+        final output = (result.stdout as String).trim();
+        return output.isNotEmpty && output.contains('audio');
+      }
+    } on Exception catch (_) {}
+    return false;
+  }
+
+  /// Extract metadata tags from ffprobe JSON output
+  static Map<String, String> _extractMetadataTags(String jsonStr) {
+    final tags = <String, String>{};
+
+    // Define all possible metadata fields to extract
+    final metadataFields = {
+      'title': 'Title',
+      'artist': 'Artist',
+      'author': 'Author',
+      'album_artist': 'Album Artist',
+      'album': 'Album',
+      'comment': 'Comment',
+      'description': 'Description',
+      'synopsis': 'Synopsis',
+      'copyright': 'Copyright',
+      'creation_time': 'Creation Date',
+      'date': 'Date',
+      'year': 'Year',
+      'encoder': 'Encoder',
+      'encoded_by': 'Encoded By',
+      'genre': 'Genre',
+      'track': 'Track',
+      'disc': 'Disc',
+      'publisher': 'Publisher',
+      'service_name': 'Service Name',
+      'service_provider': 'Service Provider',
+      'language': 'Language',
+      'rating': 'Rating',
+      'director': 'Director',
+      'producer': 'Producer',
+      'composer': 'Composer',
+      'performer': 'Performer',
+      'lyrics': 'Lyrics',
+      'network': 'Network',
+      'show': 'Show',
+      'episode_id': 'Episode ID',
+      'season_number': 'Season Number',
+      'episode_sort': 'Episode Sort',
+    };
+
+    // Extract each field if it exists
+    for (final entry in metadataFields.entries) {
+      final pattern = '"${entry.key}":\\s*"([^"]*)"';
+      final match = RegExp(pattern).firstMatch(jsonStr);
+      if (match != null && match.group(1)!.isNotEmpty) {
+        tags[entry.value] = match.group(1)!;
+      }
+    }
+
+    return tags;
   }
 
   /// Regex pattern for FFmpeg progress lines

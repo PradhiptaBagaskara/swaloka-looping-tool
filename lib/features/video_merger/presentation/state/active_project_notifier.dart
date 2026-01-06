@@ -6,9 +6,11 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
 
-/// Notifier for managing the active project
+/// Notifier for managing the active project (persisted settings only)
+/// Session-only data (file selections, metadata) are managed in UI state
 class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
   static const _lastProjectPathKey = 'last_project_path';
+  static const _projectSettingFileName = 'project.swaloka';
 
   @override
   SwalokaProject? build() {
@@ -61,7 +63,7 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     // Normalize the rootPath for the current platform
     final normalizedRootPath = p.normalize(rootPath);
 
-    final file = File(p.join(normalizedRootPath, 'project.swaloka'));
+    final file = File(p.join(normalizedRootPath, _projectSettingFileName));
     if (await file.exists()) {
       final json = jsonDecode(await file.readAsString());
       final loadedProject = SwalokaProject.fromJson(
@@ -70,17 +72,7 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
 
       // Use the rootPath parameter (from Recent Projects) instead of the one from JSON
       // This ensures we use the correct path even if the JSON has a stale/incorrect path
-      var updatedProject = loadedProject.copyWith(rootPath: normalizedRootPath);
-
-      // Validate and fix audio/video file paths if they don't exist
-      // This handles cases where the project was moved or paths became invalid
-      updatedProject = await _validateAndFixFilePaths(
-        updatedProject,
-        loadedProject.rootPath,
-        normalizedRootPath,
-      );
-
-      state = updatedProject;
+      state = loadedProject.copyWith(rootPath: normalizedRootPath);
 
       // Ensure directories exist (in case they were deleted)
       await Directory(
@@ -105,160 +97,25 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     }
   }
 
-  /// Validate and fix file paths if they don't exist
-  /// Attempts to find files relative to the new root path if old paths are invalid
-  Future<SwalokaProject> _validateAndFixFilePaths(
-    SwalokaProject project,
-    String oldRootPath,
-    String newRootPath,
-  ) async {
-    // Skip validation if paths haven't changed
-    if (oldRootPath == newRootPath) {
-      return project;
-    }
-
-    // Helper to fix a single path
-    Future<String?> fixPath(String? filePath) async {
-      if (filePath == null) return null;
-
-      // If file exists at current path, no fix needed
-      if (await File(filePath).exists()) {
-        return filePath;
-      }
-
-      // Try to find the file relative to new root path
-      // Extract just the filename
-      final fileName = p.basename(filePath);
-
-      // Check common locations in the new root path
-      final possiblePaths = [
-        p.join(newRootPath, fileName),
-        p.join(newRootPath, 'audio', fileName),
-        p.join(newRootPath, 'video', fileName),
-        p.join(newRootPath, 'media', fileName),
-      ];
-
-      for (final possiblePath in possiblePaths) {
-        if (await File(possiblePath).exists()) {
-          return possiblePath;
-        }
-      }
-
-      // If not found, return null (file is missing)
-      return null;
-    }
-
-    // Fix background video path
-    final fixedBackgroundVideo = await fixPath(project.backgroundVideo);
-
-    // Fix intro video path
-    final fixedIntroVideo = await fixPath(project.introVideo);
-
-    // Fix audio file paths
-    final fixedAudioFiles = <String>[];
-    for (final audioPath in project.audioFiles) {
-      final fixed = await fixPath(audioPath);
-      if (fixed != null) {
-        fixedAudioFiles.add(fixed);
-      }
-      // Skip files that couldn't be found
-    }
-
-    // Return updated project only if changes were made
-    if (fixedBackgroundVideo != project.backgroundVideo ||
-        fixedIntroVideo != project.introVideo ||
-        fixedAudioFiles.length != project.audioFiles.length) {
-      final updatedProject = project.copyWith(
-        backgroundVideo: fixedBackgroundVideo,
-        clearBackgroundVideo: fixedBackgroundVideo == null,
-        introVideo: fixedIntroVideo,
-        clearIntroVideo: fixedIntroVideo == null,
-        audioFiles: fixedAudioFiles,
-      );
-
-      // Save the fixed paths back to the project file
-      await _saveProjectToFile(updatedProject);
-
-      return updatedProject;
-    }
-
-    return project;
-  }
-
   Future<void> updateSettings({
     String? customOutputPath,
     bool clearCustomOutputPath = false,
-    String? title,
-    String? author,
-    String? comment,
     int? concurrencyLimit,
-    int? audioLoopCount,
-    String? introVideo,
-    bool clearIntroVideo = false,
     IntroAudioMode? introAudioMode,
   }) async {
     if (state == null) return;
     final newState = state!.copyWith(
       customOutputPath: customOutputPath,
       clearCustomOutputPath: clearCustomOutputPath,
-      title: title,
-      author: author,
-      comment: comment,
       concurrencyLimit: concurrencyLimit,
-      audioLoopCount: audioLoopCount,
-      introVideo: introVideo,
-      clearIntroVideo: clearIntroVideo,
       introAudioMode: introAudioMode,
     );
     state = newState;
     await _saveProjectToFile(newState);
   }
 
-  Future<void> setBackgroundVideo(String? path) async {
-    if (state == null) return;
-    final newState = state!.copyWith(
-      backgroundVideo: path,
-      clearBackgroundVideo: path == null,
-    );
-    state = newState;
-    await _saveProjectToFile(newState);
-  }
-
-  Future<void> setIntroVideo(String? path) async {
-    if (state == null) return;
-    final newState = state!.copyWith(
-      introVideo: path,
-      clearIntroVideo: path == null,
-    );
-    state = newState;
-    await _saveProjectToFile(newState);
-  }
-
-  Future<void> setAudioFiles(List<String> files) async {
-    if (state == null) return;
-    final newState = state!.copyWith(audioFiles: files);
-    state = newState;
-    await _saveProjectToFile(newState);
-  }
-
-  Future<void> removeAudioAt(int index) async {
-    if (state == null) return;
-    final newList = List<String>.from(state!.audioFiles);
-    newList.removeAt(index);
-    final newState = state!.copyWith(audioFiles: newList);
-    state = newState;
-    await _saveProjectToFile(newState);
-  }
-
-  Future<void> removeAllAudios() async {
-    if (state == null) return;
-    final newState = state!.copyWith(audioFiles: []);
-    state = newState;
-    await _saveProjectToFile(newState);
-  }
-
   Future<void> _saveProjectToFile(SwalokaProject project) async {
-    final file = File(p.join(project.rootPath, 'project.swaloka'));
+    final file = File(p.join(project.rootPath, _projectSettingFileName));
     await file.writeAsString(jsonEncode(project.toJson()));
   }
 
