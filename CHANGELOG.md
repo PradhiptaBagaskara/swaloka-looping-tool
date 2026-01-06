@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [5.1.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.0.0...swaloka_looping_tool-v5.1.0) (2026-01-06)
+
+
+### Features
+
+* improve video processing performance and UX ([f10eaf2](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/f10eaf24c95d8e875c558902f6a93d7bb3da5538))
+
 ## [5.0.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v4.1.0...swaloka_looping_tool-v5.0.0) (2026-01-06)
 
 
