@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [5.2.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.1.0...swaloka_looping_tool-v5.2.0) (2026-01-13)
+
+
+### Features
+
+* **video-tools:** enhance video re-encoding with aspect ratio options ([#37](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/37)) ([49d462e](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/49d462e0e6c3c012b1a06e8531c068099c79e161))
+
 ## [5.1.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.0.0...swaloka_looping_tool-v5.1.0) (2026-01-06)
 
 
