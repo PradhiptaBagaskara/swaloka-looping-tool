@@ -185,48 +185,105 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                             children: [
                               Row(
                                 children: [
-                                  Text(
-                                    'Parallel Processing',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelMedium
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                                  Flexible(
+                                    child: Text(
+                                      'Parallel Processing',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                    ),
                                   ),
                                   const SizedBox(width: 6),
-                                  CompactTooltip(
+                                  const CompactTooltip(
                                     message:
-                                        '${SystemInfoService.getCpuInfo()}.\n\n'
-                                        '• Higher values = faster\n'
-                                        '• Lower values = less CPU load',
+                                        'Process multiple tasks simultaneously.\n\n'
+                                        '• Faster processing\n'
+                                        '• May trigger antivirus (disable if needed)',
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'Simultaneous encoding tasks',
+                                'Enable parallel processing',
                                 style: Theme.of(context).textTheme.labelSmall,
                               ),
                             ],
                           ),
                         ),
                         const SizedBox(width: 12),
-                        SettingsNumberInput(
-                          initialValue: widget.project.concurrencyLimit
-                              .toString(),
-                          width: 85,
+                        Checkbox(
+                          value: widget.project.enableParallelProcessing,
                           onChanged: (value) {
-                            final intValue = int.tryParse(value);
-                            if (intValue != null && intValue > 0) {
+                            if (value != null) {
                               ref
                                   .read(activeProjectProvider.notifier)
-                                  .updateSettings(concurrencyLimit: intValue);
+                                  .updateSettings(
+                                    enableParallelProcessing: value,
+                                  );
                             }
                           },
                         ),
                       ],
                     ),
+                    if (widget.project.enableParallelProcessing) ...[
+                      const Divider(height: 24),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        'Max Concurrency',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    CompactTooltip(
+                                      message:
+                                          '${SystemInfoService.getCpuInfo()}.\n\n'
+                                          'Controls parallel processing tasks.\n'
+                                          '• Higher values = faster\n'
+                                          '• Lower values = less CPU load',
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Simultaneous tasks (default: ${SystemInfoService.getRecommendedConcurrency()})',
+                                  style: Theme.of(context).textTheme.labelSmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          SettingsNumberInput(
+                            initialValue: widget.project.concurrencyLimit
+                                .toString(),
+                            width: 85,
+                            onChanged: (value) {
+                              final intValue = int.tryParse(value);
+                              if (intValue != null && intValue > 0) {
+                                ref
+                                    .read(activeProjectProvider.notifier)
+                                    .updateSettings(concurrencyLimit: intValue);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
                     const Divider(height: 24),
                     Row(
                       children: [
@@ -236,14 +293,16 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                             children: [
                               Row(
                                 children: [
-                                  Text(
-                                    'Loop Audio Sequence',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelMedium
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                                  Flexible(
+                                    child: Text(
+                                      'Loop Audio Sequence',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                    ),
                                   ),
                                   const SizedBox(width: 6),
                                   const CompactTooltip(
@@ -1313,6 +1372,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
         audioLoopCount: _audioLoopCount,
         introVideoPath: _introVideo,
         introAudioMode: widget.project.introAudioMode,
+        enableParallelProcessing: widget.project.enableParallelProcessing,
         onProgress: (p) =>
             ref.read(processingStateProvider.notifier).updateProgress(p),
         onLog: (log) => ref.read(processingStateProvider.notifier).addLog(log),

@@ -1,4 +1,5 @@
 import 'package:path/path.dart' as p;
+import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
 
 /// Modes for handling intro video audio
 enum IntroAudioMode {
@@ -20,8 +21,10 @@ class SwalokaProject {
     required this.rootPath,
     this.customOutputPath,
     this.introAudioMode = IntroAudioMode.overlayPlaylist,
-    this.concurrencyLimit = 4,
-  });
+    int? concurrencyLimit,
+    this.enableParallelProcessing = true,
+  }) : concurrencyLimit =
+           concurrencyLimit ?? SystemInfoService.getRecommendedConcurrency();
 
   factory SwalokaProject.fromJson(Map<String, dynamic> json) {
     // Handle intro audio mode migration
@@ -45,7 +48,9 @@ class SwalokaProject {
           ? p.normalize(json['customOutputPath'] as String)
           : null,
       introAudioMode: mode,
-      concurrencyLimit: json['concurrencyLimit'] as int? ?? 4,
+      concurrencyLimit: json['concurrencyLimit'] as int?,
+      enableParallelProcessing:
+          json['enableParallelProcessing'] as bool? ?? true,
     );
   }
 
@@ -54,6 +59,7 @@ class SwalokaProject {
   final String? customOutputPath;
   final IntroAudioMode introAudioMode;
   final int concurrencyLimit;
+  final bool enableParallelProcessing;
 
   Map<String, dynamic> toJson() {
     return {
@@ -64,6 +70,7 @@ class SwalokaProject {
           : null,
       'introAudioMode': introAudioMode.name,
       'concurrencyLimit': concurrencyLimit,
+      'enableParallelProcessing': enableParallelProcessing,
     };
   }
 
@@ -77,6 +84,7 @@ class SwalokaProject {
     bool clearCustomOutputPath = false,
     IntroAudioMode? introAudioMode,
     int? concurrencyLimit,
+    bool? enableParallelProcessing,
   }) {
     return SwalokaProject(
       name: name ?? this.name,
@@ -88,6 +96,8 @@ class SwalokaProject {
                 : this.customOutputPath),
       introAudioMode: introAudioMode ?? this.introAudioMode,
       concurrencyLimit: concurrencyLimit ?? this.concurrencyLimit,
+      enableParallelProcessing:
+          enableParallelProcessing ?? this.enableParallelProcessing,
     );
   }
 }

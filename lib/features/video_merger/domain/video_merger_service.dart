@@ -343,6 +343,7 @@ class VideoMergerService {
     int audioLoopCount = 1,
     String? introVideoPath,
     IntroAudioMode introAudioMode = IntroAudioMode.keepOriginal,
+    bool enableParallelProcessing = true,
     void Function(double progress)? onProgress,
     void Function(LogEntry log)? onLog,
   }) async {
@@ -394,24 +395,60 @@ class VideoMergerService {
         // before we replace the audio track completely.
         final shouldKeepAudio = introAudioMode == IntroAudioMode.keepOriginal;
 
-        // Process looped content and intro in parallel (independent operations)
-        final results = await Future.wait<String>([
-          _mergeVideoWithAudioFiles(
+        // Process looped content and intro (parallel or sequential based on user preference)
+        final String preparedIntroPath;
+        if (enableParallelProcessing) {
+          // Parallel processing with stagger to avoid antivirus false positives
+          onLog?.call(
+            LogEntry.info('Processing video and intro in parallel (staggered)'),
+          );
+
+          // Start video merge first
+          final videoMergeFuture = _mergeVideoWithAudioFiles(
             backgroundVideoPath,
             loopedContentPath,
             mergedAudioPath,
             [], // Metadata applied at final stage
             onLog,
-          ),
-          _prepareIntro(
+          );
+
+          // Small delay before starting intro prep to stagger process spawning
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+
+          final introFuture = _prepareIntro(
             introVideoPath,
             shouldKeepAudio,
             tempDir,
             onLog,
-          ),
-        ]);
+          );
 
-        final preparedIntroPath = results[1];
+          final results = await Future.wait<String>([
+            videoMergeFuture,
+            introFuture,
+          ]);
+          preparedIntroPath = results[1];
+        } else {
+          // Sequential processing (safer for antivirus compatibility)
+          onLog?.call(
+            LogEntry.info('Processing intro and video sequentially'),
+          );
+
+          preparedIntroPath = await _prepareIntro(
+            introVideoPath,
+            shouldKeepAudio,
+            tempDir,
+            onLog,
+          );
+
+          await _mergeVideoWithAudioFiles(
+            backgroundVideoPath,
+            loopedContentPath,
+            mergedAudioPath,
+            [], // Metadata applied at final stage
+            onLog,
+          );
+        }
+
         onProgress?.call(0.8);
 
         if (introAudioMode == IntroAudioMode.overlayPlaylist) {

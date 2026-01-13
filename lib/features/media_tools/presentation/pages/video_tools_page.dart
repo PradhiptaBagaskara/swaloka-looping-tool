@@ -43,6 +43,8 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   // Re-encode Video State
   String? _reencodeVideoPath;
   String _reencodeResolution = '1080p'; // 480p, 720p, 1080p, 2K, 4K, 8K
+  String _reencodeAspectRatio =
+      'original'; // original, 16:9, 9:16, 1:1, 3:2, 2:3
   int _reencodeFps = 30;
   String _reencodePreset = 'veryfast';
   bool _reencodeKeepAudio = true;
@@ -262,8 +264,33 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           }
         }
 
+        // Detect aspect ratio from video dimensions
+        var aspectRatio = 'original'; // Default to original
+        if (metadata.width != null && metadata.height != null) {
+          final width = metadata.width!;
+          final height = metadata.height!;
+          final ratio = width / height;
+
+          // Match to closest common aspect ratio
+          if ((ratio - 16 / 9).abs() < 0.05) {
+            aspectRatio = '16:9';
+          } else if ((ratio - 9 / 16).abs() < 0.05) {
+            aspectRatio = '9:16';
+          } else if ((ratio - 1).abs() < 0.05) {
+            aspectRatio = '1:1';
+          } else if ((ratio - 3 / 2).abs() < 0.05) {
+            aspectRatio = '3:2';
+          } else if ((ratio - 2 / 3).abs() < 0.05) {
+            aspectRatio = '2:3';
+          } else {
+            // If it doesn't match any preset, keep as "original"
+            aspectRatio = 'original';
+          }
+        }
+
         setState(() {
           _reencodeResolution = resolution;
+          _reencodeAspectRatio = aspectRatio;
           _reencodeFps = fps;
           _reencodeReferenceVideoName = p.basename(videoPath);
         });
@@ -306,10 +333,56 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       final outputsDir = await _ensureOutputsDir();
       final name = p.basenameWithoutExtension(_reencodeVideoPath!);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final dimensions = _getResolutionDimensions(_reencodeResolution);
+
+      // Get target height from resolution
+      final heightMap = {
+        '480p': 480,
+        '720p': 720,
+        '1080p': 1080,
+        '2K': 1440,
+        '4K': 2160,
+        '8K': 4320,
+      };
+      final targetHeight = heightMap[_reencodeResolution] ?? 1080;
+
+      // Calculate dimensions based on aspect ratio
+      int targetWidth;
+      var preserveAspectRatio = false;
+
+      if (_reencodeAspectRatio == 'original') {
+        // Get original video dimensions to preserve aspect ratio
+        final metadata = await FFmpegService.getVideoMetadata(
+          _reencodeVideoPath!,
+        );
+        if (metadata.width != null && metadata.height != null) {
+          final originalAspect = metadata.width! / metadata.height!;
+          targetWidth = (targetHeight * originalAspect).round();
+          // Ensure even width
+          if (targetWidth % 2 != 0) targetWidth++;
+        } else {
+          // Fallback to 16:9 if metadata unavailable
+          targetWidth = (targetHeight * 16 / 9).round();
+        }
+        preserveAspectRatio = true;
+      } else {
+        final dimensions = _getResolutionDimensions(
+          _reencodeResolution,
+          _reencodeAspectRatio,
+        );
+        if (dimensions != null) {
+          targetWidth = dimensions.width;
+        } else {
+          // Fallback
+          targetWidth = (targetHeight * 16 / 9).round();
+        }
+      }
+
+      final aspectRatioLabel = _reencodeAspectRatio == 'original'
+          ? 'original'
+          : _reencodeAspectRatio.replaceAll(':', '_');
       final outputPath = p.join(
         outputsDir,
-        '${name}_reencoded_${_reencodeResolution}_${_reencodeFps}fps_$timestamp.mp4',
+        '${name}_${_reencodeResolution}_${aspectRatioLabel}_${_reencodeFps}fps_$timestamp.mp4',
       );
 
       await ref
@@ -317,11 +390,12 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           .reencodeVideo(
             videoPath: _reencodeVideoPath!,
             outputPath: outputPath,
-            width: dimensions.width,
-            height: dimensions.height,
+            width: targetWidth,
+            height: targetHeight,
             fps: _reencodeFps,
             preset: _reencodePreset,
             keepAudio: _reencodeKeepAudio,
+            preserveAspectRatio: preserveAspectRatio,
             hwEncoder: _reencodeUseHwAccel ? _reencodeHwEncoder : null,
             onLog: notifier.addLog,
           );
@@ -1426,35 +1500,85 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                         CompactDropdown<String>(
                           value: _reencodeResolution,
                           label: '',
-                          icon: Icons.aspect_ratio,
+                          icon: Icons.high_quality,
                           items: const [
                             DropdownMenuItem(
                               value: '480p',
-                              child: Text('480p (854x480)'),
+                              child: Text('480p'),
                             ),
                             DropdownMenuItem(
                               value: '720p',
-                              child: Text('720p (1280x720)'),
+                              child: Text('720p'),
                             ),
                             DropdownMenuItem(
                               value: '1080p',
-                              child: Text('1080p (1920x1080)'),
+                              child: Text('1080p'),
                             ),
                             DropdownMenuItem(
                               value: '2K',
-                              child: Text('2K (2560x1440)'),
+                              child: Text('2K (1440p)'),
                             ),
                             DropdownMenuItem(
                               value: '4K',
-                              child: Text('4K (3840x2160)'),
+                              child: Text('4K (2160p)'),
                             ),
                             DropdownMenuItem(
                               value: '8K',
-                              child: Text('8K (7680x4320)'),
+                              child: Text('8K (4320p)'),
                             ),
                           ],
                           onChanged: (v) => setState(
                             () => _reencodeResolution = v ?? '1080p',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Aspect Ratio',
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.w500,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        CompactDropdown<String>(
+                          value: _reencodeAspectRatio,
+                          label: '',
+                          icon: Icons.aspect_ratio,
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'original',
+                              child: Text('Original (No Change)'),
+                            ),
+                            DropdownMenuItem(
+                              value: '16:9',
+                              child: Text('16:9 (Landscape)'),
+                            ),
+                            DropdownMenuItem(
+                              value: '9:16',
+                              child: Text('9:16 (Portrait)'),
+                            ),
+                            DropdownMenuItem(
+                              value: '1:1',
+                              child: Text('1:1 (Square)'),
+                            ),
+                            DropdownMenuItem(
+                              value: '3:2',
+                              child: Text('3:2'),
+                            ),
+                            DropdownMenuItem(
+                              value: '2:3',
+                              child: Text('2:3'),
+                            ),
+                          ],
+                          onChanged: (v) => setState(
+                            () => _reencodeAspectRatio = v ?? 'original',
                           ),
                         ),
                       ],
@@ -1490,6 +1614,72 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              // Show computed dimensions
+              Builder(
+                builder: (context) {
+                  final dims = _getResolutionDimensions(
+                    _reencodeResolution,
+                    _reencodeAspectRatio,
+                  );
+
+                  String displayText;
+                  if (dims == null) {
+                    // Original aspect ratio - height only
+                    final heightMap = {
+                      '480p': 480,
+                      '720p': 720,
+                      '1080p': 1080,
+                      '2K': 1440,
+                      '4K': 2160,
+                      '8K': 4320,
+                    };
+                    final height = heightMap[_reencodeResolution] ?? 1080;
+                    displayText =
+                        'Output: Height $height (keeps original aspect ratio)';
+                  } else {
+                    displayText = 'Output: ${dims.width} × ${dims.height}';
+                  }
+
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.outline.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            displayText,
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 16),
               CompactDropdown<String>(
@@ -1903,22 +2093,48 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     return '#${r.toUpperCase()}${g.toUpperCase()}${b.toUpperCase()}';
   }
 
-  ({int width, int height}) _getResolutionDimensions(String resolution) {
+  ({int width, int height})? _getResolutionDimensions(
+    String resolution,
+    String aspectRatio,
+  ) {
+    // If "original" is selected, return null (we'll compute at runtime)
+    if (aspectRatio == 'original') {
+      return null;
+    }
+
+    // Get base height from resolution preset
+    final int baseHeight;
     switch (resolution) {
       case '480p':
-        return (width: 854, height: 480);
+        baseHeight = 480;
       case '720p':
-        return (width: 1280, height: 720);
+        baseHeight = 720;
       case '1080p':
-        return (width: 1920, height: 1080);
+        baseHeight = 1080;
       case '2K':
-        return (width: 2560, height: 1440);
+        baseHeight = 1440;
       case '4K':
-        return (width: 3840, height: 2160);
+        baseHeight = 2160;
       case '8K':
-        return (width: 7680, height: 4320);
+        baseHeight = 4320;
       default:
-        return (width: 1920, height: 1080);
+        baseHeight = 1080;
     }
+
+    // Calculate width based on aspect ratio and height
+    final parts = aspectRatio.split(':');
+    if (parts.length == 2) {
+      final ratioW = int.tryParse(parts[0]) ?? 16;
+      final ratioH = int.tryParse(parts[1]) ?? 9;
+      final calculatedWidth = (baseHeight * ratioW / ratioH).round();
+      // Ensure even dimensions (required by many codecs)
+      final evenWidth = calculatedWidth.isEven
+          ? calculatedWidth
+          : calculatedWidth + 1;
+      return (width: evenWidth, height: baseHeight);
+    }
+
+    // Fallback to 16:9 if parsing fails
+    return (width: (baseHeight * 16 / 9).round(), height: baseHeight);
   }
 }
