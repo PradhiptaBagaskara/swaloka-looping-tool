@@ -575,25 +575,39 @@ class MediaToolsService {
     required int fps,
     required String preset,
     required bool keepAudio,
+    bool preserveAspectRatio = false,
     String? hwEncoder, // Optional HW Encoder
     void Function(LogEntry)? onLog,
   }) async {
     final log = LogEntry.info('Re-encoding video ${p.basename(videoPath)}...');
     onLog?.call(log);
 
+    final aspectMode = preserveAspectRatio ? 'preserved' : 'enforced';
     log.addSubLog(
       LogEntry.info(
-        'Target format: ${width}x$height @ ${fps}fps',
+        'Target format: ${width}x$height @ ${fps}fps (aspect ratio $aspectMode)',
       ),
     );
 
-    // Build filter: scale to exact resolution, set fps, normalize pixel format
-    final filter =
-        'scale=$width:$height:force_original_aspect_ratio=decrease,'
-        'pad=$width:$height:(ow-iw)/2:(oh-ih)/2,'
-        'fps=$fps,'
-        'format=yuv420p,'
-        'setsar=1';
+    // Build filter based on aspect ratio handling
+    final String filter;
+    if (preserveAspectRatio) {
+      // Preserve original aspect ratio with padding (black bars if needed)
+      filter =
+          'scale=$width:$height:force_original_aspect_ratio=decrease,'
+          'pad=$width:$height:(ow-iw)/2:(oh-ih)/2,'
+          'fps=$fps,'
+          'format=yuv420p,'
+          'setsar=1';
+    } else {
+      // Enforce exact aspect ratio by cropping if needed
+      filter =
+          'scale=$width:$height:force_original_aspect_ratio=increase,'
+          'crop=$width:$height,'
+          'fps=$fps,'
+          'format=yuv420p,'
+          'setsar=1';
+    }
 
     final cmd = [
       '-y',

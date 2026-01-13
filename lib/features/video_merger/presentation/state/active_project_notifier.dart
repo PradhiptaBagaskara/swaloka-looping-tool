@@ -102,6 +102,7 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
     bool clearCustomOutputPath = false,
     int? concurrencyLimit,
     IntroAudioMode? introAudioMode,
+    bool? enableParallelProcessing,
   }) async {
     if (state == null) return;
     final newState = state!.copyWith(
@@ -109,6 +110,7 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
       clearCustomOutputPath: clearCustomOutputPath,
       concurrencyLimit: concurrencyLimit,
       introAudioMode: introAudioMode,
+      enableParallelProcessing: enableParallelProcessing,
     );
     state = newState;
     await _saveProjectToFile(newState);
