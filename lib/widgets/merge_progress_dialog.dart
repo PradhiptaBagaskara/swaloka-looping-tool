@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
 import 'package:swaloka_looping_tool/widgets/log_entry_widget.dart';
@@ -489,6 +490,44 @@ class _MergeProgressDialogState extends ConsumerState<MergeProgressDialog> {
                       foregroundColor: Theme.of(context).colorScheme.onSurface,
                     ),
                     child: const Text('Close'),
+                  )
+                else
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Cancel Processing?'),
+                          content: const Text(
+                            'Are you sure you want to cancel? The FFmpeg process will be terminated.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('No'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.error,
+                              ),
+                              child: const Text('Yes, Cancel'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed ?? false) {
+                        await FFmpegService.cancel();
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      foregroundColor: Theme.of(context).colorScheme.onError,
+                    ),
+                    icon: const Icon(Icons.cancel, size: 16),
+                    label: const Text('Cancel'),
                   ),
               ],
             ),

@@ -386,6 +386,9 @@ class _AudioToolsStandalonePageState
   final List<_AudioOverlay> _audioOverlays = [];
   final List<GlobalKey<_AudioOverlayItemState>> _overlayKeys = [];
 
+  // Preview state
+  bool _isPreviewPlaying = false;
+
   // Output format state
   String _outputFormat = 'm4a';
 
@@ -424,6 +427,97 @@ class _AudioToolsStandalonePageState
     for (final key in _overlayKeys) {
       key.currentState?.pause();
     }
+  }
+
+  /// Toggle preview mode - plays first base audio with all overlays
+  void _togglePreview() {
+    setState(() {
+      if (_isPreviewPlaying) {
+        // Stop preview
+        _isPreviewPlaying = false;
+        _currentBaseAudioIndex = null;
+        _isBaseAudioPlaying = false;
+        _pauseAllOverlays();
+      } else {
+        // Start preview - play first base audio and all overlays
+        if (_baseAudios.isNotEmpty) {
+          _isPreviewPlaying = true;
+          _currentBaseAudioIndex = 0;
+          _isBaseAudioPlaying = true;
+          _playAllOverlays();
+        }
+      }
+    });
+  }
+
+  /// Save overlay configuration as a preset WAV file
+  Future<void> _saveOverlayPreset() async {
+    // Prompt user for preset name
+    final controller = TextEditingController();
+    final presetName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Simpan Preset'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Masukkan nama preset',
+            labelText: 'Nama Preset',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+
+    if (presetName == null || presetName.isEmpty) {
+      return;
+    }
+
+    // Generate output path
+    final outputsDir = await _ensureOutputsDir();
+    final outputPath = p.join(outputsDir, '$presetName.wav');
+
+    // Convert overlays to service format
+    final overlayConfigs = _audioOverlays
+        .map(
+          (overlay) => AudioOverlayConfig(
+            path: overlay.path,
+            volume: overlay.volume,
+          ),
+        )
+        .toList();
+
+    // Use the standard processing modal
+    await _runOperation((onLog) async {
+      await MediaToolsService().exportOverlayPreset(
+        overlays: overlayConfigs,
+        outputPath: outputPath,
+        onLog: onLog,
+      );
+    });
+
+    if (!mounted) return;
+
+    // Set success to close the modal
+    ref.read(processingStateProvider.notifier).setSuccess(outputPath);
+
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Preset disimpan ke: ${p.basename(outputPath)}'),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   /// Check if any overlay is currently playing
@@ -499,13 +593,20 @@ class _AudioToolsStandalonePageState
   }
 
   void _onBaseAudioCompleted() {
+    // Handle normal sequence playback (same for both preview and manual mode)
     if (_currentBaseAudioIndex != null && _isBaseAudioPlaying) {
       setState(() {
         if (_currentBaseAudioIndex! < _baseAudios.length - 1) {
           _currentBaseAudioIndex = _currentBaseAudioIndex! + 1;
+          _isBaseAudioPlaying = true; // Keep playing flag true for next audio
         } else {
           _isBaseAudioPlaying = false;
           _currentBaseAudioIndex = null;
+          // When sequence ends, also stop overlays in preview mode
+          if (_isPreviewPlaying) {
+            _isPreviewPlaying = false;
+            _pauseAllOverlays();
+          }
         }
       });
     }
@@ -613,17 +714,43 @@ class _AudioToolsStandalonePageState
                   IconButton(
                     icon: const Icon(Icons.arrow_back),
                     onPressed: () => Navigator.of(context).pop(),
-                    tooltip: 'Back to Video Editor',
+                    tooltip: 'Kembali ke Editor Video',
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Audio Tools',
+                      'Alat Audio',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
+                  // Preview button
+                  ElevatedButton.icon(
+                    onPressed:
+                        (_baseAudios.isNotEmpty && _audioOverlays.isNotEmpty)
+                        ? _togglePreview
+                        : null,
+                    icon: Icon(
+                      _isPreviewPlaying ? Icons.stop : Icons.play_arrow,
+                      size: 18,
+                    ),
+                    label: Text(_isPreviewPlaying ? 'Stop Preview' : 'Preview'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isPreviewPlaying
+                          ? Theme.of(context).colorScheme.error
+                          : Theme.of(context).colorScheme.primary,
+                      foregroundColor: _isPreviewPlaying
+                          ? Theme.of(context).colorScheme.onError
+                          : Theme.of(context).colorScheme.onPrimary,
+                      minimumSize: const Size(100, 44),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   // Output format dropdown (smaller)
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -683,13 +810,14 @@ class _AudioToolsStandalonePageState
                   ),
                   const SizedBox(width: 12),
                   // Process Audio button (bigger)
+                  // Requires: at least 1 base audio AND at least 1 overlay
                   ElevatedButton.icon(
                     onPressed:
-                        (_baseAudios.isNotEmpty || _audioOverlays.isNotEmpty)
+                        (_baseAudios.isNotEmpty && _audioOverlays.isNotEmpty)
                         ? _processAudioWithOverlays
                         : null,
                     icon: const Icon(Icons.merge, size: 20),
-                    label: const Text('Process Audio'),
+                    label: const Text('Proses Audio'),
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size(120, 44),
                       padding: const EdgeInsets.symmetric(
@@ -737,66 +865,21 @@ class _AudioToolsStandalonePageState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Base Audio',
+            'Audio Dasar',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Loop in Sequence',
+            'Loop secara berurutan',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 12),
-          // Loop count input
-          Row(
-            children: [
-              Icon(
-                Icons.repeat,
-                size: 16,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Loop Count:',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 60,
-                child: TextField(
-                  controller: _loopCountController,
-                  keyboardType: TextInputType.number,
-                  style: Theme.of(context).textTheme.bodySmall,
-                  decoration: InputDecoration(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    isDense: true,
-                  ),
-                  onChanged: (value) {
-                    final intValue = int.tryParse(value);
-                    if (intValue != null && intValue >= 1) {
-                      setState(() {
-                        _baseAudioLoopCount = intValue;
-                      });
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
           const SizedBox(height: 16),
           DropZoneWidget(
-            label: 'Drop Base Audio Files Here',
+            label: 'Seret File Audio Dasar ke Sini',
             icon: Icons.music_note,
             onTap: _pickBaseAudios,
             onFilesDropped: (files) {
@@ -818,8 +901,54 @@ class _AudioToolsStandalonePageState
           if (_baseAudios.isNotEmpty) ...[
             const SizedBox(height: 12),
             Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                // Loop count input
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.repeat,
+                      size: 14,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Loop:',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    SizedBox(
+                      width: 60,
+                      child: TextField(
+                        controller: _loopCountController,
+                        keyboardType: TextInputType.number,
+                        style: Theme.of(context).textTheme.bodySmall,
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          isDense: true,
+                        ),
+                        onChanged: (value) {
+                          final intValue = int.tryParse(value);
+                          if (intValue != null && intValue >= 1) {
+                            setState(() {
+                              _baseAudioLoopCount = intValue;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                // Clear All button
                 TextButton.icon(
                   onPressed: () => setState(() {
                     _baseAudios.clear();
@@ -910,7 +1039,7 @@ class _AudioToolsStandalonePageState
                                     : null,
                               ),
                               onPressed: () => _toggleBaseAudioPlayback(i),
-                              tooltip: 'Play from here',
+                              tooltip: 'Putar dari sini',
                             ),
                             IconButton(
                               icon: Icon(
@@ -931,7 +1060,7 @@ class _AudioToolsStandalonePageState
                                   }
                                 });
                               },
-                              tooltip: 'Remove',
+                              tooltip: 'Hapus',
                             ),
                           ],
                         ),
@@ -970,14 +1099,14 @@ class _AudioToolsStandalonePageState
           ),
           const SizedBox(height: 8),
           Text(
-            'Play simultaneously, adjust volume per track',
+            'Putar secara simultan, atur volume per trek',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 16),
           DropZoneWidget(
-            label: 'Drop Overlay Audio Files',
+            label: 'Seret File Audio Overlay ke Sini',
             icon: Icons.layers,
             onTap: _pickAudioOverlay,
             onFilesDropped: (files) {
@@ -1023,11 +1152,24 @@ class _AudioToolsStandalonePageState
                     _anyOverlayPlaying ? Icons.stop : Icons.play_arrow,
                     size: 16,
                   ),
-                  label: Text(_anyOverlayPlaying ? 'Stop All' : 'Play All'),
+                  label: Text(
+                    _anyOverlayPlaying ? 'Berhenti Semua' : 'Putar Semua',
+                  ),
                   style: TextButton.styleFrom(
                     foregroundColor: _anyOverlayPlaying
                         ? Theme.of(context).colorScheme.error
                         : Theme.of(context).colorScheme.primary,
+                    textStyle: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Save Preset button
+                TextButton.icon(
+                  onPressed: _audioOverlays.isEmpty ? null : _saveOverlayPreset,
+                  icon: const Icon(Icons.save_alt, size: 16),
+                  label: const Text('Simpan Preset'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.primary,
                     textStyle: Theme.of(context).textTheme.labelMedium,
                   ),
                 ),
@@ -1038,7 +1180,7 @@ class _AudioToolsStandalonePageState
                     _overlayKeys.clear();
                   }),
                   icon: const Icon(Icons.delete_sweep, size: 16),
-                  label: const Text('Clear All'),
+                  label: const Text('Hapus Semua'),
                   style: TextButton.styleFrom(
                     foregroundColor: Theme.of(
                       context,

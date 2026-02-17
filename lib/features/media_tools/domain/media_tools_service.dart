@@ -196,6 +196,125 @@ class MediaToolsService {
     }
   }
 
+  /// Export overlay audios as a pre-mixed WAV preset file
+  ///
+  /// This mixes all overlay audios with their volume settings into a single WAV file
+  /// that can be reused later. Useful for saving commonly used overlay combinations.
+  ///
+  /// Parameters:
+  /// - overlays: List of overlay configurations with paths and volumes
+  /// - outputPath: Where to save the preset WAV file
+  /// - onLog: Optional callback for logging progress
+  Future<void> exportOverlayPreset({
+    required List<AudioOverlayConfig> overlays,
+    required String outputPath,
+    void Function(LogEntry)? onLog,
+  }) async {
+    final log = LogEntry.info(
+      'Exporting ${overlays.length} overlay(s) as preset...',
+    );
+    onLog?.call(log);
+
+    if (overlays.isEmpty) {
+      throw Exception('No overlays provided');
+    }
+
+    final tempDir = await TempDirectoryHelper.create(
+      prefix: 'swaloka_preset_${DateTime.now().millisecondsSinceEpoch}',
+      onLog: onLog,
+    );
+
+    try {
+      // Use the pre-mix logic to create the preset
+      final presetPath = await _preMixOverlays(overlays, tempDir, onLog);
+
+      // Copy the pre-mixed file to the desired output location
+      await File(presetPath).copy(outputPath);
+
+      onLog?.call(LogEntry.success('Preset exported to $outputPath'));
+    } finally {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    }
+  }
+
+  /// Pre-mix overlay audios into a single WAV file (lossless)
+  ///
+  /// This reduces complexity in the final mix step by combining all overlays
+  /// into one file first, then mixing that with base audios.
+  ///
+  /// Why volume compensation is needed:
+  /// - FFmpeg's amix filter normalizes (divides) output by number of inputs
+  /// - Example: amix=inputs=3 → output volume /3 (too quiet!)
+  /// - Solution: Add volume filter to multiply back by N
+  /// - Result: Full volume restored
+  Future<String> _preMixOverlays(
+    List<AudioOverlayConfig> overlays,
+    Directory tempDir,
+    void Function(LogEntry)? onLog,
+  ) async {
+    final log = LogEntry.info('Pre-mixing ${overlays.length} overlay(s)...');
+    onLog?.call(log);
+
+    // Build inputs for overlays (NO stream_loop here - we want original duration)
+    final inputs = <String>[];
+    for (final overlay in overlays) {
+      inputs.addAll(['-i', overlay.path]);
+    }
+
+    // Build filter_complex to mix overlays with volume
+    // Use duration=longest so output is as long as the longest overlay
+    final filterParts = <String>[];
+
+    // Apply volume to each overlay (user-configured levels)
+    for (var i = 0; i < overlays.length; i++) {
+      final volume = overlays[i].volume;
+      filterParts.add('[$i:a]volume=$volume[v$i]');
+    }
+
+    // Build amix inputs with volume labels
+    final amixInputs = List.generate(overlays.length, (i) => '[v$i]').join();
+
+    // Mix with duration=longest - ensures output is as long as the longest overlay
+    // CRITICAL: amix normalizes (divides) by number of inputs, so we MUST compensate
+    // Without compensation: amix=inputs=3 → volume /3 → output too quiet
+    // With compensation: amix=inputs=3 → volume /3 → volume=3.0 → /3 * 3 = 1.0 (full volume)
+    final compensation = overlays.length.toStringAsFixed(1);
+    filterParts.add(
+      '$amixInputs'
+      'amix=inputs=${overlays.length}:duration=longest[overlay_mix];'
+      '[overlay_mix]volume=$compensation[overlay_mix]',
+    );
+
+    final filterComplex = filterParts.join(';');
+
+    // Output to WAV (lossless)
+    final overlayMixPath = p.join(tempDir.path, 'overlay_mix.wav');
+
+    await FFmpegService.run(
+      [
+        '-y',
+        '-threads',
+        '0',
+        '-vn',
+        ...inputs,
+        '-filter_complex',
+        filterComplex,
+        '-map',
+        '[overlay_mix]',
+        '-c:a',
+        'pcm_s16le', // WAV codec (lossless)
+        overlayMixPath,
+      ],
+      errorMessage: 'Failed to pre-mix overlays',
+      onLog: log.addSubLog,
+    );
+
+    onLog?.call(LogEntry.success('Overlays pre-mixed to WAV'));
+    return overlayMixPath;
+  }
+
   Future<void> applyAudioOverlaysToBaseAudios({
     required List<String> baseAudios,
     required List<AudioOverlayConfig> overlays,
@@ -229,6 +348,22 @@ class MediaToolsService {
     );
 
     try {
+      // Step 2: Check if we need to pre-mix overlays
+      // Optimization: Skip pre-mix if only 1 overlay with full volume (1.0)
+      // This saves processing time and disk I/O
+      String overlayMixWav;
+      if (overlays.length == 1 && overlays[0].volume == 1.0) {
+        // Use the overlay file directly - no pre-mixing needed
+        overlayMixWav = overlays[0].path;
+        log.addSubLog(
+          LogEntry.info('Single overlay at full volume - skipping pre-mix'),
+        );
+      } else {
+        // Pre-mix overlays into single WAV file (lossless)
+        // This reduces complexity: instead of amix=inputs=4, we only need amix=inputs=2
+        overlayMixWav = await _preMixOverlays(overlays, tempDir, onLog);
+      }
+
       final concatListPath = p.join(tempDir.path, 'base_audios.txt');
       final concatContent = baseAudios
           .map((f) => "file '${_formatPathForConcatFile(f)}'")
@@ -237,9 +372,9 @@ class MediaToolsService {
 
       log.addSubLog(LogEntry.info('Base audios: ${baseAudios.length} files'));
 
-      // Step 2: Build FFmpeg command using concat demuxer
+      // Step 3: Build FFmpeg command using concat demuxer
       // Input 0: concat demuxer (all base audios merged as one stream)
-      // Inputs 1-N: overlays (each with stream_loop for infinite looping)
+      // Input 1: pre-mixed overlay WAV (with stream_loop for infinite looping)
       // -vn skips video processing (we only need audio)
       final cmd = <String>[
         '-y',
@@ -252,41 +387,29 @@ class MediaToolsService {
         '0',
         '-i',
         concatListPath,
+        '-stream_loop',
+        '-1',
+        '-i',
+        overlayMixWav,
       ];
 
-      // Add overlay inputs with stream_loop
-      for (final overlay in overlays) {
-        cmd.addAll(['-stream_loop', '-1', '-i', overlay.path]);
-      }
-
-      // Step 3: Build filter_complex
-      // Input 0:a = base audios from concat demuxer (already merged)
-      // Inputs 1:a, 2:a, etc. = overlays with stream_loop
+      // Step 4: Build filter_complex
+      // Simpler amix: only 2 inputs (base + pre-mixed overlay) instead of (base + N overlays)
       final filterParts = <String>[];
 
-      // Mix base with overlays using amix with volume control
-      final weights = [
-        '1.0',
-        ...overlays.map((o) => o.volume.toStringAsFixed(2)),
-      ].join(' ');
-
-      // Build input labels for amix: [0:a][1:a][2:a]...
-      final amixInputs = <String>['[0:a]']; // base audios from concat demuxer
-      for (var i = 0; i < overlays.length; i++) {
-        final inputIndex = i + 1; // overlay inputs start at 1 (0 is concat)
-        amixInputs.add('[$inputIndex:a]');
-      }
-      final amixInputLabels = amixInputs.join();
-
-      final totalInputs = overlays.length + 1; // base + overlays
+      // Mix base with pre-mixed overlay using amix
+      // CRITICAL: amix normalizes (divides) by number of inputs, so we MUST compensate
+      // Without compensation: amix=inputs=2 → volume /2 → output too quiet
+      // With compensation: amix=inputs=2 → volume /2 → volume=2.0 → /2 * 2 = 1.0 (full volume)
+      // This affects BOTH base audio and overlay equally, restoring both to intended levels
       filterParts.add(
-        '$amixInputLabels'
-        'amix=inputs=$totalInputs:duration=first:weights=$weights[out]',
+        '[0:a][1:a]amix=inputs=2:duration=first[out];'
+        '[out]volume=2.0[out]',
       );
 
       final filterComplex = filterParts.join('; ');
 
-      log.addSubLog(LogEntry.info('Mixing audio with complex filter...'));
+      log.addSubLog(LogEntry.info('Mixing audio with pre-mixed overlay...'));
 
       final codecArgs = _audioCodecArgs(outputPath);
 

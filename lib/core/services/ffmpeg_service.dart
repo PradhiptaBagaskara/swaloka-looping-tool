@@ -38,6 +38,30 @@ class FFmpegService {
   /// Hardware acceleration encoder setting
   static String _hwAccelEncoder = 'libx264';
 
+  /// Currently running FFmpeg process (for cancellation)
+  static Process? _currentProcess;
+
+  /// Cancel the currently running FFmpeg process
+  static Future<void> cancel() async {
+    final process = _currentProcess;
+    if (process != null) {
+      try {
+        // Try graceful shutdown first
+        process.kill();
+        // Wait a bit for graceful shutdown
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        // Force kill if still running
+        process.kill(ProcessSignal.sigkill);
+      } on Exception {
+        // Ignore errors during cancellation
+      }
+      _currentProcess = null;
+    }
+  }
+
+  /// Check if a process is currently running
+  static bool get isProcessing => _currentProcess != null;
+
   /// Cache version - increment this when VideoMetadata schema changes
   static const int _cacheVersion = 3;
 
@@ -541,20 +565,35 @@ class FFmpegService {
 
     final startTime = DateTime.now();
 
-    // Run FFmpeg with extended PATH environment
-    // Use the resolved executable path directly and avoid runInShell
-    // to prevent complex quoting issues with paths containing spaces.
-    final result = await Process.run(
+    // Start FFmpeg process (not run - so we can cancel it)
+    final process = await Process.start(
       ffmpegExecutable,
       command,
       environment: env,
     );
 
-    final exitCode = result.exitCode;
+    // Store for cancellation
+    _currentProcess = process;
 
-    // Parse stdout - keep all (usually minimal)
+    // Capture output
     final stdoutLogs = <LogEntry>[];
-    final stdoutStr = result.stdout as String;
+    final stdout = <int>[];
+    final stderr = <int>[];
+
+    // Listen to stdout
+    process.stdout.listen(stdout.addAll);
+
+    // Listen to stderr
+    process.stderr.listen(stderr.addAll);
+
+    // Wait for process to complete
+    final exitCode = await process.exitCode;
+
+    // Clear current process when done
+    _currentProcess = null;
+
+    // Decode stdout
+    final stdoutStr = String.fromCharCodes(stdout).trim();
     if (stdoutStr.isNotEmpty) {
       for (final line in stdoutStr.split('\n')) {
         final trimmed = line.trim();
@@ -564,8 +603,8 @@ class FFmpegService {
       }
     }
 
-    // Parse stderr
-    final stderrStr = result.stderr as String;
+    // Decode stderr
+    final stderrStr = String.fromCharCodes(stderr).trim();
     final stderrLines = stderrStr
         .split('\n')
         .map((l) => l.trim())
