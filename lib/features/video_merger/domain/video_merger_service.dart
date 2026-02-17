@@ -4,70 +4,192 @@ import 'package:path/path.dart' as p;
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
 import 'package:swaloka_looping_tool/core/utils/temp_directory_helper.dart';
-import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
 
 /// Service for merging background video with sequential audio files
 class VideoMergerService {
-  // Concat audio files
-  Future<String> _concatAudioFiles(
-    List<String> audioFiles,
-    Directory tempDir,
-    int audioLoopCount,
-    int concurrencyLimit,
+  String _formatPathForConcatFile(String path) {
+    var safePath = p.normalize(path);
+    if (Platform.isWindows) {
+      safePath = safePath.replaceAll(r'\', '/');
+    }
+    return safePath.replaceAll("'", r"'\''");
+  }
+
+  Future<double?> _getAudioDurationSeconds(String audioPath) async {
+    try {
+      final result = await Process.run(
+        FFmpegService.ffprobePath,
+        [
+          '-v',
+          'error',
+          '-show_entries',
+          'format=duration',
+          '-of',
+          'default=noprint_wrappers=1:nokey=1',
+          p.absolute(audioPath),
+        ],
+        environment: FFmpegService.extendedEnvironment,
+      );
+      if (result.exitCode != 0) return null;
+      final out = (result.stdout as String).trim();
+      if (out.isEmpty) return null;
+      return double.tryParse(out);
+    } on Exception catch (_) {
+      return null;
+    }
+  }
+
+  /// Check if audio file is already in AAC format based on extension
+  /// .m4a and .aac files typically use AAC codec
+  bool _isAudioAlreadyAAC(String audioPath) {
+    final ext = p.extension(audioPath).toLowerCase();
+    return ext == '.m4a' || ext == '.aac';
+  }
+
+  /// Check multiple audio files for AAC format
+  /// Based on file extensions (.m4a, .aac)
+  List<bool> _checkAudioFilesAAC(List<String> audioPaths) {
+    return audioPaths.map(_isAudioAlreadyAAC).toList();
+  }
+
+  Future<List<String>> _normalizeAudioFilesToAacM4a({
+    required List<String> audioFiles,
+    required Directory tempDir,
     void Function(LogEntry log)? onLog,
-  ) async {
+  }) async {
+    final log = LogEntry.info(
+      'Checking ${audioFiles.length} audio file(s) for AAC format...',
+    );
+    onLog?.call(log);
+
+    if (audioFiles.isEmpty) return [];
+
+    // Check all files by extension
+    final isAACResults = _checkAudioFilesAAC(audioFiles);
+
+    // Separate files into already AAC vs needs conversion
+    final alreadyAAC = <String>[];
+    final needsConversion = <String>[];
+
+    for (var i = 0; i < audioFiles.length; i++) {
+      if (isAACResults[i]) {
+        alreadyAAC.add(audioFiles[i]);
+        log.addSubLog(
+          LogEntry.info('✓ Already AAC: ${p.basename(audioFiles[i])}'),
+        );
+      } else {
+        needsConversion.add(audioFiles[i]);
+      }
+    }
+
+    final results = <String>[];
+
+    // Add files that are already AAC (use original paths)
+    results.addAll(alreadyAAC);
+
+    // Convert files that need it
+    if (needsConversion.isNotEmpty) {
+      final convertLog = LogEntry.info(
+        'Converting ${needsConversion.length} file(s) to AAC...',
+      );
+      log.addSubLog(convertLog);
+
+      final converted = await _executeSingleRunFFmpeg(
+        needsConversion,
+        tempDir,
+        alreadyAAC.length, // start index after already AAC files
+        parentLog: convertLog,
+      );
+
+      results.addAll(converted.map((e) => e.path));
+
+      convertLog.addSubLog(
+        LogEntry.success(
+          'Conversion complete: ${converted.length} file(s) processed',
+        ),
+      );
+    }
+
+    log.addSubLog(
+      LogEntry.success(
+        'Audio check complete: ${alreadyAAC.length} skipped, ${needsConversion.length} converted',
+      ),
+    );
+
+    return results;
+  }
+
+  // Helper function to run one FFmpeg command for multiple files
+  Future<List<({int index, String path})>> _executeSingleRunFFmpeg(
+    List<String> inputs,
+    Directory tempDir,
+    int startIdx, {
+    required LogEntry parentLog,
+  }) async {
+    final batchLog = LogEntry.info(
+      'Processing batch of ${inputs.length} file(s) starting at index $startIdx...',
+    );
+    parentLog.addSubLog(batchLog);
+
+    final args = ['-y'];
+
+    // Add all inputs in this batch
+    for (final path in inputs) {
+      args.addAll(['-i', p.absolute(path)]);
+    }
+
+    final results = <({int index, String path})>[];
+
+    // Map each input to its output
+    for (var i = 0; i < inputs.length; i++) {
+      final idx = startIdx + i;
+      final outPath = p.join(tempDir.path, 'audio_part_$idx.m4a');
+
+      args.addAll([
+        '-map',
+        '$i:a',
+        '-vn',
+        '-threads',
+        '0',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '192k',
+        p.absolute(outPath),
+      ]);
+
+      results.add((index: idx, path: outPath));
+    }
+
+    await FFmpegService.run(
+      args,
+      errorMessage: 'Failed to process audio batch starting at index $startIdx',
+      onLog: batchLog.addSubLog,
+    );
+
+    batchLog.addSubLog(
+      LogEntry.success('Batch complete: ${inputs.length} file(s) processed'),
+    );
+
+    return results;
+  }
+
+  List<String> _buildAudioPlaylist(
+    List<String> audioFiles,
+    int audioLoopCount,
+    void Function(LogEntry log)? onLog,
+  ) {
     final processLog = LogEntry.info(
-      'Processing ${audioFiles.length} audio file(s)...',
+      'Building audio playlist from ${audioFiles.length} file(s)...',
     );
     onLog?.call(processLog);
 
-    final extractedFiles = <String>[];
-    for (var i = 0; i < audioFiles.length; i += concurrencyLimit) {
-      final end = (i + concurrencyLimit < audioFiles.length)
-          ? i + concurrencyLimit
-          : audioFiles.length;
-      final batch = audioFiles.sublist(i, end);
-
-      final batchLog = LogEntry.info(
-        'Extracting audio batch ${(i ~/ concurrencyLimit) + 1}...',
-      );
-      processLog.addSubLog(batchLog);
-
-      await Future.wait(
-        batch.asMap().entries.map((entry) async {
-          final idx = i + entry.key;
-          final inputPath = entry.value;
-          final outPath = p.join(tempDir.path, 'audio_part_$idx.aac');
-
-          await FFmpegService.run(
-            [
-              '-y',
-              '-i',
-              p.absolute(inputPath),
-              '-vn',
-              '-acodec',
-              'aac',
-              '-ar',
-              '44100',
-              '-ac',
-              '2',
-              '-b:a',
-              '192k',
-              p.absolute(outPath),
-            ],
-            errorMessage: 'Failed to extract audio from $inputPath',
-            onLog: batchLog.addSubLog,
-          );
-          extractedFiles.add(outPath);
-        }),
-      );
-    }
-    final concatFilePath = p.join(tempDir.path, 'audio_concat.txt');
+    final orderedFiles = List<String>.from(audioFiles);
     final concatFiles = <String>[];
 
     // First iteration: Always use original order from UI
     // This ensures the first play through matches the user's intended sequence
-    concatFiles.addAll(extractedFiles);
+    concatFiles.addAll(orderedFiles);
 
     if (audioLoopCount > 1) {
       // Subsequent iterations: Shuffle each time for variety
@@ -76,7 +198,7 @@ class VideoMergerService {
       //   Loop 2: [file2, file3, file1] <- shuffled
       //   Loop 3: [file3, file1, file2] <- shuffled again
       for (var loop = 1; loop < audioLoopCount; loop++) {
-        final filesToConcat = List<String>.from(extractedFiles);
+        final filesToConcat = List<String>.from(orderedFiles);
         filesToConcat.shuffle(Random());
         concatFiles.addAll(filesToConcat);
       }
@@ -88,42 +210,48 @@ class VideoMergerService {
       );
     }
 
-    final concatContent = concatFiles
-        .map((f) => "file '${_formatPathForConcatFile(f)}'")
-        .join('\n');
-    await File(concatFilePath).writeAsString(concatContent);
-
-    // Mark processing as complete
-    processLog.addSubLog(LogEntry.success('Audio processing completed'));
-
-    return concatFilePath;
+    processLog.addSubLog(
+      LogEntry.success('Audio playlist ready (${concatFiles.length} item(s))'),
+    );
+    return concatFiles;
   }
 
-  // Merge audio files
-  Future<String> _mergeAudioFiles(
+  Future<String> _mergeAudioPlaylist(
     Directory tempDir,
-    String concatFilePath,
+    List<String> playlistFiles,
     void Function(LogEntry log)? onLog,
   ) async {
-    final mergedAudioPath = p.join(tempDir.path, 'audio_merged.aac');
+    final mergedAudioPath = p.join(tempDir.path, 'audio_merged.m4a');
 
     // Create parent log for merging operation
-    final mergeLog = LogEntry.info('Merging audio tracks...');
+    final mergeLog = LogEntry.info('Concatenating audio playlist...');
     onLog?.call(mergeLog);
 
+    if (playlistFiles.isEmpty) {
+      throw Exception('No audio files to merge');
+    }
+
+    final concatListPath = p.join(tempDir.path, 'audio_concat.txt');
+    final concatContent = playlistFiles
+        .map((f) => "file '${_formatPathForConcatFile(f)}'")
+        .join('\n');
+    await File(concatListPath).writeAsString(concatContent);
+
+    final cmd = <String>[
+      '-y',
+      '-f',
+      'concat',
+      '-safe',
+      '0',
+      '-i',
+      concatListPath,
+      '-c',
+      'copy',
+      p.absolute(mergedAudioPath),
+    ];
+
     await FFmpegService.run(
-      [
-        '-y',
-        '-f',
-        'concat',
-        '-safe',
-        '0',
-        '-i',
-        concatFilePath,
-        '-c',
-        'copy',
-        mergedAudioPath,
-      ],
+      cmd,
       errorMessage: 'Failed to merge audio tracks',
       onLog: mergeLog.addSubLog,
     );
@@ -141,7 +269,6 @@ class VideoMergerService {
     String backgroundVideoPath,
     String outputPath,
     String mergedAudioPath,
-    List<String> metadataFlags,
     void Function(LogEntry log)? onLog,
   ) async {
     // 6. Fast mode: Loop video to match audio duration
@@ -152,183 +279,36 @@ class VideoMergerService {
     final videoMergeLog = LogEntry.info('Merging video with audio...');
     onLog?.call(videoMergeLog);
 
-    // Build optimized FFmpeg command
-    final command = [
-      '-stream_loop',
-      '-1',
-      '-i',
-      p.absolute(backgroundVideoPath),
-      '-i',
-      p.absolute(mergedAudioPath),
-      '-map',
-      '0:v',
-      '-map',
-      '1:a',
-      '-c:v',
-      'copy',
-      '-c:a',
-      'copy',
-      '-shortest',
-      ...metadataFlags,
-      p.absolute(outputPath),
-      '-y',
-    ];
-
+    // Loop video to match audio duration (same approach as intro+background case)
+    // Use hwaccel auto for hardware-accelerated decoding
     await FFmpegService.run(
-      command,
-      errorMessage: 'Failed to merge video',
-      onLog: videoMergeLog.addSubLog,
-    );
-
-    return outputPath;
-  }
-
-  /// Prepare intro video (ensure AAC audio)
-  Future<String> _prepareIntro(
-    String introVideoPath,
-    bool introKeepAudio,
-    Directory tempDir,
-    void Function(LogEntry log)? onLog,
-  ) async {
-    final preparedIntroPath = p.join(tempDir.path, 'intro_prepared.mp4');
-    final log = LogEntry.info('Preparing intro video...');
-    onLog?.call(log);
-
-    final List<String> command;
-
-    if (introKeepAudio) {
-      // Check if audio is already AAC - if yes, use stream copy (much faster!)
-      final metadata = await FFmpegService.getVideoMetadata(introVideoPath);
-      final isAAC = metadata.audioCodec?.toLowerCase() == 'aac';
-
-      if (isAAC) {
-        log.addSubLog(
-          LogEntry.info('Audio already in AAC format, using stream copy...'),
-        );
-        command = [
-          '-i',
-          p.absolute(introVideoPath),
-          '-c:v',
-          'copy', // Copy video stream
-          '-c:a',
-          'copy', // Copy audio stream (already AAC)
-          p.absolute(preparedIntroPath),
-          '-y',
-        ];
-      } else {
-        log.addSubLog(
-          LogEntry.info('Transcoding audio to AAC format...'),
-        );
-        command = [
-          '-i',
-          p.absolute(introVideoPath),
-          '-c:v',
-          'copy', // Copy video stream
-          '-c:a',
-          'aac', // Transcode audio to AAC
-          '-b:a',
-          '192k',
-          p.absolute(preparedIntroPath),
-          '-y',
-        ];
-      }
-    } else {
-      // Mute audio: Generate silence
-      command = [
+      [
+        '-y',
+        '-stream_loop',
+        '-1',
         '-i',
-        p.absolute(introVideoPath),
-        '-f',
-        'lavfi',
+        p.absolute(backgroundVideoPath),
         '-i',
-        'anullsrc=channel_layout=stereo:sample_rate=44100',
-        '-c:v',
-        'copy',
-        '-c:a',
-        'aac',
-        '-shortest', // Stop when video ends
+        p.absolute(mergedAudioPath),
         '-map',
         '0:v',
         '-map',
         '1:a',
-        p.absolute(preparedIntroPath),
-        '-y',
-      ];
-    }
+        '-c:v',
+        'copy',
+        ...await FFmpegService.getStandardYouTubeVideoMetadataFlags(),
+        '-c:a',
+        'copy',
+        '-shortest',
+        '-movflags',
+        '+faststart',
+        p.absolute(outputPath),
+      ],
+      errorMessage: 'Failed to merge video with audio',
+      onLog: videoMergeLog.addSubLog,
+    );
 
-    try {
-      await FFmpegService.run(
-        command,
-        errorMessage: 'Failed to prepare intro video',
-        onLog: log.addSubLog,
-      );
-    } catch (e) {
-      // Fallback: If "Keep Audio" failed (likely no audio stream), try mute approach
-      if (introKeepAudio) {
-        log.addSubLog(
-          LogEntry.warning(
-            'Failed to keep intro audio (maybe no audio stream?), falling back to silent audio...',
-          ),
-        );
-        await _prepareIntro(introVideoPath, false, tempDir, onLog);
-        return preparedIntroPath;
-      }
-      rethrow;
-    }
-
-    log.addSubLog(LogEntry.success('Intro prepared: $preparedIntroPath'));
-    return preparedIntroPath;
-  }
-
-  /// Concatenate intro with main content using stream copy (fast & lossless)
-  Future<void> _concatIntroWithMain(
-    String introPath,
-    String mainPath,
-    String outputPath,
-    Directory tempDir,
-    List<String> metadataFlags,
-    void Function(LogEntry log)? onLog,
-  ) async {
-    final log = LogEntry.info('Concatenating intro with main content...');
-    onLog?.call(log);
-
-    final concatListPath = p.join(tempDir.path, 'concat_list.txt');
-    final concatContent = [
-      "file '${_formatPathForConcatFile(introPath)}'",
-      "file '${_formatPathForConcatFile(mainPath)}'",
-    ].join('\n');
-    await File(concatListPath).writeAsString(concatContent);
-
-    // Stream copy (fastest, but requires compatible formats)
-    log.addSubLog(LogEntry.info('Using stream copy for concatenation...'));
-    try {
-      await FFmpegService.run(
-        [
-          '-f',
-          'concat',
-          '-safe',
-          '0',
-          '-i',
-          concatListPath,
-          '-c',
-          'copy',
-          ...metadataFlags,
-          p.absolute(outputPath),
-          '-y',
-        ],
-        errorMessage: 'Stream copy concat failed',
-        onLog: log.addSubLog,
-      );
-      log.addSubLog(LogEntry.success('Stream copy concatenation successful'));
-    } on Exception catch (e) {
-      // Provide helpful error message
-      throw Exception(
-        'Failed to concatenate intro with main video. '
-        'Videos must have matching formats (codec, resolution, fps). '
-        'Tip: Use "Video Tools" to compress/re-encode your intro video '
-        "to match the main video's format before adding it here. "
-        'Original error: $e',
-      );
-    }
+    return outputPath;
   }
 
   Future<String> processVideoWithAudio({
@@ -336,13 +316,8 @@ class VideoMergerService {
     required List<String> audioFiles,
     required String outputPath,
     required String projectRootPath,
-    String? title,
-    String? author,
-    String? comment,
-    int concurrencyLimit = 4,
     int audioLoopCount = 1,
     String? introVideoPath,
-    IntroAudioMode introAudioMode = IntroAudioMode.keepOriginal,
     bool enableParallelProcessing = true,
     void Function(double progress)? onProgress,
     void Function(LogEntry log)? onLog,
@@ -356,25 +331,28 @@ class VideoMergerService {
       onLog: onLog,
     );
     try {
-      // 1. Concat audio files
-      final concatFilePath = await _concatAudioFiles(
-        audioFiles,
-        tempDir,
+      final String mergedAudioPath;
+
+      // 1) Audio pipeline - Always use AAC normalization
+      onLog?.call(
+        LogEntry.info('Audio pipeline: AAC normalize'),
+      );
+      final playlistFiles = _buildAudioPlaylist(
+        await _normalizeAudioFilesToAacM4a(
+          audioFiles: audioFiles,
+          tempDir: tempDir,
+          onLog: onLog,
+        ),
         audioLoopCount,
-        concurrencyLimit,
         onLog,
       );
       onProgress?.call(0.3);
-
-      // 2. Merge audio into single track
-      final mergedAudioPath = await _mergeAudioFiles(
+      mergedAudioPath = await _mergeAudioPlaylist(
         tempDir,
-        concatFilePath,
+        playlistFiles,
         onLog,
       );
       onProgress?.call(0.5);
-
-      final metadataFlags = _buildMetadataFlags(title, author, comment);
 
       // If no intro, output directly to final path
       if (introVideoPath == null) {
@@ -382,127 +360,157 @@ class VideoMergerService {
           backgroundVideoPath,
           outputPath,
           mergedAudioPath,
-          metadataFlags,
           onLog,
         );
       } else {
-        // If intro exists:
-        // a. Generate looped content to temp file
-        final loopedContentPath = p.join(tempDir.path, 'looped_content.mp4');
+        // If intro exists: Split audio into intro/remaining parts, create videos separately, then concat
+        final log = LogEntry.info(
+          'Creating video with intro and background...',
+        );
+        onLog?.call(log);
 
-        // b. Prepare intro (standardize audio)
-        // If overlayPlaylist mode, we use silent audio for intro to allow clean concat
-        // before we replace the audio track completely.
-        final shouldKeepAudio = introAudioMode == IntroAudioMode.keepOriginal;
-
-        // Process looped content and intro (parallel or sequential based on user preference)
-        final String preparedIntroPath;
-        if (enableParallelProcessing) {
-          // Parallel processing with stagger to avoid antivirus false positives
-          onLog?.call(
-            LogEntry.info('Processing video and intro in parallel (staggered)'),
-          );
-
-          // Start video merge first
-          final videoMergeFuture = _mergeVideoWithAudioFiles(
-            backgroundVideoPath,
-            loopedContentPath,
-            mergedAudioPath,
-            [], // Metadata applied at final stage
-            onLog,
-          );
-
-          // Small delay before starting intro prep to stagger process spawning
-          await Future<void>.delayed(const Duration(milliseconds: 100));
-
-          final introFuture = _prepareIntro(
+        // Get intro video duration
+        var introSeconds = 0.0;
+        try {
+          final introMeta = await FFmpegService.getVideoMetadata(
             introVideoPath,
-            shouldKeepAudio,
-            tempDir,
-            onLog,
           );
+          if (introMeta.duration != null) {
+            introSeconds = introMeta.duration!.inMilliseconds / 1000.0;
+          }
+        } on Exception catch (_) {}
 
-          final results = await Future.wait<String>([
-            videoMergeFuture,
-            introFuture,
-          ]);
-          preparedIntroPath = results[1];
-        } else {
-          // Sequential processing (safer for antivirus compatibility)
-          onLog?.call(
-            LogEntry.info('Processing intro and video sequentially'),
-          );
-
-          preparedIntroPath = await _prepareIntro(
-            introVideoPath,
-            shouldKeepAudio,
-            tempDir,
-            onLog,
-          );
-
-          await _mergeVideoWithAudioFiles(
-            backgroundVideoPath,
-            loopedContentPath,
-            mergedAudioPath,
-            [], // Metadata applied at final stage
-            onLog,
-          );
+        if (introSeconds <= 0) {
+          throw Exception('Could not determine intro video duration');
         }
+
+        // Get merged audio duration
+        final audioSeconds = await _getAudioDurationSeconds(mergedAudioPath);
+        if (audioSeconds == null || audioSeconds <= 0) {
+          throw Exception('Could not determine audio duration');
+        }
+
+        final totalAudioDuration = audioSeconds;
+
+        onProgress?.call(0.6);
+
+        // Step 1: Create intro video with looped audio (audio loops to match intro duration)
+        final introWithAudioPath = p.join(tempDir.path, 'intro_with_audio.mp4');
+
+        final introLog = LogEntry.info(
+          'Creating intro video (${introSeconds.toStringAsFixed(1)}s) with looped audio...',
+        );
+        log.addSubLog(introLog);
+
+        await FFmpegService.run(
+          [
+            '-y',
+            '-i',
+            p.absolute(introVideoPath),
+            '-stream_loop',
+            '-1', // Loop audio infinitely
+            '-i',
+            p.absolute(mergedAudioPath),
+            '-map',
+            '0:v',
+            '-map',
+            '1:a',
+            '-c:v',
+            'copy',
+            ...await FFmpegService.getStandardYouTubeVideoMetadataFlags(),
+            '-c:a',
+            'copy',
+            '-t',
+            introSeconds.toStringAsFixed(
+              3,
+            ), // Limit output to intro video duration
+            '-movflags',
+            '+faststart',
+            p.absolute(introWithAudioPath),
+          ],
+          errorMessage: 'Failed to create intro with looped audio',
+          onLog: introLog.addSubLog,
+        );
+
+        onProgress?.call(0.7);
+
+        // Step 2: Create background video with audio starting from intro offset
+        final backgroundWithAudioPath = p.join(
+          tempDir.path,
+          'background_with_audio.mp4',
+        );
+
+        final remainingAudioSeconds = totalAudioDuration - introSeconds;
+
+        final bgLog = LogEntry.info(
+          'Creating background video with audio (${remainingAudioSeconds.toStringAsFixed(1)}s remaining)...',
+        );
+        log.addSubLog(bgLog);
+
+        await FFmpegService.run(
+          [
+            '-y',
+            '-stream_loop',
+            '-1', // Loop background video infinitely
+            '-i',
+            p.absolute(backgroundVideoPath),
+            '-ss',
+            introSeconds.toStringAsFixed(3), // Start audio from intro offset
+            '-i',
+            p.absolute(mergedAudioPath),
+            '-map',
+            '0:v',
+            '-map',
+            '1:a',
+            '-c:v',
+            'copy',
+            ...await FFmpegService.getStandardYouTubeVideoMetadataFlags(),
+            '-c:a',
+            'copy',
+            '-t',
+            remainingAudioSeconds.toStringAsFixed(
+              3,
+            ), // Limit to remaining audio duration
+            '-movflags',
+            '+faststart',
+            p.absolute(backgroundWithAudioPath),
+          ],
+          errorMessage: 'Failed to create background with audio',
+          onLog: bgLog.addSubLog,
+        );
 
         onProgress?.call(0.8);
 
-        if (introAudioMode == IntroAudioMode.overlayPlaylist) {
-          // OVERLAY MODE: Concat video streams, then mux with main audio from start
-          final tempConcatPath = p.join(tempDir.path, 'temp_concat.mp4');
+        // Step 3: Concat intro + background (both have video+audio)
+        final concatLog = LogEntry.info(
+          'Concatenating intro with background...',
+        );
+        log.addSubLog(concatLog);
 
-          // c. Concatenate intro + looped content (creates temporary file)
-          await _concatIntroWithMain(
-            preparedIntroPath,
-            loopedContentPath,
-            tempConcatPath,
-            tempDir,
-            [], // No metadata yet
-            onLog,
-          );
+        final concatListPath = p.join(tempDir.path, 'concat_list.txt');
+        final concatContent = [
+          "file '${_formatPathForConcatFile(introWithAudioPath)}'",
+          "file '${_formatPathForConcatFile(backgroundWithAudioPath)}'",
+        ].join('\n');
+        await File(concatListPath).writeAsString(concatContent);
 
-          // d. Overlay main audio on the concatenated video
-          final log = LogEntry.info('Overlaying main audio playlist...');
-          onLog?.call(log);
-
-          await FFmpegService.run(
-            [
-              '-i',
-              p.absolute(tempConcatPath),
-              '-i',
-              p.absolute(mergedAudioPath),
-              '-map',
-              '0:v', // Video from concat
-              '-map',
-              '1:a', // Audio from merged playlist
-              '-c:v',
-              'copy',
-              '-c:a',
-              'copy',
-              '-shortest', // Cut video when audio ends
-              ...metadataFlags,
-              p.absolute(outputPath),
-              '-y',
-            ],
-            errorMessage: 'Failed to overlay audio',
-            onLog: log.addSubLog,
-          );
-          log.addSubLog(LogEntry.success('Audio overlay successful'));
-        } else {
-          // PREPEND MODE: Just concat (Intro Audio + Main Audio)
-          await _concatIntroWithMain(
-            preparedIntroPath,
-            loopedContentPath,
-            outputPath,
-            tempDir,
-            metadataFlags,
-            onLog,
-          );
-        }
+        await FFmpegService.run(
+          [
+            '-y',
+            '-f',
+            'concat',
+            '-safe',
+            '0',
+            '-i',
+            concatListPath,
+            '-c',
+            'copy',
+            p.absolute(outputPath),
+          ],
+          errorMessage: 'Failed to concat intro with background',
+          onLog: concatLog.addSubLog,
+        );
+        concatLog.addSubLog(LogEntry.success('Final video created'));
       }
 
       onProgress?.call(1);
@@ -516,36 +524,5 @@ class VideoMergerService {
         await tempDir.delete(recursive: true);
       }
     }
-  }
-
-  // Helper to format path specifically for FFmpeg concat demuxer text files
-  // Handles normalization, Windows path separators, and single-quote escaping.
-  String _formatPathForConcatFile(String path) {
-    var safePath = p.normalize(path);
-    if (Platform.isWindows) {
-      safePath = safePath.replaceAll(r'\', '/');
-    }
-    return safePath.replaceAll("'", r"'\''");
-  }
-
-  // Build metadata flags
-  List<String> _buildMetadataFlags(
-    String? title,
-    String? author,
-    String? comment,
-  ) {
-    final metadataFlags = <String>[];
-    if (title != null && title.isNotEmpty) {
-      metadataFlags.addAll(['-metadata', 'title=$title']);
-    }
-    if (author != null && author.isNotEmpty) {
-      // depending on the platform/ffmpeg installation it might accept artist or author. So we add both.
-      metadataFlags.addAll(['-metadata', 'artist=$author']);
-      metadataFlags.addAll(['-metadata', 'author=$author']);
-    }
-    if (comment != null && comment.isNotEmpty) {
-      metadataFlags.addAll(['-metadata', 'comment=$comment']);
-    }
-    return metadataFlags;
   }
 }

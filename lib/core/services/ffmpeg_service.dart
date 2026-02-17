@@ -35,6 +35,33 @@ class FFmpegService {
   /// Custom FFmpeg path set by user (takes priority over auto-detect)
   static String? _customFfmpegPath;
 
+  /// Hardware acceleration encoder setting
+  static String _hwAccelEncoder = 'libx264';
+
+  /// Currently running FFmpeg process (for cancellation)
+  static Process? _currentProcess;
+
+  /// Cancel the currently running FFmpeg process
+  static Future<void> cancel() async {
+    final process = _currentProcess;
+    if (process != null) {
+      try {
+        // Try graceful shutdown first
+        process.kill();
+        // Wait a bit for graceful shutdown
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        // Force kill if still running
+        process.kill(ProcessSignal.sigkill);
+      } on Exception {
+        // Ignore errors during cancellation
+      }
+      _currentProcess = null;
+    }
+  }
+
+  /// Check if a process is currently running
+  static bool get isProcessing => _currentProcess != null;
+
   /// Cache version - increment this when VideoMetadata schema changes
   static const int _cacheVersion = 3;
 
@@ -60,6 +87,89 @@ class FFmpegService {
 
   /// Get the custom path (if set)
   static String? get customPath => _customFfmpegPath;
+
+  /// Set hardware acceleration encoder
+  static void setHwAccelEncoder(String encoder) {
+    _hwAccelEncoder = encoder;
+  }
+
+  /// Get hardware acceleration encoder
+  static String get hwAccelEncoder => _hwAccelEncoder;
+
+  /// Public method to detect available hardware encoder
+  /// Returns the detected encoder name (e.g., 'h264_nvenc', 'h264_amf', etc.)
+  static Future<String> detectHardwareEncoder() async {
+    return _detectHardwareEncoder();
+  }
+
+  /// Get video metadata flags for YouTube
+  static Future<List<String>> getStandardYouTubeVideoMetadataFlags() async {
+    return [
+      '-bsf:v',
+      'h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1',
+    ];
+  }
+
+  /// Detect available hardware encoder based on platform and FFmpeg support
+  static Future<String> _detectHardwareEncoder() async {
+    // Test which hardware encoders actually work
+    final nvencWorks = await _testEncoderWorks('h264_nvenc');
+    final amfWorks = await _testEncoderWorks('h264_amf');
+    final qsvWorks = await _testEncoderWorks('h264_qsv');
+    final mfWorks = await _testEncoderWorks('h264_mf');
+    final videotoolboxWorks = await _testEncoderWorks('h264_videotoolbox');
+    final vaapiWorks = await _testEncoderWorks('h264_vaapi');
+    final v4l2m2mWorks = await _testEncoderWorks('h264_v4l2m2m');
+
+    // Platform-based priority
+    if (Platform.isMacOS) {
+      return videotoolboxWorks ? 'h264_videotoolbox' : 'libx264';
+    } else if (Platform.isWindows) {
+      // Windows priority: NVENC > AMF > QuickSync > Media Foundation
+      if (nvencWorks) return 'h264_nvenc';
+      if (amfWorks) return 'h264_amf';
+      if (qsvWorks) return 'h264_qsv';
+      if (mfWorks) return 'h264_mf';
+      return 'libx264';
+    } else if (Platform.isLinux) {
+      // Linux priority: NVENC > VA-API > V4L2
+      if (nvencWorks) return 'h264_nvenc';
+      if (vaapiWorks) return 'h264_vaapi';
+      if (v4l2m2mWorks) return 'h264_v4l2m2m';
+      return 'libx264';
+    }
+
+    // Fallback for other platforms
+    return 'libx264';
+  }
+
+  /// Test if an encoder actually works by doing a tiny test encode
+  /// This checks both:
+  /// 1. If the encoder is built into FFmpeg
+  /// 2. If the hardware/driver is actually available
+  static Future<bool> _testEncoderWorks(String encoderName) async {
+    try {
+      // Create a 1-second test video with color source and try to encode it
+      final result = await Process.run(
+        ffmpegPath,
+        [
+          '-hide_banner',
+          '-f', 'lavfi',
+          '-i', 'color=c=black:s=320x240:d=1',
+          '-c:v', encoderName,
+          '-an', // No audio
+          '-f', 'null', // Output to nowhere
+          '-', // Use stdout as null device
+        ],
+        environment: extendedEnvironment,
+      );
+
+      // Exit code 0 means the encoder worked
+      return result.exitCode == 0;
+    } on Exception catch (_) {
+      return false;
+    }
+  }
 
   /// Validate a FFmpeg path by checking if executable exists and works
   static Future<bool> validatePath(String path) async {
@@ -455,20 +565,35 @@ class FFmpegService {
 
     final startTime = DateTime.now();
 
-    // Run FFmpeg with extended PATH environment
-    // Use the resolved executable path directly and avoid runInShell
-    // to prevent complex quoting issues with paths containing spaces.
-    final result = await Process.run(
+    // Start FFmpeg process (not run - so we can cancel it)
+    final process = await Process.start(
       ffmpegExecutable,
       command,
       environment: env,
     );
 
-    final exitCode = result.exitCode;
+    // Store for cancellation
+    _currentProcess = process;
 
-    // Parse stdout - keep all (usually minimal)
+    // Capture output
     final stdoutLogs = <LogEntry>[];
-    final stdoutStr = result.stdout as String;
+    final stdout = <int>[];
+    final stderr = <int>[];
+
+    // Listen to stdout
+    process.stdout.listen(stdout.addAll);
+
+    // Listen to stderr
+    process.stderr.listen(stderr.addAll);
+
+    // Wait for process to complete
+    final exitCode = await process.exitCode;
+
+    // Clear current process when done
+    _currentProcess = null;
+
+    // Decode stdout
+    final stdoutStr = String.fromCharCodes(stdout).trim();
     if (stdoutStr.isNotEmpty) {
       for (final line in stdoutStr.split('\n')) {
         final trimmed = line.trim();
@@ -478,8 +603,8 @@ class FFmpegService {
       }
     }
 
-    // Parse stderr
-    final stderrStr = result.stderr as String;
+    // Decode stderr
+    final stderrStr = String.fromCharCodes(stderr).trim();
     final stderrLines = stderrStr
         .split('\n')
         .map((l) => l.trim())
@@ -548,13 +673,10 @@ class FFmpegService {
     }
 
     // Add duration
-    commandLog.addSubLog(
-      exitCode == 0
-          ? LogEntry.success(
-              'Completed in ${_formatDuration(executionDuration)}',
-            )
-          : LogEntry.error('Failed in ${_formatDuration(executionDuration)}'),
-    );
+    final durationLog = exitCode == 0
+        ? LogEntry.success('Completed in ${_formatDuration(executionDuration)}')
+        : LogEntry.error('Failed in ${_formatDuration(executionDuration)}');
+    onLog?.call(durationLog);
 
     if (exitCode != 0) {
       final errorLog = LogEntry.error(

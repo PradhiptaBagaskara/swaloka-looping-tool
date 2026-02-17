@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
+import 'package:swaloka_looping_tool/core/services/log_service.dart';
+import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
+import 'package:swaloka_looping_tool/core/utils/timestamp_formatter.dart';
 import 'package:swaloka_looping_tool/features/media_tools/presentation/providers/media_tools_providers.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
 import 'package:swaloka_looping_tool/widgets/widgets.dart';
@@ -41,12 +44,15 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   String _hwAccelEncoder = 'libx264'; // Will be updated in initState
 
   // Re-encode Video State
-  String? _reencodeVideoPath;
+  final List<String> _reencodeVideoPaths = [];
   String _reencodeResolution = '1080p'; // 480p, 720p, 1080p, 2K, 4K, 8K
   String _reencodeAspectRatio =
       'original'; // original, 16:9, 9:16, 1:1, 3:2, 2:3
   int _reencodeFps = 30;
   String _reencodePreset = 'veryfast';
+  String _reencodeQuality = 'auto'; // auto, high, balanced, smaller, tiny
+  String _reencodeScalingQuality = 'high'; // fast, balanced, high
+  bool _reencodeEnhanceQuality = false;
   bool _reencodeKeepAudio = true;
   bool _reencodeUseHwAccel = false;
   String _reencodeHwEncoder = 'libx264';
@@ -55,6 +61,15 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   // Video Info State
   String? _infoVideoPath;
   Map<String, dynamic>? _videoInfo;
+
+  void _addUniquePaths(List<String> target, Iterable<String> paths) {
+    final existing = target.toSet();
+    for (final path in paths) {
+      if (existing.add(path)) {
+        target.add(path);
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -73,7 +88,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   }
 
   Future<String> _ensureOutputsDir() async {
-    final outputsDir = Directory(p.join(widget.initialDirectory, 'outputs'));
+    final project = ref.read(activeProjectProvider);
+    final outputsDir = Directory(
+      project?.effectiveOutputPath ??
+          p.join(widget.initialDirectory, 'outputs'),
+    );
     if (!await outputsDir.exists()) {
       await outputsDir.create(recursive: true);
     }
@@ -88,7 +107,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     );
     if (result != null) {
       setState(() {
-        _videoPaths.addAll(result.paths.whereType<String>().toList());
+        _addUniquePaths(_videoPaths, result.paths.whereType<String>());
       });
     }
   }
@@ -121,7 +140,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
 
     try {
       final outputsDir = await _ensureOutputsDir();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final timestamp = TimestampFormatter.format();
       final prefix = _videoPaths.length == 1
           ? 'processed_video'
           : 'merged_videos';
@@ -166,7 +185,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     try {
       final outputsDir = await _ensureOutputsDir();
       final name = p.basenameWithoutExtension(_compressVideoPath!);
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final timestamp = TimestampFormatter.format();
       final outputPath = p.join(
         outputsDir,
         '${name}_compressed_$timestamp.mp4',
@@ -193,11 +212,12 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   Future<void> _pickReencodeVideo() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.video,
+      allowMultiple: true,
       initialDirectory: widget.initialDirectory,
     );
-    if (result != null && result.files.single.path != null) {
+    if (result != null) {
       setState(() {
-        _reencodeVideoPath = result.files.single.path;
+        _addUniquePaths(_reencodeVideoPaths, result.paths.whereType<String>());
       });
     }
   }
@@ -216,7 +236,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Analyzing video format...'),
+            content: Text('Menganalisis format video...'),
             duration: Duration(seconds: 2),
           ),
         );
@@ -298,7 +318,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Format copied: $resolution @ ${fps}fps',
+              'Format disalin: $resolution @ ${fps}fps',
             ),
             backgroundColor: Colors.green,
           ),
@@ -307,7 +327,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to analyze video: $e'),
+            content: Text('Gagal menganalisis video: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -315,8 +335,8 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     }
   }
 
-  Future<void> _reencodeVideo() async {
-    if (_reencodeVideoPath == null) return;
+  Future<void> _reencodeVideos() async {
+    if (_reencodeVideoPaths.isEmpty) return;
 
     final notifier = ref.read(processingStateProvider.notifier);
     notifier.startProcessing();
@@ -331,8 +351,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
 
     try {
       final outputsDir = await _ensureOutputsDir();
-      final name = p.basenameWithoutExtension(_reencodeVideoPath!);
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final timestamp = TimestampFormatter.format();
 
       // Get target height from resolution
       final heightMap = {
@@ -345,62 +364,126 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       };
       final targetHeight = heightMap[_reencodeResolution] ?? 1080;
 
-      // Calculate dimensions based on aspect ratio
-      int targetWidth;
-      var preserveAspectRatio = false;
+      final project = ref.read(activeProjectProvider);
+      final enableParallelProcessing =
+          project?.enableParallelProcessing ?? true;
+      final concurrencyLimit = SystemInfoService.getRecommendedConcurrency();
+      final parallelism = enableParallelProcessing ? concurrencyLimit : 1;
+      final safeParallelism = max(1, parallelism);
 
-      if (_reencodeAspectRatio == 'original') {
-        // Get original video dimensions to preserve aspect ratio
-        final metadata = await FFmpegService.getVideoMetadata(
-          _reencodeVideoPath!,
-        );
-        if (metadata.width != null && metadata.height != null) {
-          final originalAspect = metadata.width! / metadata.height!;
-          targetWidth = (targetHeight * originalAspect).round();
-          // Ensure even width
-          if (targetWidth % 2 != 0) targetWidth++;
-        } else {
-          // Fallback to 16:9 if metadata unavailable
-          targetWidth = (targetHeight * 16 / 9).round();
-        }
-        preserveAspectRatio = true;
-      } else {
-        final dimensions = _getResolutionDimensions(
-          _reencodeResolution,
-          _reencodeAspectRatio,
-        );
-        if (dimensions != null) {
-          targetWidth = dimensions.width;
-        } else {
-          // Fallback
-          targetWidth = (targetHeight * 16 / 9).round();
+      final total = _reencodeVideoPaths.length;
+      final maxWorkers = min(safeParallelism, total);
+      final batchLog = LogEntry.info(
+        'Re-encoding $total video(s) (parallel: $maxWorkers)...',
+      );
+      notifier.addLog(batchLog);
+
+      var completed = 0;
+      var nextIndex = 0;
+      Object? firstError;
+
+      String? lastOutputPath;
+
+      int? crfOverride;
+      switch (_reencodeQuality) {
+        case 'high':
+          crfOverride = 20;
+        case 'balanced':
+          crfOverride = 23;
+        case 'smaller':
+          crfOverride = 28;
+        case 'tiny':
+          crfOverride = 32;
+        case 'auto':
+        default:
+          crfOverride = null;
+      }
+
+      Future<void> worker() async {
+        while (true) {
+          if (firstError != null) return;
+          final current = nextIndex++;
+          if (current >= total) return;
+
+          final videoPath = _reencodeVideoPaths[current];
+          final name = p.basenameWithoutExtension(videoPath);
+
+          // Calculate dimensions based on aspect ratio
+          int targetWidth;
+          var preserveAspectRatio = false;
+
+          if (_reencodeAspectRatio == 'original') {
+            // Get original video dimensions to preserve aspect ratio
+            final metadata = await FFmpegService.getVideoMetadata(videoPath);
+            if (metadata.width != null && metadata.height != null) {
+              final originalAspect = metadata.width! / metadata.height!;
+              targetWidth = (targetHeight * originalAspect).round();
+              // Ensure even width
+              if (targetWidth % 2 != 0) targetWidth++;
+            } else {
+              // Fallback to 16:9 if metadata unavailable
+              targetWidth = (targetHeight * 16 / 9).round();
+            }
+            preserveAspectRatio = true;
+          } else {
+            final dimensions = _getResolutionDimensions(
+              _reencodeResolution,
+              _reencodeAspectRatio,
+            );
+            if (dimensions != null) {
+              targetWidth = dimensions.width;
+            } else {
+              // Fallback
+              targetWidth = (targetHeight * 16 / 9).round();
+            }
+          }
+
+          final aspectRatioLabel = _reencodeAspectRatio == 'original'
+              ? 'original'
+              : _reencodeAspectRatio.replaceAll(':', '_');
+          final outputPath = p.join(
+            outputsDir,
+            '${name}_${_reencodeResolution}_${aspectRatioLabel}_${_reencodeFps}fps_${timestamp}_$current.mp4',
+          );
+
+          try {
+            await ref
+                .read(mediaToolsServiceProvider)
+                .reencodeVideo(
+                  videoPath: videoPath,
+                  outputPath: outputPath,
+                  width: targetWidth,
+                  height: targetHeight,
+                  fps: _reencodeFps,
+                  preset: _reencodePreset,
+                  crf: crfOverride,
+                  scalingQuality: _reencodeScalingQuality,
+                  enhanceQuality: _reencodeEnhanceQuality,
+                  keepAudio: _reencodeKeepAudio,
+                  preserveAspectRatio: preserveAspectRatio,
+                  hwEncoder: _reencodeUseHwAccel ? _reencodeHwEncoder : null,
+                  onLog: batchLog.addSubLog,
+                );
+            lastOutputPath = outputPath;
+          } on Exception catch (e) {
+            firstError = e;
+            return;
+          } finally {
+            if (firstError == null) {
+              completed++;
+              notifier.updateProgress(completed / total);
+            }
+          }
         }
       }
 
-      final aspectRatioLabel = _reencodeAspectRatio == 'original'
-          ? 'original'
-          : _reencodeAspectRatio.replaceAll(':', '_');
-      final outputPath = p.join(
-        outputsDir,
-        '${name}_${_reencodeResolution}_${aspectRatioLabel}_${_reencodeFps}fps_$timestamp.mp4',
-      );
+      await Future.wait(List.generate(maxWorkers, (_) => worker()));
 
-      await ref
-          .read(mediaToolsServiceProvider)
-          .reencodeVideo(
-            videoPath: _reencodeVideoPath!,
-            outputPath: outputPath,
-            width: targetWidth,
-            height: targetHeight,
-            fps: _reencodeFps,
-            preset: _reencodePreset,
-            keepAudio: _reencodeKeepAudio,
-            preserveAspectRatio: preserveAspectRatio,
-            hwEncoder: _reencodeUseHwAccel ? _reencodeHwEncoder : null,
-            onLog: notifier.addLog,
-          );
+      if (firstError != null) {
+        throw firstError!; // handled below
+      }
 
-      notifier.setSuccess(outputPath);
+      notifier.setSuccess(lastOutputPath ?? outputsDir);
     } on Exception catch (e) {
       notifier.setError(e.toString());
     }
@@ -446,7 +529,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to extract video info: $e'),
+          content: Text('Gagal mengekstrak info video: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -514,119 +597,6 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     );
   }
 
-  Widget _buildMediaItem(
-    BuildContext context,
-    String path,
-    IconData icon, {
-    required VoidCallback onRemove,
-    bool isVideo = true,
-    int? index,
-  }) {
-    final fileName = p.basename(path);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline,
-        ),
-      ),
-      child: Row(
-        children: [
-          if (index != null) ...[
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.primary.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '$index',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isVideo
-                  ? Theme.of(
-                      context,
-                    ).colorScheme.primaryContainer.withValues(alpha: 0.5)
-                  : Theme.of(
-                      context,
-                    ).colorScheme.tertiaryContainer.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: isVideo
-                    ? Theme.of(context).colorScheme.primaryContainer
-                    : Theme.of(context).colorScheme.tertiaryContainer,
-                width: 0.5,
-              ),
-            ),
-            child: Icon(
-              icon,
-              size: 16,
-              color: isVideo
-                  ? Theme.of(context).colorScheme.onPrimaryContainer
-                  : Theme.of(context).colorScheme.onTertiaryContainer,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  fileName,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  isVideo ? 'Video' : 'Audio',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.play_circle_outline,
-              size: 20,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            onPressed: () => _showPreview(context, path, isVideo: isVideo),
-            tooltip: 'Preview',
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.close,
-              size: 16,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            onPressed: onRemove,
-            tooltip: 'Remove',
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -638,19 +608,19 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             child: TabBar(
               tabs: const [
                 Tab(
-                  text: 'Combine & Effects',
+                  text: 'Gabung & Efek',
                   icon: Icon(Icons.video_library, size: 20),
                 ),
                 Tab(
-                  text: 'Compress Video',
+                  text: 'Kompres Video',
                   icon: Icon(Icons.compress, size: 20),
                 ),
                 Tab(
-                  text: 'Convert Resolution',
+                  text: 'Konversi Resolusi',
                   icon: Icon(Icons.settings_backup_restore, size: 20),
                 ),
                 Tab(
-                  text: 'Video Info',
+                  text: 'Info Video',
                   icon: Icon(Icons.info_outline, size: 20),
                 ),
               ],
@@ -702,7 +672,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         DropZoneWidget(
           label: _videoPaths.isNotEmpty
               ? '${_videoPaths.length} ${_videoPaths.length == 1 ? "file" : "files"} selected'
-              : 'Drop Video File(s) Here (or Click)',
+              : 'Seret File Video ke Sini (atau Klik)',
           icon: Icons.movie,
           onTap: _pickVideos,
           onFilesDropped: (files) {
@@ -716,7 +686,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 .toList();
             if (videos.isNotEmpty) {
               setState(() {
-                _videoPaths.addAll(videos);
+                _addUniquePaths(_videoPaths, videos);
               });
             }
           },
@@ -729,7 +699,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               TextButton.icon(
                 onPressed: () => setState(_videoPaths.clear),
                 icon: const Icon(Icons.delete_sweep, size: 16),
-                label: const Text('Clear All'),
+                label: const Text('Hapus Semua'),
                 style: TextButton.styleFrom(
                   foregroundColor: Theme.of(
                     context,
@@ -740,24 +710,37 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             ],
           ),
           const SizedBox(height: 8),
-          Column(
-            children: [
-              for (int i = 0; i < _videoPaths.length; i++)
-                Padding(
-                  padding: EdgeInsets.zero,
-                  child: _buildMediaItem(
-                    context,
-                    _videoPaths[i],
-                    Icons.movie,
-                    index: i + 1,
-                    onRemove: () {
-                      setState(() {
-                        _videoPaths.removeAt(i);
-                      });
-                    },
-                  ),
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _videoPaths.length,
+            onReorder: (oldIndex, newIndex) {
+              setState(() {
+                final adjustedIndex = newIndex > oldIndex
+                    ? newIndex - 1
+                    : newIndex;
+                final item = _videoPaths.removeAt(oldIndex);
+                _videoPaths.insert(adjustedIndex, item);
+              });
+            },
+            itemBuilder: (context, i) {
+              return MediaItemCard(
+                key: ValueKey(_videoPaths[i]),
+                path: _videoPaths[i],
+                icon: Icons.movie,
+                onRemove: () {
+                  setState(() {
+                    _videoPaths.removeAt(i);
+                  });
+                },
+                onPreview: () => _showPreview(
+                  context,
+                  _videoPaths[i],
                 ),
-            ],
+                isVideo: true,
+                index: i + 1,
+              );
+            },
           ),
         ],
         const SizedBox(height: 16),
@@ -784,7 +767,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Single video mode: You can add fade in/out effects. Smooth transitions require 2+ videos.',
+                    'Mode video tunggal: Anda dapat menambahkan efek fade in/out. Transisi halus membutuhkan 2+ video.',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onPrimaryContainer,
                     ),
@@ -809,11 +792,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             children: [
               CheckboxListTile(
                 title: Text(
-                  'Keep Audio',
+                  'Pertahankan Audio',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
-                  'Preserves audio tracks in merged video',
+                  'Mempertahankan trek audio dalam video gabungan',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _keepAudio,
@@ -825,13 +808,13 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const Divider(),
               CheckboxListTile(
                 title: Text(
-                  'Smooth Transition (Crossfade)',
+                  'Transisi Halus (Crossfade)',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
                   _videoPaths.length <= 1
-                      ? 'Requires 2 or more videos'
-                      : 'Adds 1s crossfade between clips. Requires re-encoding.',
+                      ? 'Membutuhkan 2 atau lebih video'
+                      : 'Menambahkan crossfade 1 detik antara klip. Membutuhkan encoding ulang.',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _smoothTransition,
@@ -860,14 +843,14 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Fade Effects',
+                'Efek Fade',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                'Great for creating loop-friendly videos',
+                'Bagus untuk membuat video yang ramah loop',
                 style: Theme.of(context).textTheme.labelSmall,
               ),
               const SizedBox(height: 12),
@@ -890,11 +873,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Fade In',
+                          'Fade Masuk',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         Text(
-                          'Fades from color at the start (1s)',
+                          'Fade dari warna di awal (1 detik)',
                           style: Theme.of(context).textTheme.labelSmall
                               ?.copyWith(
                                 color: Theme.of(
@@ -935,11 +918,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Fade Out',
+                          'Fade Keluar',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         Text(
-                          'Fades to color at the end (1s)',
+                          'Fade ke warna di akhir (1 detik)',
                           style: Theme.of(context).textTheme.labelSmall
                               ?.copyWith(
                                 color: Theme.of(
@@ -979,31 +962,32 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Encoding Settings',
+                  'Pengaturan Encoding',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Required when using effects',
+                  'Diperlukan saat menggunakan efek',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 const SizedBox(height: 16),
                 CompactDropdown<String>(
                   value: _encodingPreset,
-                  label: 'Encoding Speed:',
+                  label: 'Kecepatan Encoding:',
                   icon: Icons.speed,
                   items: const [
                     DropdownMenuItem(
                       value: 'ultrafast',
-                      child: Text('Ultrafast'),
+                      child: Text('Ultra Cepat'),
                     ),
                     DropdownMenuItem(
                       value: 'veryfast',
-                      child: Text('Very Fast'),
+                      child: Text('Sangat Cepat'),
                     ),
-                    DropdownMenuItem(value: 'fast', child: Text('Fast')),
+                    DropdownMenuItem(value: 'fast', child: Text('Cepat')),
+                    DropdownMenuItem(value: 'slow', child: Text('Lambat')),
                   ],
                   onChanged: (v) =>
                       setState(() => _encodingPreset = v ?? 'veryfast'),
@@ -1021,11 +1005,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 const Divider(height: 24),
                 CheckboxListTile(
                   title: Text(
-                    'Hardware Acceleration',
+                    'Akselerasi Hardware',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   subtitle: Text(
-                    'Use GPU for faster encoding',
+                    'Gunakan GPU untuk encoding lebih cepat',
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                   value: _useHwAccel,
@@ -1083,7 +1067,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             onPressed: _videoPaths.isNotEmpty ? _concatVideos : null,
             icon: const Icon(Icons.merge_type),
             label: Text(
-              _videoPaths.length == 1 ? 'Process Video' : 'Merge Videos',
+              _videoPaths.length == 1 ? 'Proses Video' : 'Gabung Video',
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.primary,
@@ -1101,7 +1085,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       children: [
         if (_compressVideoPath == null)
           DropZoneWidget(
-            label: 'Drop Video Here (or Click)',
+            label: 'Seret Video ke Sini (atau Klik)',
             icon: Icons.movie,
             onTap: _pickCompressVideo,
             onFilesDropped: (files) {
@@ -1117,11 +1101,15 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             },
           )
         else
-          _buildMediaItem(
-            context,
-            _compressVideoPath!,
-            Icons.movie,
+          MediaItemCard(
+            path: _compressVideoPath!,
+            icon: Icons.movie,
             onRemove: () => setState(() => _compressVideoPath = null),
+            onPreview: () => _showPreview(
+              context,
+              _compressVideoPath!,
+            ),
+            isVideo: true,
           ),
         const SizedBox(height: 24),
         // Group: Compression Settings
@@ -1138,7 +1126,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Compression Settings',
+                'Pengaturan Kompresi',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -1158,19 +1146,19 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                           items: const [
                             DropdownMenuItem(
                               value: 18,
-                              child: Text('High Quality'),
+                              child: Text('Kualitas Tinggi'),
                             ),
                             DropdownMenuItem(
                               value: 23,
-                              child: Text('Balanced'),
+                              child: Text('Seimbang'),
                             ),
                             DropdownMenuItem(
                               value: 28,
-                              child: Text('High Compression'),
+                              child: Text('Kompresi Tinggi'),
                             ),
                             DropdownMenuItem(
                               value: 32,
-                              child: Text('Tiny File'),
+                              child: Text('File Kecil'),
                             ),
                           ],
                           onChanged: (v) =>
@@ -1201,23 +1189,23 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                           items: const [
                             DropdownMenuItem(
                               value: 'ultrafast',
-                              child: Text('Ultrafast'),
+                              child: Text('Ultra Cepat'),
                             ),
                             DropdownMenuItem(
                               value: 'veryfast',
-                              child: Text('Very Fast'),
+                              child: Text('Sangat Cepat'),
                             ),
                             DropdownMenuItem(
                               value: 'fast',
-                              child: Text('Fast'),
+                              child: Text('Cepat'),
                             ),
                             DropdownMenuItem(
                               value: 'medium',
-                              child: Text('Medium'),
+                              child: Text('Sedang'),
                             ),
                             DropdownMenuItem(
                               value: 'slow',
-                              child: Text('Slow'),
+                              child: Text('Lambat'),
                             ),
                           ],
                           onChanged: (v) =>
@@ -1256,11 +1244,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             children: [
               CheckboxListTile(
                 title: Text(
-                  'Keep Audio',
+                  'Pertahankan Audio',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
-                  'Copies original audio stream (No quality loss)',
+                  'Menyalin stream audio asli (Tanpa kehilangan kualitas)',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _compressKeepAudio,
@@ -1273,11 +1261,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const Divider(),
               CheckboxListTile(
                 title: Text(
-                  'Hardware Acceleration',
+                  'Akselerasi Hardware',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
-                  'Use GPU for faster encoding',
+                  'Gunakan GPU untuk encoding lebih cepat',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _useHwAccel,
@@ -1333,7 +1321,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           child: ElevatedButton.icon(
             onPressed: _compressVideoPath != null ? _compressVideo : null,
             icon: const Icon(Icons.compress),
-            label: const Text('Compress Video'),
+            label: const Text('Kompres Video'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.primary,
               foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -1348,30 +1336,80 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_reencodeVideoPath == null)
-          DropZoneWidget(
-            label: 'Drop Video Here (or Click)',
-            icon: Icons.movie,
-            onTap: _pickReencodeVideo,
-            onFilesDropped: (files) {
-              final video = files.firstWhere(
-                (f) => _videoExtensions.contains(
-                  p.extension(f.path).replaceAll('.', '').toLowerCase(),
-                ),
-                orElse: () => files.first,
-              );
+        DropZoneWidget(
+          label: _reencodeVideoPaths.isNotEmpty
+              ? '${_reencodeVideoPaths.length} ${_reencodeVideoPaths.length == 1 ? "file" : "files"} selected'
+              : 'Seret File Video ke Sini (atau Klik)',
+          icon: Icons.movie,
+          onTap: _pickReencodeVideo,
+          onFilesDropped: (files) {
+            final videos = files
+                .where(
+                  (f) => _videoExtensions.contains(
+                    p.extension(f.path).replaceAll('.', '').toLowerCase(),
+                  ),
+                )
+                .map((f) => f.path)
+                .toList();
+            if (videos.isNotEmpty) {
               setState(() {
-                _reencodeVideoPath = video.path;
+                _addUniquePaths(_reencodeVideoPaths, videos);
+              });
+            }
+          },
+        ),
+        if (_reencodeVideoPaths.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                onPressed: () => setState(_reencodeVideoPaths.clear),
+                icon: const Icon(Icons.delete_sweep, size: 16),
+                label: const Text('Hapus Semua'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(
+                    context,
+                  ).colorScheme.onSurfaceVariant,
+                  textStyle: Theme.of(context).textTheme.labelMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _reencodeVideoPaths.length,
+            onReorder: (oldIndex, newIndex) {
+              setState(() {
+                final adjustedIndex = newIndex > oldIndex
+                    ? newIndex - 1
+                    : newIndex;
+                final item = _reencodeVideoPaths.removeAt(oldIndex);
+                _reencodeVideoPaths.insert(adjustedIndex, item);
               });
             },
-          )
-        else
-          _buildMediaItem(
-            context,
-            _reencodeVideoPath!,
-            Icons.movie,
-            onRemove: () => setState(() => _reencodeVideoPath = null),
+            itemBuilder: (context, i) {
+              return MediaItemCard(
+                key: ValueKey(_reencodeVideoPaths[i]),
+                path: _reencodeVideoPaths[i],
+                icon: Icons.movie,
+                onRemove: () {
+                  setState(() {
+                    _reencodeVideoPaths.removeAt(i);
+                  });
+                },
+                onPreview: () => _showPreview(
+                  context,
+                  _reencodeVideoPaths[i],
+                ),
+                isVideo: true,
+                index: i + 1,
+              );
+            },
           ),
+        ],
         const SizedBox(height: 24),
         // Info box
         Container(
@@ -1395,7 +1433,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Use this to convert videos to specific resolution & frame rate. Perfect for preparing intro videos to match your main video format!',
+                  'Konversi video ke resolusi & frame rate tertentu. Mendukung pemrosesan batch dan akan mengikuti pengaturan pemrosesan paralel proyek Anda.',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onPrimaryContainer,
                   ),
@@ -1422,7 +1460,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Output Format',
+                    'Format Output',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -1430,7 +1468,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                   TextButton.icon(
                     onPressed: _copyFormatFromVideo,
                     icon: const Icon(Icons.content_copy, size: 16),
-                    label: const Text('Copy from Video'),
+                    label: const Text('Salin dari Video'),
                     style: TextButton.styleFrom(
                       foregroundColor: Theme.of(context).colorScheme.primary,
                       padding: const EdgeInsets.symmetric(
@@ -1490,7 +1528,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Resolution',
+                          'Resolusi',
                           style: Theme.of(context).textTheme.labelLarge
                               ?.copyWith(
                                 fontWeight: FontWeight.w500,
@@ -1540,7 +1578,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Aspect Ratio',
+                          'Rasio Aspek',
                           style: Theme.of(context).textTheme.labelLarge
                               ?.copyWith(
                                 fontWeight: FontWeight.w500,
@@ -1554,19 +1592,19 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                           items: const [
                             DropdownMenuItem(
                               value: 'original',
-                              child: Text('Original (No Change)'),
+                              child: Text('Asli (Tanpa Perubahan)'),
                             ),
                             DropdownMenuItem(
                               value: '16:9',
-                              child: Text('16:9 (Landscape)'),
+                              child: Text('16:9 (Lanskap)'),
                             ),
                             DropdownMenuItem(
                               value: '9:16',
-                              child: Text('9:16 (Portrait)'),
+                              child: Text('9:16 (Potret)'),
                             ),
                             DropdownMenuItem(
                               value: '1:1',
-                              child: Text('1:1 (Square)'),
+                              child: Text('1:1 (Persegi)'),
                             ),
                             DropdownMenuItem(
                               value: '3:2',
@@ -1637,7 +1675,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     };
                     final height = heightMap[_reencodeResolution] ?? 1080;
                     displayText =
-                        'Output: Height $height (keeps original aspect ratio)';
+                        'Output: Tinggi $height (mempertahankan rasio aspek asli)';
                   } else {
                     displayText = 'Output: ${dims.width} × ${dims.height}';
                   }
@@ -1684,20 +1722,105 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const SizedBox(height: 16),
               CompactDropdown<String>(
                 value: _reencodePreset,
-                label: 'Encoding Speed:',
+                label: 'Kecepatan Encoding:',
                 icon: Icons.speed,
                 items: const [
                   DropdownMenuItem(
                     value: 'ultrafast',
-                    child: Text('Ultrafast'),
+                    child: Text('Ultra Cepat'),
                   ),
-                  DropdownMenuItem(value: 'veryfast', child: Text('Very Fast')),
-                  DropdownMenuItem(value: 'fast', child: Text('Fast')),
-                  DropdownMenuItem(value: 'medium', child: Text('Medium')),
-                  DropdownMenuItem(value: 'slow', child: Text('Slow')),
+                  DropdownMenuItem(
+                    value: 'veryfast',
+                    child: Text('Sangat Cepat'),
+                  ),
+                  DropdownMenuItem(value: 'fast', child: Text('Cepat')),
+                  DropdownMenuItem(value: 'medium', child: Text('Sedang')),
+                  DropdownMenuItem(value: 'slow', child: Text('Lambat')),
                 ],
                 onChanged: (v) =>
                     setState(() => _reencodePreset = v ?? 'veryfast'),
+              ),
+              const SizedBox(height: 12),
+              CompactDropdown<String>(
+                value: _reencodeScalingQuality,
+                label: 'Kualitas Scaling:',
+                icon: Icons.photo_size_select_large,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'fast',
+                    child: Text('Cepat (Bilinear)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'balanced',
+                    child: Text('Seimbang (Bicubic)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'high',
+                    child: Text('Tinggi (Lanczos)'),
+                  ),
+                ],
+                onChanged: (v) =>
+                    setState(() => _reencodeScalingQuality = v ?? 'high'),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Tingkatkan Kualitas',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const CompactTooltip(
+                          message:
+                              'Menerapkan denoise ringan + sharpening sedang.\n\n'
+                              'Membuat upscale terlihat kurang lembut, tapi meningkatkan waktu pemrosesan.',
+                        ),
+                      ],
+                    ),
+                  ),
+                  Checkbox(
+                    value: _reencodeEnhanceQuality,
+                    onChanged: (v) =>
+                        setState(() => _reencodeEnhanceQuality = v ?? false),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              CompactDropdown<String>(
+                value: _reencodeQuality,
+                label: 'Kualitas (CRF):',
+                icon: Icons.high_quality,
+                items: const [
+                  DropdownMenuItem(value: 'auto', child: Text('Auto')),
+                  DropdownMenuItem(
+                    value: 'high',
+                    child: Text('Kualitas Tinggi'),
+                  ),
+                  DropdownMenuItem(value: 'balanced', child: Text('Seimbang')),
+                  DropdownMenuItem(
+                    value: 'smaller',
+                    child: Text('File Lebih Kecil'),
+                  ),
+                  DropdownMenuItem(value: 'tiny', child: Text('File Kecil')),
+                ],
+                onChanged: (v) =>
+                    setState(() => _reencodeQuality = v ?? 'auto'),
+              ),
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'CRF lebih rendah = kualitas lebih baik (file lebih besar). Menyesuaikan otomatis berdasarkan resolusi.',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
             ],
           ),
@@ -1717,11 +1840,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             children: [
               CheckboxListTile(
                 title: Text(
-                  'Keep Audio',
+                  'Pertahankan Audio',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
-                  'Re-encode audio to AAC format',
+                  'Encode ulang audio ke format AAC',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _reencodeKeepAudio,
@@ -1734,11 +1857,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const Divider(),
               CheckboxListTile(
                 title: Text(
-                  'Hardware Acceleration',
+                  'Akselerasi Hardware',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
-                  'Use GPU for faster encoding',
+                  'Gunakan GPU untuk encoding lebih cepat',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _reencodeUseHwAccel,
@@ -1795,9 +1918,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           width: double.infinity,
           height: 48,
           child: ElevatedButton.icon(
-            onPressed: _reencodeVideoPath != null ? _reencodeVideo : null,
+            onPressed: _reencodeVideoPaths.isNotEmpty ? _reencodeVideos : null,
             icon: const Icon(Icons.settings_backup_restore),
-            label: const Text('Process Video'),
+            label: Text(
+              _reencodeVideoPaths.length <= 1 ? 'Proses Video' : 'Proses Video',
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.primary,
               foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -1814,7 +1939,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       children: [
         if (_infoVideoPath == null)
           DropZoneWidget(
-            label: 'Drop Video Here (or Click)',
+            label: 'Seret Video ke Sini (atau Klik)',
             icon: Icons.movie,
             onTap: _pickInfoVideo,
             onFilesDropped: (files) {
@@ -1832,14 +1957,18 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             },
           )
         else ...[
-          _buildMediaItem(
-            context,
-            _infoVideoPath!,
-            Icons.movie,
+          MediaItemCard(
+            path: _infoVideoPath!,
+            icon: Icons.movie,
             onRemove: () => setState(() {
               _infoVideoPath = null;
               _videoInfo = null;
             }),
+            onPreview: () => _showPreview(
+              context,
+              _infoVideoPath!,
+            ),
+            isVideo: true,
           ),
           const SizedBox(height: 24),
           if (_videoInfo != null) ...[
@@ -1857,20 +1986,20 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'File Information',
+                    'Informasi File',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 16),
                   _buildInfoRow(
-                    'File Name',
-                    (_videoInfo!['fileName'] as String?) ?? 'Unknown',
+                    'Nama File',
+                    (_videoInfo!['fileName'] as String?) ?? 'Tidak Diketahui',
                   ),
                   _buildInfoRow(
-                    'File Size',
+                    'Ukuran File',
                     _formatFileSize((_videoInfo!['fileSize'] as int?) ?? 0),
                   ),
                   _buildInfoRow(
-                    'Duration',
+                    'Durasi',
                     _formatDuration(_videoInfo!['duration'] as Duration?),
                   ),
                 ],
@@ -1898,14 +2027,14 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Video Stream',
+                        'Stream Video',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                   _buildInfoRow(
-                    'Resolution',
+                    'Resolusi',
                     '${_videoInfo!['width'] ?? 'N/A'} x ${_videoInfo!['height'] ?? 'N/A'}',
                   ),
                   _buildInfoRow(
@@ -1914,11 +2043,12 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                   ),
                   _buildInfoRow(
                     'Codec',
-                    (_videoInfo!['codec'] as String?) ?? 'Unknown',
+                    (_videoInfo!['codec'] as String?) ?? 'Tidak Diketahui',
                   ),
                   _buildInfoRow(
-                    'Pixel Format',
-                    (_videoInfo!['pixelFormat'] as String?) ?? 'Unknown',
+                    'Format Piksel',
+                    (_videoInfo!['pixelFormat'] as String?) ??
+                        'Tidak Diketahui',
                   ),
                 ],
               ),
@@ -1945,15 +2075,15 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Audio Stream',
+                        'Stream Audio',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                   _buildInfoRow(
-                    'Audio Present',
-                    _videoInfo!['hasAudio'] == true ? 'Yes' : 'No',
+                    'Audio Ada',
+                    _videoInfo!['hasAudio'] == true ? 'Ya' : 'Tidak',
                   ),
                 ],
               ),
@@ -1987,7 +2117,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Metadata Tags',
+                            'Tag Metadata',
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                         ],
@@ -2046,7 +2176,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   }
 
   String _formatDuration(Duration? duration) {
-    if (duration == null) return 'Unknown';
+    if (duration == null) return 'Tidak Diketahui';
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
@@ -2059,14 +2189,14 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   String _getPresetHint(String preset) {
     switch (preset) {
       case 'ultrafast':
-        return 'Finishes instantly, but file might be larger. Use for quick tests.';
+        return 'Selesai instan, tapi file mungkin lebih besar. Gunakan untuk tes cepat.';
       case 'veryfast':
-        return 'Recommended for most videos. Good balance.';
+        return 'Direkomendasikan untuk kebanyakan video. Keseimbangan yang baik.';
       case 'fast':
-        return 'Slower than Very Fast, slightly better compression.';
+        return 'Lebih lambat dari Sangat Cepat, kompresi sedikit lebih baik.';
       case 'medium':
       case 'slow':
-        return 'Takes longer, but squeezes file smaller at same quality.';
+        return 'Memakan waktu lebih lama, tapi mengecilkan file dengan kualitas sama.';
       default:
         return '';
     }
@@ -2074,15 +2204,15 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
 
   String _getCrfHint(int crf) {
     if (crf <= 18) {
-      return 'Best for archiving. Keeps almost all detail (Large File).';
+      return 'Terbaik untuk arsip. Menjaga hampir semua detail (File Besar).';
     }
     if (crf <= 23) {
-      return 'Best for sharing. Good quality, decent size (Default).';
+      return 'Terbaik untuk berbagi. Kualitas baik, ukuran layak (Default).';
     }
     if (crf <= 28) {
-      return 'Best for Discord/WhatsApp. Shrinks file size a lot (Visible quality drop).';
+      return 'Terbaik untuk Discord/WhatsApp. Mengecilkan ukuran file banyak (Penurunan kualitas terlihat).';
     }
-    return 'Best for very slow internet. Tiny file, pixelated.';
+    return 'Terbaik untuk internet sangat lambat. File kecil, piksel.';
   }
 
   String _colorToHex(Color color) {

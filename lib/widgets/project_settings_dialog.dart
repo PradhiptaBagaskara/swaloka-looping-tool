@@ -27,6 +27,8 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
 
   bool _isSaving = false;
   String? _ffmpegError;
+  HwAccelEncoder _hwAccelEncoder = HwAccelEncoder.software;
+  bool _isDetectingEncoder = false;
 
   @override
   void initState() {
@@ -44,6 +46,7 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
     final settings = ref.read(settingsProvider);
     settings.whenData((value) {
       _ffmpegController.text = value.customFfmpegPath ?? '';
+      _hwAccelEncoder = value.hwAccelEncoder;
     });
   }
 
@@ -92,6 +95,49 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
     });
   }
 
+  Future<void> _autoDetectEncoder() async {
+    setState(() {
+      _isDetectingEncoder = true;
+    });
+
+    try {
+      final detected = await FFmpegService.detectHardwareEncoder();
+
+      // Find matching enum value
+      final encoder = HwAccelEncoder.values.firstWhere(
+        (e) => e.value == detected,
+        orElse: () => HwAccelEncoder.software,
+      );
+
+      setState(() {
+        _hwAccelEncoder = encoder;
+        _isDetectingEncoder = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Detected: ${encoder.label}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } on Exception catch (e) {
+      setState(() {
+        _isDetectingEncoder = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Detection failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _save() async {
     setState(() {
       _isSaving = true;
@@ -118,6 +164,11 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
           .read(settingsProvider.notifier)
           .setFfmpegPath(ffmpegPath.isEmpty ? null : ffmpegPath);
       await ref.read(ffmpegStatusProvider.notifier).recheckFFmpeg();
+
+      // Save hwaccel encoder setting
+      await ref
+          .read(settingsProvider.notifier)
+          .setHwAccelEncoder(_hwAccelEncoder);
 
       // Save project settings
       final outputPath = _outputPathController.text.trim();
@@ -323,6 +374,114 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
                     ),
                   ),
                 ),
+
+              const SizedBox(height: 24),
+              Divider(color: Theme.of(context).colorScheme.outline),
+              const SizedBox(height: 16),
+
+              // Hardware Acceleration Section (Global)
+              _buildSectionHeader(context, 'Hardware Acceleration'),
+              const SizedBox(height: 8),
+              Text(
+                'Select hardware acceleration encoder for video processing.',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // HwAccel Encoder Dropdown
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<HwAccelEncoder>(
+                    value: _hwAccelEncoder,
+                    isExpanded: true,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                    items: HwAccelEncoder.values.map((encoder) {
+                      return DropdownMenuItem<HwAccelEncoder>(
+                        value: encoder,
+                        child: Row(
+                          children: [
+                            Icon(
+                              _getEncoderIcon(encoder),
+                              size: 20,
+                              color: Theme.of(context).colorScheme.tertiary,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    encoder.label,
+                                    style:
+                                        Theme.of(
+                                          context,
+                                        ).textTheme.bodyMedium?.copyWith(
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                  ),
+                                  Text(
+                                    _getEncoderDescription(encoder),
+                                    style:
+                                        Theme.of(
+                                          context,
+                                        ).textTheme.labelSmall?.copyWith(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          _hwAccelEncoder = value;
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Auto Detect Button
+              FilledButton.tonalIcon(
+                onPressed: _isDetectingEncoder ? null : _autoDetectEncoder,
+                icon: _isDetectingEncoder
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.search),
+                label: Text(
+                  _isDetectingEncoder ? 'Detecting...' : 'Auto Detect',
+                ),
+              ),
 
               const SizedBox(height: 32),
               Divider(
@@ -593,6 +752,51 @@ class _ProjectSettingsDialogState extends ConsumerState<ProjectSettingsDialog> {
         ],
       ),
     );
+  }
+
+  IconData _getEncoderIcon(HwAccelEncoder encoder) {
+    switch (encoder) {
+      case HwAccelEncoder.nvenc:
+      case HwAccelEncoder.nvencLinux:
+        return Icons.computer;
+      case HwAccelEncoder.amf:
+        return Icons.computer;
+      case HwAccelEncoder.qsv:
+        return Icons.memory;
+      case HwAccelEncoder.mf:
+        return Icons.settings;
+      case HwAccelEncoder.videotoolbox:
+        return Icons.laptop_mac;
+      case HwAccelEncoder.vaapi:
+        return Icons.memory;
+      case HwAccelEncoder.v4l2m2m:
+        return Icons.developer_board;
+      case HwAccelEncoder.software:
+        return Icons.code;
+    }
+  }
+
+  String _getEncoderDescription(HwAccelEncoder encoder) {
+    switch (encoder) {
+      case HwAccelEncoder.nvenc:
+        return 'NVIDIA (GTX/RTX)';
+      case HwAccelEncoder.amf:
+        return 'AMD Radeon (RX Series)';
+      case HwAccelEncoder.qsv:
+        return 'Intel QuickSync (iGPU/Arc)';
+      case HwAccelEncoder.mf:
+        return 'Windows Media Foundation (Generic)';
+      case HwAccelEncoder.videotoolbox:
+        return 'Apple Silicon (M1/M2/M3) & Intel Mac';
+      case HwAccelEncoder.nvencLinux:
+        return 'NVIDIA (Proprietary Driver)';
+      case HwAccelEncoder.vaapi:
+        return 'VA-API (Intel/AMD)';
+      case HwAccelEncoder.v4l2m2m:
+        return 'V4L2 (Raspberry Pi / ARM)';
+      case HwAccelEncoder.software:
+        return 'CPU-based encoding (no hardware acceleration)';
+    }
   }
 }
 

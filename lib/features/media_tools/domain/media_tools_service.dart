@@ -4,58 +4,28 @@ import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
 import 'package:swaloka_looping_tool/core/utils/temp_directory_helper.dart';
 
+/// Configuration for a single audio overlay
+class AudioOverlayConfig {
+  const AudioOverlayConfig({
+    required this.path,
+    required this.volume,
+  });
+
+  final String path;
+  final double volume; // 0.0 to 1.0
+}
+
 class MediaToolsService {
-  Future<void> extractAudio({
-    required String videoPath,
-    required String outputPath,
-    void Function(LogEntry)? onLog,
-  }) async {
-    final log = LogEntry.info(
-      'Extracting audio from ${p.basename(videoPath)}...',
-    );
-    onLog?.call(log);
-
-    final codecArgs = _audioCodecArgs(outputPath);
-
-    await FFmpegService.run(
-      [
-        '-y',
-        '-i',
-        videoPath,
-        '-vn', // No video
-        ...codecArgs,
-        outputPath,
-      ],
-      errorMessage: 'Failed to extract audio',
-      onLog: log.addSubLog,
-    );
-
-    onLog?.call(LogEntry.success('Audio extracted to $outputPath'));
-  }
-
-  Future<void> convertAudio({
-    required String inputPath,
-    required String outputPath,
-    void Function(LogEntry)? onLog,
-  }) async {
-    final log = LogEntry.info('Converting audio ${p.basename(inputPath)}...');
-    onLog?.call(log);
-
-    final codecArgs = _audioCodecArgs(outputPath);
-
-    await FFmpegService.run(
-      [
-        '-y',
-        '-i',
-        inputPath,
-        ...codecArgs,
-        outputPath, // FFmpeg infers container from extension, codec is enforced above
-      ],
-      errorMessage: 'Failed to convert audio',
-      onLog: log.addSubLog,
-    );
-
-    onLog?.call(LogEntry.success('Audio converted to $outputPath'));
+  String _scaleFlagsForQuality(String quality) {
+    switch (quality) {
+      case 'fast':
+        return 'bilinear';
+      case 'balanced':
+        return 'bicubic';
+      case 'high':
+      default:
+        return 'lanczos';
+    }
   }
 
   Future<void> concatAudio({
@@ -99,6 +69,315 @@ class MediaToolsService {
 
       onLog?.call(LogEntry.success('Audio concatenated to $outputPath'));
     } finally {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    }
+  }
+
+  Future<void> applyAudioOverlays({
+    required List<AudioOverlayConfig> overlays,
+    required String outputPath,
+    void Function(LogEntry)? onLog,
+  }) async {
+    final log = LogEntry.info(
+      'Applying ${overlays.length} audio overlay(s)...',
+    );
+    onLog?.call(log);
+
+    if (overlays.isEmpty) {
+      throw Exception('No audio overlays provided');
+    }
+
+    try {
+      // Build inputs
+      final inputs = <String>[];
+      for (final overlay in overlays) {
+        inputs.addAll(['-i', overlay.path]);
+      }
+
+      // Build filter_complex to mix all audio with volume adjustments
+      final filterParts = <String>[];
+      final inputLabels = <String>[];
+
+      // Apply volume to each input and create labels
+      for (var i = 0; i < overlays.length; i++) {
+        final volume = overlays[i].volume;
+        filterParts.add('[$i:a]volume=$volume[a$i];');
+        inputLabels.add('[a$i]');
+      }
+
+      // Mix all inputs using amerge
+      final allInputs = inputLabels.join();
+      filterParts.add(
+        '$allInputs${overlays.length == 2
+            ? 'amerge=inputs=2'
+            : overlays.length == 3
+            ? 'amerge=inputs=3'
+            : 'amerge=inputs=${overlays.length}'}[aout]',
+      );
+
+      final filterComplex = filterParts.join();
+
+      final codecArgs = _audioCodecArgs(outputPath);
+
+      await FFmpegService.run(
+        [
+          '-y',
+          ...inputs,
+          '-filter_complex',
+          filterComplex,
+          '-map',
+          '[aout]',
+          ...codecArgs,
+          outputPath,
+        ],
+        errorMessage: 'Failed to apply audio overlays',
+        onLog: log.addSubLog,
+      );
+
+      onLog?.call(LogEntry.success('Audio overlays applied to $outputPath'));
+    } on Exception catch (e) {
+      onLog?.call(LogEntry.error('Failed to apply audio overlays: $e'));
+      rethrow;
+    }
+  }
+
+  /// Export overlay audios as a pre-mixed WAV preset file
+  ///
+  /// This mixes all overlay audios with their volume settings into a single WAV file
+  /// that can be reused later. Useful for saving commonly used overlay combinations.
+  ///
+  /// Parameters:
+  /// - overlays: List of overlay configurations with paths and volumes
+  /// - outputPath: Where to save the preset WAV file
+  /// - onLog: Optional callback for logging progress
+  Future<void> exportOverlayPreset({
+    required List<AudioOverlayConfig> overlays,
+    required String outputPath,
+    void Function(LogEntry)? onLog,
+  }) async {
+    final log = LogEntry.info(
+      'Exporting ${overlays.length} overlay(s) as preset...',
+    );
+    onLog?.call(log);
+
+    if (overlays.isEmpty) {
+      throw Exception('No overlays provided');
+    }
+
+    final tempDir = await TempDirectoryHelper.create(
+      prefix: 'swaloka_preset_${DateTime.now().millisecondsSinceEpoch}',
+      onLog: onLog,
+    );
+
+    try {
+      // Use the pre-mix logic to create the preset
+      final presetPath = await _preMixOverlays(overlays, tempDir, onLog);
+
+      // Copy the pre-mixed file to the desired output location
+      await File(presetPath).copy(outputPath);
+
+      onLog?.call(LogEntry.success('Preset exported to $outputPath'));
+    } finally {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    }
+  }
+
+  /// Pre-mix overlay audios into a single WAV file (lossless)
+  ///
+  /// This reduces complexity in the final mix step by combining all overlays
+  /// into one file first, then mixing that with base audios.
+  ///
+  /// Why volume compensation is needed:
+  /// - FFmpeg's amix filter normalizes (divides) output by number of inputs
+  /// - Example: amix=inputs=3 → output volume /3 (too quiet!)
+  /// - Solution: Add volume filter to multiply back by N
+  /// - Result: Full volume restored
+  Future<String> _preMixOverlays(
+    List<AudioOverlayConfig> overlays,
+    Directory tempDir,
+    void Function(LogEntry)? onLog,
+  ) async {
+    final log = LogEntry.info('Pre-mixing ${overlays.length} overlay(s)...');
+    onLog?.call(log);
+
+    // Build inputs for overlays (NO stream_loop here - we want original duration)
+    final inputs = <String>[];
+    for (final overlay in overlays) {
+      inputs.addAll(['-i', overlay.path]);
+    }
+
+    // Build filter_complex to mix overlays with volume
+    // Use duration=longest so output is as long as the longest overlay
+    final filterParts = <String>[];
+
+    // Apply volume to each overlay (user-configured levels)
+    for (var i = 0; i < overlays.length; i++) {
+      final volume = overlays[i].volume;
+      filterParts.add('[$i:a]volume=$volume[v$i]');
+    }
+
+    // Build amix inputs with volume labels
+    final amixInputs = List.generate(overlays.length, (i) => '[v$i]').join();
+
+    // Mix with duration=longest - ensures output is as long as the longest overlay
+    // CRITICAL: amix normalizes (divides) by number of inputs, so we MUST compensate
+    // Without compensation: amix=inputs=3 → volume /3 → output too quiet
+    // With compensation: amix=inputs=3 → volume /3 → volume=3.0 → /3 * 3 = 1.0 (full volume)
+    final compensation = overlays.length.toStringAsFixed(1);
+    filterParts.add(
+      '$amixInputs'
+      'amix=inputs=${overlays.length}:duration=longest[overlay_mix];'
+      '[overlay_mix]volume=$compensation[overlay_mix]',
+    );
+
+    final filterComplex = filterParts.join(';');
+
+    // Output to WAV (lossless)
+    final overlayMixPath = p.join(tempDir.path, 'overlay_mix.wav');
+
+    await FFmpegService.run(
+      [
+        '-y',
+        '-threads',
+        '0',
+        '-vn',
+        ...inputs,
+        '-filter_complex',
+        filterComplex,
+        '-map',
+        '[overlay_mix]',
+        '-c:a',
+        'pcm_s16le', // WAV codec (lossless)
+        overlayMixPath,
+      ],
+      errorMessage: 'Failed to pre-mix overlays',
+      onLog: log.addSubLog,
+    );
+
+    onLog?.call(LogEntry.success('Overlays pre-mixed to WAV'));
+    return overlayMixPath;
+  }
+
+  Future<void> applyAudioOverlaysToBaseAudios({
+    required List<String> baseAudios,
+    required List<AudioOverlayConfig> overlays,
+    required String outputPath,
+    void Function(LogEntry)? onLog,
+  }) async {
+    final log = LogEntry.info(
+      'Processing ${baseAudios.length} base audio(s) with ${overlays.length} overlay(s)...',
+    );
+    onLog?.call(log);
+
+    if (baseAudios.isEmpty) {
+      throw Exception('No base audios provided');
+    }
+
+    if (overlays.isEmpty) {
+      // No overlays, just concatenate base audios
+      await concatAudio(
+        audioPaths: baseAudios,
+        outputPath: outputPath,
+        onLog: onLog,
+      );
+      return;
+    }
+
+    // Step 1: Create concat demuxer file for base audios (more efficient)
+    // This avoids opening many separate files - concat demuxer handles all base audios as one stream
+    final tempDir = await TempDirectoryHelper.create(
+      prefix: 'swaloka_audio_${DateTime.now().millisecondsSinceEpoch}',
+      onLog: onLog,
+    );
+
+    try {
+      // Step 2: Check if we need to pre-mix overlays
+      // Optimization: Skip pre-mix if only 1 overlay with full volume (1.0)
+      // This saves processing time and disk I/O
+      String overlayMixWav;
+      if (overlays.length == 1 && overlays[0].volume == 1.0) {
+        // Use the overlay file directly - no pre-mixing needed
+        overlayMixWav = overlays[0].path;
+        log.addSubLog(
+          LogEntry.info('Single overlay at full volume - skipping pre-mix'),
+        );
+      } else {
+        // Pre-mix overlays into single WAV file (lossless)
+        // This reduces complexity: instead of amix=inputs=4, we only need amix=inputs=2
+        overlayMixWav = await _preMixOverlays(overlays, tempDir, onLog);
+      }
+
+      final concatListPath = p.join(tempDir.path, 'base_audios.txt');
+      final concatContent = baseAudios
+          .map((f) => "file '${_formatPathForConcatFile(f)}'")
+          .join('\n');
+      await File(concatListPath).writeAsString(concatContent);
+
+      log.addSubLog(LogEntry.info('Base audios: ${baseAudios.length} files'));
+
+      // Step 3: Build FFmpeg command using concat demuxer
+      // Input 0: concat demuxer (all base audios merged as one stream)
+      // Input 1: pre-mixed overlay WAV (with stream_loop for infinite looping)
+      // -vn skips video processing (we only need audio)
+      final cmd = <String>[
+        '-y',
+        '-threads',
+        '0',
+        '-vn',
+        '-f',
+        'concat',
+        '-safe',
+        '0',
+        '-i',
+        concatListPath,
+        '-stream_loop',
+        '-1',
+        '-i',
+        overlayMixWav,
+      ];
+
+      // Step 4: Build filter_complex
+      // Simpler amix: only 2 inputs (base + pre-mixed overlay) instead of (base + N overlays)
+      final filterParts = <String>[];
+
+      // Mix base with pre-mixed overlay using amix
+      // CRITICAL: amix normalizes (divides) by number of inputs, so we MUST compensate
+      // Without compensation: amix=inputs=2 → volume /2 → output too quiet
+      // With compensation: amix=inputs=2 → volume /2 → volume=2.0 → /2 * 2 = 1.0 (full volume)
+      // This affects BOTH base audio and overlay equally, restoring both to intended levels
+      filterParts.add(
+        '[0:a][1:a]amix=inputs=2:duration=first[out];'
+        '[out]volume=2.0[out]',
+      );
+
+      final filterComplex = filterParts.join('; ');
+
+      log.addSubLog(LogEntry.info('Mixing audio with pre-mixed overlay...'));
+
+      final codecArgs = _audioCodecArgs(outputPath);
+
+      cmd.addAll([
+        '-filter_complex',
+        filterComplex,
+        '-map',
+        '[out]',
+        ...codecArgs,
+        outputPath,
+      ]);
+
+      await FFmpegService.run(
+        cmd,
+        errorMessage: 'Failed to process audio',
+        onLog: log.addSubLog,
+      );
+
+      onLog?.call(LogEntry.success('Audio processing complete: $outputPath'));
+    } finally {
+      // Auto clean temp directory after processing
       if (await tempDir.exists()) {
         await tempDir.delete(recursive: true);
       }
@@ -575,6 +854,9 @@ class MediaToolsService {
     required int fps,
     required String preset,
     required bool keepAudio,
+    int? crf,
+    String scalingQuality = 'high', // fast|balanced|high
+    bool enhanceQuality = false,
     bool preserveAspectRatio = false,
     String? hwEncoder, // Optional HW Encoder
     void Function(LogEntry)? onLog,
@@ -589,22 +871,35 @@ class MediaToolsService {
       ),
     );
 
+    final flags = _scaleFlagsForQuality(scalingQuality);
+    log.addSubLog(
+      LogEntry.info(
+        'Scaling: $scalingQuality ($flags)${enhanceQuality ? ' + enhance' : ''}',
+      ),
+    );
+
     // Build filter based on aspect ratio handling
     final String filter;
     if (preserveAspectRatio) {
       // Preserve original aspect ratio with padding (black bars if needed)
       filter =
-          'scale=$width:$height:force_original_aspect_ratio=decrease,'
+          // Denoise before scaling can reduce upscaling artifacts a bit.
+          '${enhanceQuality ? 'hqdn3d=1.5:1.5:3:3,' : ''}'
+          'scale=$width:$height:force_original_aspect_ratio=decrease:flags=$flags,'
           'pad=$width:$height:(ow-iw)/2:(oh-ih)/2,'
           'fps=$fps,'
+          // Mild sharpen after scaling (avoid over-sharpening).
+          '${enhanceQuality ? 'unsharp=5:5:0.6:5:5:0.0,' : ''}'
           'format=yuv420p,'
           'setsar=1';
     } else {
       // Enforce exact aspect ratio by cropping if needed
       filter =
-          'scale=$width:$height:force_original_aspect_ratio=increase,'
+          '${enhanceQuality ? 'hqdn3d=1.5:1.5:3:3,' : ''}'
+          'scale=$width:$height:force_original_aspect_ratio=increase:flags=$flags,'
           'crop=$width:$height,'
           'fps=$fps,'
+          '${enhanceQuality ? 'unsharp=5:5:0.6:5:5:0.0,' : ''}'
           'format=yuv420p,'
           'setsar=1';
     }
@@ -617,17 +912,23 @@ class MediaToolsService {
       filter,
     ];
 
-    // Add Video Encoder settings (use CRF 23 for quality)
-    const crf = 23;
+    // Add Video Encoder settings.
+    //
+    // CRF notes:
+    // - Lower CRF => better quality, bigger files.
+    // - If `crf` is not provided, we pick a sensible default based on target
+    //   resolution (smaller outputs usually need lower CRF to avoid artifacts).
+    final resolvedCrf = crf ?? _autoReencodeCrf(height);
+    log.addSubLog(LogEntry.info('Video quality: CRF $resolvedCrf'));
     if (hwEncoder != null && hwEncoder.isNotEmpty && hwEncoder != 'libx264') {
       cmd.addAll(['-c:v', hwEncoder]);
-      cmd.addAll(_getHwEncoderArgs(hwEncoder, crf, preset));
+      cmd.addAll(_getHwEncoderArgs(hwEncoder, resolvedCrf, preset));
     } else {
       cmd.addAll([
         '-c:v',
         'libx264',
         '-crf',
-        crf.toString(),
+        resolvedCrf.toString(),
         '-preset',
         preset,
       ]);
@@ -651,6 +952,12 @@ class MediaToolsService {
     onLog?.call(LogEntry.success('Video re-encoded to $outputPath'));
   }
 
+  int _autoReencodeCrf(int targetHeight) {
+    if (targetHeight <= 480) return 20;
+    if (targetHeight <= 720) return 22;
+    return 23;
+  }
+
   List<String> _getHwEncoderArgs(String encoder, int crf, String preset) {
     // Map standard CRF (0-51, lower=better) and Preset to HW specific args
 
@@ -666,11 +973,11 @@ class MediaToolsService {
         // CRF 32 (Very Low) -> ~35
         var quality = 60;
         if (crf <= 18) {
-          quality = 75;
-        } else if (crf >= 28) {
-          quality = 45;
+          quality = 85;
         } else if (crf >= 32) {
           quality = 35;
+        } else if (crf >= 28) {
+          quality = 45;
         }
 
         return ['-q:v', quality.toString(), '-allow_sw', '1'];

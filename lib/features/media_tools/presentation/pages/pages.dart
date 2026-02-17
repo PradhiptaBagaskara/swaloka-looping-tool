@@ -1,2 +1,2 @@
-export 'audio_tools_page.dart';
+export 'audio_tools_standalone_page.dart';
 export 'video_tools_page.dart';
