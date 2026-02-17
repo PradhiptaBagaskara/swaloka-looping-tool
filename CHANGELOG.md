@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [5.3.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.2.0...swaloka_looping_tool-v5.3.0) (2026-02-17)
+
+
+### Features
+
+* add audio overlay using amix ([#45](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/45)) ([5f4c826](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/5f4c826373d8a7655f3dbf993ff860da2e669c13))
+
 ## [5.2.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.1.0...swaloka_looping_tool-v5.2.0) (2026-01-13)
 
 
