@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
+import 'package:swaloka_looping_tool/core/utils/timestamp_formatter.dart';
 import 'package:swaloka_looping_tool/features/media_tools/domain/media_tools_service.dart';
 import 'package:swaloka_looping_tool/features/media_tools/presentation/providers/media_tools_providers.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
@@ -135,7 +136,7 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
 
     await _runOperation((logCallback) async {
       final outputDir = await _ensureOutputsDir();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final timestamp = TimestampFormatter.format();
       final outputPath = p.join(outputDir, 'audio_output_$timestamp.m4a');
 
       // If only overlays, no base audio

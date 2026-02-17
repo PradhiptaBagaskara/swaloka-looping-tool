@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
 import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
+import 'package:swaloka_looping_tool/core/utils/timestamp_formatter.dart';
 import 'package:swaloka_looping_tool/features/media_tools/presentation/providers/media_tools_providers.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
 import 'package:swaloka_looping_tool/widgets/widgets.dart';
@@ -139,7 +140,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
 
     try {
       final outputsDir = await _ensureOutputsDir();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final timestamp = TimestampFormatter.format();
       final prefix = _videoPaths.length == 1
           ? 'processed_video'
           : 'merged_videos';
@@ -184,7 +185,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     try {
       final outputsDir = await _ensureOutputsDir();
       final name = p.basenameWithoutExtension(_compressVideoPath!);
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final timestamp = TimestampFormatter.format();
       final outputPath = p.join(
         outputsDir,
         '${name}_compressed_$timestamp.mp4',
@@ -235,7 +236,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Analyzing video format...'),
+            content: Text('Menganalisis format video...'),
             duration: Duration(seconds: 2),
           ),
         );
@@ -317,7 +318,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Format copied: $resolution @ ${fps}fps',
+              'Format disalin: $resolution @ ${fps}fps',
             ),
             backgroundColor: Colors.green,
           ),
@@ -326,7 +327,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to analyze video: $e'),
+            content: Text('Gagal menganalisis video: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -350,7 +351,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
 
     try {
       final outputsDir = await _ensureOutputsDir();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final timestamp = TimestampFormatter.format();
 
       // Get target height from resolution
       final heightMap = {
@@ -528,7 +529,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to extract video info: $e'),
+          content: Text('Gagal mengekstrak info video: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -607,19 +608,19 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             child: TabBar(
               tabs: const [
                 Tab(
-                  text: 'Combine & Effects',
+                  text: 'Gabung & Efek',
                   icon: Icon(Icons.video_library, size: 20),
                 ),
                 Tab(
-                  text: 'Compress Video',
+                  text: 'Kompres Video',
                   icon: Icon(Icons.compress, size: 20),
                 ),
                 Tab(
-                  text: 'Convert Resolution',
+                  text: 'Konversi Resolusi',
                   icon: Icon(Icons.settings_backup_restore, size: 20),
                 ),
                 Tab(
-                  text: 'Video Info',
+                  text: 'Info Video',
                   icon: Icon(Icons.info_outline, size: 20),
                 ),
               ],
@@ -671,7 +672,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         DropZoneWidget(
           label: _videoPaths.isNotEmpty
               ? '${_videoPaths.length} ${_videoPaths.length == 1 ? "file" : "files"} selected'
-              : 'Drop Video File(s) Here (or Click)',
+              : 'Seret File Video ke Sini (atau Klik)',
           icon: Icons.movie,
           onTap: _pickVideos,
           onFilesDropped: (files) {
@@ -698,7 +699,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               TextButton.icon(
                 onPressed: () => setState(_videoPaths.clear),
                 icon: const Icon(Icons.delete_sweep, size: 16),
-                label: const Text('Clear All'),
+                label: const Text('Hapus Semua'),
                 style: TextButton.styleFrom(
                   foregroundColor: Theme.of(
                     context,
@@ -766,7 +767,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Single video mode: You can add fade in/out effects. Smooth transitions require 2+ videos.',
+                    'Mode video tunggal: Anda dapat menambahkan efek fade in/out. Transisi halus membutuhkan 2+ video.',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onPrimaryContainer,
                     ),
@@ -791,11 +792,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             children: [
               CheckboxListTile(
                 title: Text(
-                  'Keep Audio',
+                  'Pertahankan Audio',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
-                  'Preserves audio tracks in merged video',
+                  'Mempertahankan trek audio dalam video gabungan',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _keepAudio,
@@ -807,13 +808,13 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const Divider(),
               CheckboxListTile(
                 title: Text(
-                  'Smooth Transition (Crossfade)',
+                  'Transisi Halus (Crossfade)',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
                   _videoPaths.length <= 1
-                      ? 'Requires 2 or more videos'
-                      : 'Adds 1s crossfade between clips. Requires re-encoding.',
+                      ? 'Membutuhkan 2 atau lebih video'
+                      : 'Menambahkan crossfade 1 detik antara klip. Membutuhkan encoding ulang.',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _smoothTransition,
@@ -842,14 +843,14 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Fade Effects',
+                'Efek Fade',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                'Great for creating loop-friendly videos',
+                'Bagus untuk membuat video yang ramah loop',
                 style: Theme.of(context).textTheme.labelSmall,
               ),
               const SizedBox(height: 12),
@@ -872,11 +873,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Fade In',
+                          'Fade Masuk',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         Text(
-                          'Fades from color at the start (1s)',
+                          'Fade dari warna di awal (1 detik)',
                           style: Theme.of(context).textTheme.labelSmall
                               ?.copyWith(
                                 color: Theme.of(
@@ -917,11 +918,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Fade Out',
+                          'Fade Keluar',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         Text(
-                          'Fades to color at the end (1s)',
+                          'Fade ke warna di akhir (1 detik)',
                           style: Theme.of(context).textTheme.labelSmall
                               ?.copyWith(
                                 color: Theme.of(
@@ -961,32 +962,32 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Encoding Settings',
+                  'Pengaturan Encoding',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Required when using effects',
+                  'Diperlukan saat menggunakan efek',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 const SizedBox(height: 16),
                 CompactDropdown<String>(
                   value: _encodingPreset,
-                  label: 'Encoding Speed:',
+                  label: 'Kecepatan Encoding:',
                   icon: Icons.speed,
                   items: const [
                     DropdownMenuItem(
                       value: 'ultrafast',
-                      child: Text('Ultrafast'),
+                      child: Text('Ultra Cepat'),
                     ),
                     DropdownMenuItem(
                       value: 'veryfast',
-                      child: Text('Very Fast'),
+                      child: Text('Sangat Cepat'),
                     ),
-                    DropdownMenuItem(value: 'fast', child: Text('Fast')),
-                    DropdownMenuItem(value: 'slow', child: Text('Slow')),
+                    DropdownMenuItem(value: 'fast', child: Text('Cepat')),
+                    DropdownMenuItem(value: 'slow', child: Text('Lambat')),
                   ],
                   onChanged: (v) =>
                       setState(() => _encodingPreset = v ?? 'veryfast'),
@@ -1004,11 +1005,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 const Divider(height: 24),
                 CheckboxListTile(
                   title: Text(
-                    'Hardware Acceleration',
+                    'Akselerasi Hardware',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   subtitle: Text(
-                    'Use GPU for faster encoding',
+                    'Gunakan GPU untuk encoding lebih cepat',
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                   value: _useHwAccel,
@@ -1066,7 +1067,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             onPressed: _videoPaths.isNotEmpty ? _concatVideos : null,
             icon: const Icon(Icons.merge_type),
             label: Text(
-              _videoPaths.length == 1 ? 'Process Video' : 'Merge Videos',
+              _videoPaths.length == 1 ? 'Proses Video' : 'Gabung Video',
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.primary,
@@ -1084,7 +1085,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       children: [
         if (_compressVideoPath == null)
           DropZoneWidget(
-            label: 'Drop Video Here (or Click)',
+            label: 'Seret Video ke Sini (atau Klik)',
             icon: Icons.movie,
             onTap: _pickCompressVideo,
             onFilesDropped: (files) {
@@ -1125,7 +1126,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Compression Settings',
+                'Pengaturan Kompresi',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -1145,19 +1146,19 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                           items: const [
                             DropdownMenuItem(
                               value: 18,
-                              child: Text('High Quality'),
+                              child: Text('Kualitas Tinggi'),
                             ),
                             DropdownMenuItem(
                               value: 23,
-                              child: Text('Balanced'),
+                              child: Text('Seimbang'),
                             ),
                             DropdownMenuItem(
                               value: 28,
-                              child: Text('High Compression'),
+                              child: Text('Kompresi Tinggi'),
                             ),
                             DropdownMenuItem(
                               value: 32,
-                              child: Text('Tiny File'),
+                              child: Text('File Kecil'),
                             ),
                           ],
                           onChanged: (v) =>
@@ -1188,23 +1189,23 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                           items: const [
                             DropdownMenuItem(
                               value: 'ultrafast',
-                              child: Text('Ultrafast'),
+                              child: Text('Ultra Cepat'),
                             ),
                             DropdownMenuItem(
                               value: 'veryfast',
-                              child: Text('Very Fast'),
+                              child: Text('Sangat Cepat'),
                             ),
                             DropdownMenuItem(
                               value: 'fast',
-                              child: Text('Fast'),
+                              child: Text('Cepat'),
                             ),
                             DropdownMenuItem(
                               value: 'medium',
-                              child: Text('Medium'),
+                              child: Text('Sedang'),
                             ),
                             DropdownMenuItem(
                               value: 'slow',
-                              child: Text('Slow'),
+                              child: Text('Lambat'),
                             ),
                           ],
                           onChanged: (v) =>
@@ -1243,11 +1244,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             children: [
               CheckboxListTile(
                 title: Text(
-                  'Keep Audio',
+                  'Pertahankan Audio',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
-                  'Copies original audio stream (No quality loss)',
+                  'Menyalin stream audio asli (Tanpa kehilangan kualitas)',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _compressKeepAudio,
@@ -1260,11 +1261,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const Divider(),
               CheckboxListTile(
                 title: Text(
-                  'Hardware Acceleration',
+                  'Akselerasi Hardware',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
-                  'Use GPU for faster encoding',
+                  'Gunakan GPU untuk encoding lebih cepat',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _useHwAccel,
@@ -1320,7 +1321,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           child: ElevatedButton.icon(
             onPressed: _compressVideoPath != null ? _compressVideo : null,
             icon: const Icon(Icons.compress),
-            label: const Text('Compress Video'),
+            label: const Text('Kompres Video'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.primary,
               foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -1338,7 +1339,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
         DropZoneWidget(
           label: _reencodeVideoPaths.isNotEmpty
               ? '${_reencodeVideoPaths.length} ${_reencodeVideoPaths.length == 1 ? "file" : "files"} selected'
-              : 'Drop Video File(s) Here (or Click)',
+              : 'Seret File Video ke Sini (atau Klik)',
           icon: Icons.movie,
           onTap: _pickReencodeVideo,
           onFilesDropped: (files) {
@@ -1365,7 +1366,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               TextButton.icon(
                 onPressed: () => setState(_reencodeVideoPaths.clear),
                 icon: const Icon(Icons.delete_sweep, size: 16),
-                label: const Text('Clear All'),
+                label: const Text('Hapus Semua'),
                 style: TextButton.styleFrom(
                   foregroundColor: Theme.of(
                     context,
@@ -1432,7 +1433,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Convert videos to specific resolution & frame rate. Supports batch processing and will follow your project’s parallel processing setting.',
+                  'Konversi video ke resolusi & frame rate tertentu. Mendukung pemrosesan batch dan akan mengikuti pengaturan pemrosesan paralel proyek Anda.',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onPrimaryContainer,
                   ),
@@ -1459,7 +1460,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Output Format',
+                    'Format Output',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -1467,7 +1468,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                   TextButton.icon(
                     onPressed: _copyFormatFromVideo,
                     icon: const Icon(Icons.content_copy, size: 16),
-                    label: const Text('Copy from Video'),
+                    label: const Text('Salin dari Video'),
                     style: TextButton.styleFrom(
                       foregroundColor: Theme.of(context).colorScheme.primary,
                       padding: const EdgeInsets.symmetric(
@@ -1527,7 +1528,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Resolution',
+                          'Resolusi',
                           style: Theme.of(context).textTheme.labelLarge
                               ?.copyWith(
                                 fontWeight: FontWeight.w500,
@@ -1577,7 +1578,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Aspect Ratio',
+                          'Rasio Aspek',
                           style: Theme.of(context).textTheme.labelLarge
                               ?.copyWith(
                                 fontWeight: FontWeight.w500,
@@ -1591,19 +1592,19 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                           items: const [
                             DropdownMenuItem(
                               value: 'original',
-                              child: Text('Original (No Change)'),
+                              child: Text('Asli (Tanpa Perubahan)'),
                             ),
                             DropdownMenuItem(
                               value: '16:9',
-                              child: Text('16:9 (Landscape)'),
+                              child: Text('16:9 (Lanskap)'),
                             ),
                             DropdownMenuItem(
                               value: '9:16',
-                              child: Text('9:16 (Portrait)'),
+                              child: Text('9:16 (Potret)'),
                             ),
                             DropdownMenuItem(
                               value: '1:1',
-                              child: Text('1:1 (Square)'),
+                              child: Text('1:1 (Persegi)'),
                             ),
                             DropdownMenuItem(
                               value: '3:2',
@@ -1674,7 +1675,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                     };
                     final height = heightMap[_reencodeResolution] ?? 1080;
                     displayText =
-                        'Output: Height $height (keeps original aspect ratio)';
+                        'Output: Tinggi $height (mempertahankan rasio aspek asli)';
                   } else {
                     displayText = 'Output: ${dims.width} × ${dims.height}';
                   }
@@ -1721,17 +1722,20 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const SizedBox(height: 16),
               CompactDropdown<String>(
                 value: _reencodePreset,
-                label: 'Encoding Speed:',
+                label: 'Kecepatan Encoding:',
                 icon: Icons.speed,
                 items: const [
                   DropdownMenuItem(
                     value: 'ultrafast',
-                    child: Text('Ultrafast'),
+                    child: Text('Ultra Cepat'),
                   ),
-                  DropdownMenuItem(value: 'veryfast', child: Text('Very Fast')),
-                  DropdownMenuItem(value: 'fast', child: Text('Fast')),
-                  DropdownMenuItem(value: 'medium', child: Text('Medium')),
-                  DropdownMenuItem(value: 'slow', child: Text('Slow')),
+                  DropdownMenuItem(
+                    value: 'veryfast',
+                    child: Text('Sangat Cepat'),
+                  ),
+                  DropdownMenuItem(value: 'fast', child: Text('Cepat')),
+                  DropdownMenuItem(value: 'medium', child: Text('Sedang')),
+                  DropdownMenuItem(value: 'slow', child: Text('Lambat')),
                 ],
                 onChanged: (v) =>
                     setState(() => _reencodePreset = v ?? 'veryfast'),
@@ -1739,20 +1743,20 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const SizedBox(height: 12),
               CompactDropdown<String>(
                 value: _reencodeScalingQuality,
-                label: 'Scaling Quality:',
+                label: 'Kualitas Scaling:',
                 icon: Icons.photo_size_select_large,
                 items: const [
                   DropdownMenuItem(
                     value: 'fast',
-                    child: Text('Fast (Bilinear)'),
+                    child: Text('Cepat (Bilinear)'),
                   ),
                   DropdownMenuItem(
                     value: 'balanced',
-                    child: Text('Balanced (Bicubic)'),
+                    child: Text('Seimbang (Bicubic)'),
                   ),
                   DropdownMenuItem(
                     value: 'high',
-                    child: Text('High (Lanczos)'),
+                    child: Text('Tinggi (Lanczos)'),
                   ),
                 ],
                 onChanged: (v) =>
@@ -1766,7 +1770,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       children: [
                         Flexible(
                           child: Text(
-                            'Enhance Quality',
+                            'Tingkatkan Kualitas',
                             style: Theme.of(context).textTheme.labelLarge
                                 ?.copyWith(fontWeight: FontWeight.w500),
                           ),
@@ -1774,8 +1778,8 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                         const SizedBox(width: 6),
                         const CompactTooltip(
                           message:
-                              'Applies light denoise + mild sharpen.\n\n'
-                              'Helps upscales look less soft, but increases processing time.',
+                              'Menerapkan denoise ringan + sharpening sedang.\n\n'
+                              'Membuat upscale terlihat kurang lembut, tapi meningkatkan waktu pemrosesan.',
                         ),
                       ],
                     ),
@@ -1790,17 +1794,20 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const SizedBox(height: 12),
               CompactDropdown<String>(
                 value: _reencodeQuality,
-                label: 'Quality (CRF):',
+                label: 'Kualitas (CRF):',
                 icon: Icons.high_quality,
                 items: const [
                   DropdownMenuItem(value: 'auto', child: Text('Auto')),
-                  DropdownMenuItem(value: 'high', child: Text('High Quality')),
-                  DropdownMenuItem(value: 'balanced', child: Text('Balanced')),
+                  DropdownMenuItem(
+                    value: 'high',
+                    child: Text('Kualitas Tinggi'),
+                  ),
+                  DropdownMenuItem(value: 'balanced', child: Text('Seimbang')),
                   DropdownMenuItem(
                     value: 'smaller',
-                    child: Text('Smaller File'),
+                    child: Text('File Lebih Kecil'),
                   ),
-                  DropdownMenuItem(value: 'tiny', child: Text('Tiny File')),
+                  DropdownMenuItem(value: 'tiny', child: Text('File Kecil')),
                 ],
                 onChanged: (v) =>
                     setState(() => _reencodeQuality = v ?? 'auto'),
@@ -1809,7 +1816,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Lower CRF = better quality (larger file). Auto adjusts based on resolution.',
+                  'CRF lebih rendah = kualitas lebih baik (file lebih besar). Menyesuaikan otomatis berdasarkan resolusi.',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -1833,11 +1840,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             children: [
               CheckboxListTile(
                 title: Text(
-                  'Keep Audio',
+                  'Pertahankan Audio',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
-                  'Re-encode audio to AAC format',
+                  'Encode ulang audio ke format AAC',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _reencodeKeepAudio,
@@ -1850,11 +1857,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const Divider(),
               CheckboxListTile(
                 title: Text(
-                  'Hardware Acceleration',
+                  'Akselerasi Hardware',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 subtitle: Text(
-                  'Use GPU for faster encoding',
+                  'Gunakan GPU untuk encoding lebih cepat',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 value: _reencodeUseHwAccel,
@@ -1914,9 +1921,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             onPressed: _reencodeVideoPaths.isNotEmpty ? _reencodeVideos : null,
             icon: const Icon(Icons.settings_backup_restore),
             label: Text(
-              _reencodeVideoPaths.length <= 1
-                  ? 'Process Video'
-                  : 'Process Videos',
+              _reencodeVideoPaths.length <= 1 ? 'Proses Video' : 'Proses Video',
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.primary,
@@ -1934,7 +1939,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       children: [
         if (_infoVideoPath == null)
           DropZoneWidget(
-            label: 'Drop Video Here (or Click)',
+            label: 'Seret Video ke Sini (atau Klik)',
             icon: Icons.movie,
             onTap: _pickInfoVideo,
             onFilesDropped: (files) {
@@ -1981,20 +1986,20 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'File Information',
+                    'Informasi File',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 16),
                   _buildInfoRow(
-                    'File Name',
-                    (_videoInfo!['fileName'] as String?) ?? 'Unknown',
+                    'Nama File',
+                    (_videoInfo!['fileName'] as String?) ?? 'Tidak Diketahui',
                   ),
                   _buildInfoRow(
-                    'File Size',
+                    'Ukuran File',
                     _formatFileSize((_videoInfo!['fileSize'] as int?) ?? 0),
                   ),
                   _buildInfoRow(
-                    'Duration',
+                    'Durasi',
                     _formatDuration(_videoInfo!['duration'] as Duration?),
                   ),
                 ],
@@ -2022,14 +2027,14 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Video Stream',
+                        'Stream Video',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                   _buildInfoRow(
-                    'Resolution',
+                    'Resolusi',
                     '${_videoInfo!['width'] ?? 'N/A'} x ${_videoInfo!['height'] ?? 'N/A'}',
                   ),
                   _buildInfoRow(
@@ -2038,11 +2043,12 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                   ),
                   _buildInfoRow(
                     'Codec',
-                    (_videoInfo!['codec'] as String?) ?? 'Unknown',
+                    (_videoInfo!['codec'] as String?) ?? 'Tidak Diketahui',
                   ),
                   _buildInfoRow(
-                    'Pixel Format',
-                    (_videoInfo!['pixelFormat'] as String?) ?? 'Unknown',
+                    'Format Piksel',
+                    (_videoInfo!['pixelFormat'] as String?) ??
+                        'Tidak Diketahui',
                   ),
                 ],
               ),
@@ -2069,15 +2075,15 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Audio Stream',
+                        'Stream Audio',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                   _buildInfoRow(
-                    'Audio Present',
-                    _videoInfo!['hasAudio'] == true ? 'Yes' : 'No',
+                    'Audio Ada',
+                    _videoInfo!['hasAudio'] == true ? 'Ya' : 'Tidak',
                   ),
                 ],
               ),
@@ -2111,7 +2117,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Metadata Tags',
+                            'Tag Metadata',
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                         ],
@@ -2170,7 +2176,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   }
 
   String _formatDuration(Duration? duration) {
-    if (duration == null) return 'Unknown';
+    if (duration == null) return 'Tidak Diketahui';
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
@@ -2183,14 +2189,14 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   String _getPresetHint(String preset) {
     switch (preset) {
       case 'ultrafast':
-        return 'Finishes instantly, but file might be larger. Use for quick tests.';
+        return 'Selesai instan, tapi file mungkin lebih besar. Gunakan untuk tes cepat.';
       case 'veryfast':
-        return 'Recommended for most videos. Good balance.';
+        return 'Direkomendasikan untuk kebanyakan video. Keseimbangan yang baik.';
       case 'fast':
-        return 'Slower than Very Fast, slightly better compression.';
+        return 'Lebih lambat dari Sangat Cepat, kompresi sedikit lebih baik.';
       case 'medium':
       case 'slow':
-        return 'Takes longer, but squeezes file smaller at same quality.';
+        return 'Memakan waktu lebih lama, tapi mengecilkan file dengan kualitas sama.';
       default:
         return '';
     }
@@ -2198,15 +2204,15 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
 
   String _getCrfHint(int crf) {
     if (crf <= 18) {
-      return 'Best for archiving. Keeps almost all detail (Large File).';
+      return 'Terbaik untuk arsip. Menjaga hampir semua detail (File Besar).';
     }
     if (crf <= 23) {
-      return 'Best for sharing. Good quality, decent size (Default).';
+      return 'Terbaik untuk berbagi. Kualitas baik, ukuran layak (Default).';
     }
     if (crf <= 28) {
-      return 'Best for Discord/WhatsApp. Shrinks file size a lot (Visible quality drop).';
+      return 'Terbaik untuk Discord/WhatsApp. Mengecilkan ukuran file banyak (Penurunan kualitas terlihat).';
     }
-    return 'Best for very slow internet. Tiny file, pixelated.';
+    return 'Terbaik untuk internet sangat lambat. File kecil, piksel.';
   }
 
   String _colorToHex(Color color) {

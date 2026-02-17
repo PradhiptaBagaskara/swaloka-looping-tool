@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
+import 'package:swaloka_looping_tool/core/utils/timestamp_formatter.dart';
 import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
 import 'package:swaloka_looping_tool/layouts/layouts.dart';
@@ -69,10 +70,12 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 _buildSectionHeader(
                   context,
                   ref,
-                  'Intro Video (Optional)',
+                  'Video Pembuka (Opsional)',
                   Icons.play_circle_filled,
                 ),
-                if (!collapsedSections.contains('Intro Video (Optional)')) ...[
+                if (!collapsedSections.contains(
+                  'Video Pembuka (Opsional)',
+                )) ...[
                   const SizedBox(height: 16),
                   _buildIntroSection(context, ref),
                 ],
@@ -80,7 +83,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 _buildSectionHeader(
                   context,
                   ref,
-                  'Background Video',
+                  'Video Latar Belakang',
                   Icons.movie_outlined,
                   isCollapsible: false,
                 ),
@@ -102,14 +105,14 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 _buildSectionHeader(
                   context,
                   ref,
-                  'Audio Tracks (${_audioFiles.length})',
+                  'Track Audio (${_audioFiles.length})',
                   Icons.audiotrack,
                   isCollapsible: false,
                   action: _audioFiles.isNotEmpty
                       ? IconButton(
                           onPressed: () => setState(() => _audioFiles = []),
                           icon: const Icon(Icons.delete_sweep, size: 18),
-                          tooltip: 'Remove all audio tracks',
+                          tooltip: 'Hapus semua track audio',
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
@@ -314,7 +317,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
               _buildSectionHeader(
                 context,
                 ref,
-                'Processing Settings',
+                'Pengaturan Pemrosesan',
                 Icons.tune,
                 isCollapsible: false,
               ),
@@ -338,7 +341,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                             children: [
                               Flexible(
                                 child: Text(
-                                  'Loop Count',
+                                  'Jumlah Loop',
                                   style: Theme.of(context).textTheme.bodyMedium,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -346,9 +349,9 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                               const SizedBox(width: 4),
                               const CompactTooltip(
                                 message:
-                                    'Repeats the audio playlist.\n\n'
-                                    'Useful when video is longer\n'
-                                    'than your audio tracks.',
+                                    'Mengulang playlist audio.\n\n'
+                                    'Berguna ketika video lebih panjang\n'
+                                    'dari track audio Anda.',
                               ),
                             ],
                           ),
@@ -376,7 +379,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                   onPressed: canMerge ? () => _mergeVideos(context, ref) : null,
                   icon: const Icon(Icons.auto_fix_high, size: 20),
                   label: const Text(
-                    'Generate Video',
+                    'Buat Video',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   style: ElevatedButton.styleFrom(
@@ -557,7 +560,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Adding an intro video will increase processing time',
+                    'Menambahkan video pembuka akan meningkatkan waktu pemrosesan',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: Theme.of(context).colorScheme.onPrimaryContainer,
                     ),
@@ -576,7 +579,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
               ),
               const SizedBox(width: 8),
               Text(
-                'Intro Audio: Playlist Overlay',
+                'Audio Pembuka: Overlay Playlist',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).colorScheme.onSurface,
@@ -586,7 +589,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'The main audio playlist will play during the intro video',
+            'Playlist audio utama akan diputar selama video pembuka',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -623,14 +626,14 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
 
     if (isVideo) {
       if (isIntro) {
-        label = 'Add optional intro video (drag & drop or click)';
+        label = 'Intro video opsional (Drag & Drop atau Klik)';
         icon = Icons.play_circle_outline;
       } else {
-        label = 'Add your background video (drag & drop or click)';
+        label = 'Background video (Drag & Drop atau Klik)';
         icon = Icons.video_library_outlined;
       }
     } else {
-      label = 'Add audio files (drag & drop or click to select multiple)';
+      label = 'Tambahkan file audio (Drag & Drop atau Klik)';
       icon = Icons.library_music_outlined;
     }
 
@@ -757,7 +760,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Intro',
+                        'Pembuka',
                         style: TextStyle(
                           fontSize: 9,
                           color: Theme.of(context).colorScheme.error,
@@ -797,7 +800,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Background',
+                        'Latar Belakang',
                         style: TextStyle(fontSize: 9, color: Colors.green),
                       ),
                       Text(
@@ -919,7 +922,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 const Icon(Icons.warning_amber_rounded, color: Colors.orange),
                 const SizedBox(width: 12),
                 Text(
-                  'Codec Mismatch',
+                  'Codec Tidak Cocok',
                   style: Theme.of(context).textTheme.labelMedium,
                 ),
               ],
@@ -929,25 +932,25 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'The intro video and background video have different codecs. This may cause issues during merging.',
+                  'Video pembuka dan video latar belakang memiliki codec berbeda. Ini dapat menyebabkan masalah saat penggabungan.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildCodecInfo('Intro Video', introMeta.codec!),
+                _buildCodecInfo('Video Pembuka', introMeta.codec!),
                 const SizedBox(height: 8),
-                _buildCodecInfo('Background Video', bgMeta.codec!),
+                _buildCodecInfo('Video Latar Belakang', bgMeta.codec!),
                 const SizedBox(height: 16),
                 Text(
-                  'Recommendation:',
+                  'Rekomendasi:',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Please convert your intro video to match the background video codec (e.g., using HandBrake to convert both to H.264/MP4).',
+                  'Silakan konversi video pembuka Anda agar cocok dengan codec video latar belakang (misalnya, menggunakan HandBrake untuk mengonversi keduanya ke H.264/MP4).',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -958,7 +961,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
                 child: Text(
-                  'Cancel',
+                  'Batal',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -970,7 +973,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 ),
-                child: const Text('I Understand, Try Anyway'),
+                child: const Text('Saya Mengerti, Coba Saja'),
               ),
             ],
           ),
@@ -991,7 +994,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
             introMeta.height != bgMeta.height) {
           issues.add(
             _buildIssueRow(
-              'Resolution',
+              'Resolusi',
               '${introMeta.width}x${introMeta.height}',
               '${bgMeta.width}x${bgMeta.height}',
             ),
@@ -1017,7 +1020,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
           bgMeta.pixFmt != null &&
           introMeta.pixFmt != bgMeta.pixFmt) {
         issues.add(
-          _buildIssueRow('Pixel Format', introMeta.pixFmt!, bgMeta.pixFmt!),
+          _buildIssueRow('Format Pixel', introMeta.pixFmt!, bgMeta.pixFmt!),
         );
       }
 
@@ -1033,7 +1036,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 const Icon(Icons.warning_amber_rounded, color: Colors.orange),
                 const SizedBox(width: 12),
                 Text(
-                  'Potential Glitch Detected',
+                  'Glitch Potensial Terdeteksi',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
@@ -1043,7 +1046,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'The intro video and background video have mismatched properties. This will likely cause the merged video to glitch or fail.',
+                  'Video pembuka dan video latar belakang memiliki properti yang tidak cocok. Ini kemungkinan akan menyebabkan video gabungan mengalami glitch atau gagal.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -1052,7 +1055,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 ...issues,
                 const SizedBox(height: 16),
                 Text(
-                  'It is recommended to manually convert your intro video to match the background video parameters before merging.',
+                  'Disarankan untuk mengonversi video pembuka Anda secara manual agar sesuai dengan parameter video latar belakang sebelum menggabungkan.',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -1061,21 +1064,21 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false), // Cancel
+                onPressed: () => Navigator.pop(context, false), // Batal
                 child: Text(
-                  'Cancel',
+                  'Batal',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
               ElevatedButton(
-                onPressed: () => Navigator.pop(context, true), // Process Anyway
+                onPressed: () => Navigator.pop(context, true), // Proses Saja
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 ),
-                child: const Text('Process Anyway'),
+                child: const Text('Proses Saja'),
               ),
             ],
           ),
@@ -1099,7 +1102,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
 
     String? logFilePath;
     try {
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final timestamp = TimestampFormatter.format();
       final loopPrefix = _audioLoopCount > 1 ? 'loop_${_audioLoopCount}x_' : '';
       final outputFileName = 'video_$loopPrefix$timestamp.mp4';
       final outputPath = p.join(outputDir, outputFileName);
