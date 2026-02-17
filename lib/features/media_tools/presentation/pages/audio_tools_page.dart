@@ -7,12 +7,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
+import 'package:swaloka_looping_tool/features/media_tools/domain/media_tools_service.dart';
 import 'package:swaloka_looping_tool/features/media_tools/presentation/providers/media_tools_providers.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
 import 'package:swaloka_looping_tool/widgets/widgets.dart';
 
-const _videoExtensions = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv'];
 const _audioExtensions = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'];
+
+class _AudioOverlay {
+  const _AudioOverlay({
+    required this.path,
+    required this.volume,
+    this.isPlaying,
+  });
+
+  final String path;
+  final double volume; // 0.0 to 1.0
+  final bool? isPlaying;
+
+  bool get playing => isPlaying ?? false;
+
+  _AudioOverlay copyWith({String? path, double? volume, bool? isPlaying}) {
+    return _AudioOverlay(
+      path: path ?? this.path,
+      volume: volume ?? this.volume,
+      isPlaying: isPlaying,
+    );
+  }
+}
 
 class AudioToolsPage extends ConsumerStatefulWidget {
   const AudioToolsPage({required this.initialDirectory, super.key});
@@ -23,20 +45,13 @@ class AudioToolsPage extends ConsumerStatefulWidget {
 }
 
 class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
-  // Extract Audio State
-  String? _extractVideoPath;
-  String _extractFormat = 'aac';
+  // Base Audio State
+  final List<String> _baseAudios = [];
+  int? _currentBaseAudioIndex; // Which base audio is currently playing
+  bool _isBaseAudioPlaying = false;
 
-  // Concat Audio State
-  final List<String> _concatAudioPaths = [];
-  String _concatFormat = 'aac';
-
-  // Convert Audio State
-  String? _convertAudioPath;
-  String _convertFormat = 'aac';
-
-  // Common Formats
-  final _audioFormats = ['aac', 'mp3', 'wav', 'm4a', 'ogg', 'flac'];
+  // Audio Overlay State
+  final List<_AudioOverlay> _audioOverlays = [];
 
   Future<String> _ensureOutputsDir() async {
     final outputsDir = Directory(p.join(widget.initialDirectory, 'outputs'));
@@ -46,19 +61,7 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
     return outputsDir.path;
   }
 
-  Future<void> _pickExtractVideo() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.video,
-      initialDirectory: widget.initialDirectory,
-    );
-    if (result != null && result.files.single.path != null) {
-      setState(() {
-        _extractVideoPath = result.files.single.path;
-      });
-    }
-  }
-
-  Future<void> _pickConcatAudios() async {
+  Future<void> _pickBaseAudios() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.audio,
       allowMultiple: true,
@@ -66,80 +69,103 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
     );
     if (result != null) {
       setState(() {
-        _concatAudioPaths.addAll(result.paths.whereType<String>().toList());
+        for (final file in result.files) {
+          if (file.path != null) {
+            _baseAudios.add(file.path!);
+          }
+        }
       });
     }
   }
 
-  Future<void> _pickConvertAudio() async {
+  Future<void> _pickAudioOverlay() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.audio,
       initialDirectory: widget.initialDirectory,
     );
     if (result != null && result.files.single.path != null) {
       setState(() {
-        _convertAudioPath = result.files.single.path;
+        _audioOverlays.add(
+          _AudioOverlay(
+            path: result.files.single.path!,
+            volume: 1,
+          ),
+        );
       });
     }
   }
 
-  Future<void> _extractAudio() async {
-    if (_extractVideoPath == null) return;
-    await _runOperation((logCallback) async {
-      final outputDir = await _ensureOutputsDir();
-      final name = p.basenameWithoutExtension(_extractVideoPath!);
-      final outputPath = p.join(outputDir, '${name}_extracted.$_extractFormat');
-
-      await ref
-          .read(mediaToolsServiceProvider)
-          .extractAudio(
-            videoPath: _extractVideoPath!,
-            outputPath: outputPath,
-            onLog: logCallback,
-          );
-
-      // Update success state with output path for preview
-      ref.read(processingStateProvider.notifier).setSuccess(outputPath);
+  void _toggleBaseAudioPlayback(int startIndex) {
+    setState(() {
+      if (_currentBaseAudioIndex == startIndex && _isBaseAudioPlaying) {
+        _isBaseAudioPlaying = false;
+        _currentBaseAudioIndex = null;
+      } else {
+        _currentBaseAudioIndex = startIndex;
+        _isBaseAudioPlaying = true;
+      }
     });
   }
 
-  Future<void> _concatAudio() async {
-    if (_concatAudioPaths.isEmpty) return;
+  void _onBaseAudioCompleted() {
+    if (_currentBaseAudioIndex != null && _isBaseAudioPlaying) {
+      setState(() {
+        if (_currentBaseAudioIndex! < _baseAudios.length - 1) {
+          // Move to next audio
+          _currentBaseAudioIndex = _currentBaseAudioIndex! + 1;
+        } else {
+          // End of sequence
+          _isBaseAudioPlaying = false;
+          _currentBaseAudioIndex = null;
+        }
+      });
+    }
+  }
+
+  void _toggleOverlayPlayback(int index) {
+    setState(() {
+      _audioOverlays[index] = _audioOverlays[index].copyWith(
+        isPlaying: !_audioOverlays[index].playing,
+      );
+    });
+  }
+
+  Future<void> _processAudioWithOverlays() async {
+    if (_baseAudios.isEmpty && _audioOverlays.isEmpty) return;
+
     await _runOperation((logCallback) async {
       final outputDir = await _ensureOutputsDir();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final outputPath = p.join(
-        outputDir,
-        'concatenated_$timestamp.$_concatFormat',
-      );
+      final outputPath = p.join(outputDir, 'audio_output_$timestamp.m4a');
 
-      await ref
-          .read(mediaToolsServiceProvider)
-          .concatAudio(
-            audioPaths: _concatAudioPaths,
-            outputPath: outputPath,
-            onLog: logCallback,
-          );
-
-      // Update success state with output path for preview
-      ref.read(processingStateProvider.notifier).setSuccess(outputPath);
-    });
-  }
-
-  Future<void> _convertAudio() async {
-    if (_convertAudioPath == null) return;
-    await _runOperation((logCallback) async {
-      final outputDir = await _ensureOutputsDir();
-      final name = p.basenameWithoutExtension(_convertAudioPath!);
-      final outputPath = p.join(outputDir, '${name}_converted.$_convertFormat');
-
-      await ref
-          .read(mediaToolsServiceProvider)
-          .convertAudio(
-            inputPath: _convertAudioPath!,
-            outputPath: outputPath,
-            onLog: logCallback,
-          );
+      // If only overlays, no base audio
+      if (_baseAudios.isEmpty) {
+        await ref
+            .read(mediaToolsServiceProvider)
+            .applyAudioOverlays(
+              overlays: _audioOverlays
+                  .map(
+                    (e) => AudioOverlayConfig(path: e.path, volume: e.volume),
+                  )
+                  .toList(),
+              outputPath: outputPath,
+              onLog: logCallback,
+            );
+      } else {
+        // Base audios + overlays
+        await ref
+            .read(mediaToolsServiceProvider)
+            .applyAudioOverlaysToBaseAudios(
+              baseAudios: _baseAudios,
+              overlays: _audioOverlays
+                  .map(
+                    (e) => AudioOverlayConfig(path: e.path, volume: e.volume),
+                  )
+                  .toList(),
+              outputPath: outputPath,
+              onLog: logCallback,
+            );
+      }
 
       // Update success state with output path for preview
       ref.read(processingStateProvider.notifier).setSuccess(outputPath);
@@ -169,186 +195,42 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
     }
   }
 
-  void _showPreview(BuildContext context, String path, {bool isVideo = false}) {
-    final fileName = p.basename(path);
-    showDialog<void>(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          constraints: BoxConstraints(
-            maxWidth: isVideo ? 800 : 400,
-            maxHeight: isVideo ? 600 : 200,
-          ),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      isVideo ? Icons.videocam : Icons.audiotrack,
-                      color: isVideo
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.tertiary,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        fileName,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 20),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              Flexible(
-                child: MediaPreviewPlayer(path: path, isVideo: isVideo),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Column(
-        children: [
-          ColoredBox(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: TabBar(
-              tabs: const [
-                Tab(
-                  text: 'Extract Audio',
-                  icon: Icon(Icons.audio_file, size: 20),
-                ),
-                Tab(
-                  text: 'Merge Audio',
-                  icon: Icon(Icons.merge_type, size: 20),
-                ),
-                Tab(
-                  text: 'Convert Format',
-                  icon: Icon(Icons.transform, size: 20),
-                ),
-              ],
-              labelColor: Theme.of(context).colorScheme.primary,
-              unselectedLabelColor: Theme.of(
-                context,
-              ).colorScheme.onSurfaceVariant,
-              indicatorColor: Theme.of(context).colorScheme.primary,
-              indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: Theme.of(context).colorScheme.outline,
-            ),
-          ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                _buildTabContent(_buildExtractContent()),
-                _buildTabContent(_buildMergeContent()),
-                _buildTabContent(_buildConvertContent()),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabContent(Widget content) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Theme.of(context).colorScheme.outline,
-          ),
-        ),
-        child: content,
-      ),
-    );
-  }
-
-  Widget _buildExtractContent() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_extractVideoPath == null)
-          DropZoneWidget(
-            label: 'Drop Video Here (or Click)',
-            icon: Icons.movie,
-            onTap: _pickExtractVideo,
-            onFilesDropped: (files) {
-              final video = files.firstWhere(
-                (f) => _videoExtensions.contains(
-                  p.extension(f.path).replaceAll('.', '').toLowerCase(),
-                ),
-                orElse: () => files.first,
-              );
-              setState(() {
-                _extractVideoPath = video.path;
-              });
-            },
-          )
-        else
-          MediaItemCard(
-            path: _extractVideoPath!,
-            icon: Icons.movie,
-            isVideo: true,
-            onRemove: () => setState(() => _extractVideoPath = null),
-            onPreview: () => _showPreview(
-              context,
-              _extractVideoPath!,
-              isVideo: true,
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildBaseAudioSection(),
+                const SizedBox(height: 24),
+                _buildAudioOverlaySection(),
+              ],
             ),
           ),
-        const SizedBox(height: 16),
-        _buildFormatDropdown(
-          value: _extractFormat,
-          onChanged: (v) => setState(() => _extractFormat = v!),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton.icon(
-          onPressed: _extractVideoPath != null ? _extractAudio : null,
-          icon: const Icon(Icons.download),
-          label: const Text('Extract Audio'),
         ),
       ],
     );
   }
 
-  Widget _buildMergeContent() {
+  Widget _buildBaseAudioSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          'Base Audio (Loop in Sequence)',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
         DropZoneWidget(
-          label: 'Drop Audio Files Here (or Click)',
-          icon: Icons.audiotrack,
-          onTap: _pickConcatAudios,
+          label: 'Drop Base Audio Files Here (or Click)',
+          icon: Icons.music_note,
+          onTap: _pickBaseAudios,
           onFilesDropped: (files) {
             final audios = files
                 .where(
@@ -360,18 +242,22 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
                 .toList();
             if (audios.isNotEmpty) {
               setState(() {
-                _concatAudioPaths.addAll(audios);
+                _baseAudios.addAll(audios);
               });
             }
           },
         ),
-        if (_concatAudioPaths.isNotEmpty) ...[
+        if (_baseAudios.isNotEmpty) ...[
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton.icon(
-                onPressed: () => setState(_concatAudioPaths.clear),
+                onPressed: () => setState(() {
+                  _baseAudios.clear();
+                  _currentBaseAudioIndex = null;
+                  _isBaseAudioPlaying = false;
+                }),
                 icon: const Icon(Icons.delete_sweep, size: 16),
                 label: const Text('Clear All'),
                 style: TextButton.styleFrom(
@@ -384,115 +270,304 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
             ],
           ),
           const SizedBox(height: 8),
-          ReorderableListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _concatAudioPaths.length,
-            onReorder: (oldIndex, newIndex) {
-              setState(() {
-                if (newIndex > oldIndex) {
-                  newIndex -= 1;
-                }
-                final item = _concatAudioPaths.removeAt(oldIndex);
-                _concatAudioPaths.insert(newIndex, item);
-              });
-            },
-            itemBuilder: (context, i) {
-              return MediaItemCard(
-                key: ValueKey(_concatAudioPaths[i]),
-                path: _concatAudioPaths[i],
-                icon: Icons.music_note,
-                onRemove: () {
-                  setState(() {
-                    _concatAudioPaths.removeAt(i);
-                  });
-                },
-                onPreview: () => _showPreview(
-                  context,
-                  _concatAudioPaths[i],
+          ...List.generate(_baseAudios.length, (i) {
+            final audio = _baseAudios[i];
+            final isCurrent =
+                _currentBaseAudioIndex == i && _isBaseAudioPlaying;
+            final isPast =
+                _currentBaseAudioIndex != null && i < _currentBaseAudioIndex!;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isCurrent
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : null,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isCurrent
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(
+                          context,
+                        ).colorScheme.outline.withValues(alpha: 0.5),
+                  width: isCurrent ? 2 : 1,
                 ),
-                index: i + 1,
-              );
-            },
-          ),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        isPast
+                            ? Icons.check_circle
+                            : isCurrent
+                            ? Icons.play_circle_filled
+                            : Icons.audiotrack,
+                        size: 20,
+                        color: isPast
+                            ? Colors.green
+                            : isCurrent
+                            ? Theme.of(context).colorScheme.onPrimaryContainer
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          p.basename(audio),
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (i == 0)
+                        IconButton(
+                          icon: Icon(
+                            isCurrent && _isBaseAudioPlaying
+                                ? Icons.pause_circle_filled
+                                : Icons.play_circle_filled,
+                            color: isCurrent
+                                ? Theme.of(
+                                    context,
+                                  ).colorScheme.onPrimaryContainer
+                                : null,
+                          ),
+                          onPressed: () => _toggleBaseAudioPlayback(0),
+                          tooltip: 'Play Sequence',
+                        )
+                      else
+                        const SizedBox(width: 48),
+                      IconButton(
+                        icon: Icon(
+                          Icons.close,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _baseAudios.removeAt(i);
+                            if (_currentBaseAudioIndex != null &&
+                                _currentBaseAudioIndex! >= _baseAudios.length) {
+                              _currentBaseAudioIndex = null;
+                              _isBaseAudioPlaying = false;
+                            }
+                          });
+                        },
+                        tooltip: 'Remove',
+                      ),
+                    ],
+                  ),
+                  if (isCurrent && _currentBaseAudioIndex == i) ...[
+                    const SizedBox(height: 8),
+                    MediaPreviewPlayer(
+                      key: ValueKey('base_$i'),
+                      path: audio,
+                      isVideo: false,
+                      onPlaybackComplete: _onBaseAudioCompleted,
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }),
         ],
-        const SizedBox(height: 16),
-        _buildFormatDropdown(
-          value: _concatFormat,
-          onChanged: (v) => setState(() => _concatFormat = v!),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton.icon(
-          onPressed: _concatAudioPaths.isNotEmpty ? _concatAudio : null,
-          icon: const Icon(Icons.merge),
-          label: const Text('Merge Audios'),
-        ),
       ],
     );
   }
 
-  Widget _buildConvertContent() {
+  Widget _buildAudioOverlaySection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_convertAudioPath == null)
-          DropZoneWidget(
-            label: 'Drop Audio File Here (or Click)',
-            icon: Icons.music_note,
-            onTap: _pickConvertAudio,
-            onFilesDropped: (files) {
-              final audio = files.firstWhere(
-                (f) => _audioExtensions.contains(
-                  p.extension(f.path).replaceAll('.', '').toLowerCase(),
-                ),
-                orElse: () => files.first,
-              );
-              setState(() {
-                _convertAudioPath = audio.path;
-              });
-            },
-          )
-        else
-          MediaItemCard(
-            path: _convertAudioPath!,
-            icon: Icons.music_note,
-            onRemove: () => setState(() => _convertAudioPath = null),
-            onPreview: () => _showPreview(
-              context,
-              _convertAudioPath!,
-            ),
+        Text(
+          'Audio Overlay',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
           ),
-        const SizedBox(height: 16),
-        _buildFormatDropdown(
-          value: _convertFormat,
-          onChanged: (v) => setState(() => _convertFormat = v!),
         ),
+        const SizedBox(height: 16),
+        DropZoneWidget(
+          label: 'Drop Overlay Audio Files Here (or Click)',
+          icon: Icons.layers,
+          onTap: _pickAudioOverlay,
+          onFilesDropped: (files) {
+            final audios = files
+                .where(
+                  (f) => _audioExtensions.contains(
+                    p.extension(f.path).replaceAll('.', '').toLowerCase(),
+                  ),
+                )
+                .map((f) => f.path)
+                .toList();
+            if (audios.isNotEmpty) {
+              setState(() {
+                for (final audio in audios) {
+                  _audioOverlays.add(
+                    _AudioOverlay(
+                      path: audio,
+                      volume: 1,
+                    ),
+                  );
+                }
+              });
+            }
+          },
+        ),
+        if (_audioOverlays.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                onPressed: () => setState(_audioOverlays.clear),
+                icon: const Icon(Icons.delete_sweep, size: 16),
+                label: const Text('Clear All'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(
+                    context,
+                  ).colorScheme.onSurfaceVariant,
+                  textStyle: Theme.of(context).textTheme.labelMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...List.generate(_audioOverlays.length, (i) {
+            final overlay = _audioOverlays[i];
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: overlay.playing
+                    ? Theme.of(context).colorScheme.secondaryContainer
+                    : null,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: overlay.playing
+                      ? Theme.of(context).colorScheme.secondary
+                      : Theme.of(
+                          context,
+                        ).colorScheme.outline.withValues(alpha: 0.5),
+                  width: overlay.playing ? 2 : 1,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.music_note,
+                        size: 20,
+                        color: overlay.playing
+                            ? Theme.of(context).colorScheme.onSecondaryContainer
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          p.basename(overlay.path),
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          overlay.playing
+                              ? Icons.pause_circle_filled
+                              : Icons.play_circle_outline,
+                          color: overlay.playing
+                              ? Theme.of(
+                                  context,
+                                ).colorScheme.onSecondaryContainer
+                              : null,
+                        ),
+                        onPressed: () => _toggleOverlayPlayback(i),
+                        tooltip: overlay.playing ? 'Pause' : 'Play',
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.close,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _audioOverlays.removeAt(i);
+                          });
+                        },
+                        tooltip: 'Remove',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Volume slider (always visible)
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.volume_down,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      Expanded(
+                        child: Slider(
+                          value: overlay.volume,
+                          divisions: 100,
+                          label: '${(overlay.volume * 100).toInt()}%',
+                          onChanged: (value) {
+                            setState(() {
+                              _audioOverlays[i] = overlay.copyWith(
+                                volume: value,
+                              );
+                            });
+                          },
+                        ),
+                      ),
+                      Icon(
+                        Icons.volume_up,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          '${(overlay.volume * 100).toInt()}%',
+                          style: Theme.of(context).textTheme.labelSmall,
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Inline player (shows when playing)
+                  if (overlay.playing)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: KeepAlive(
+                        keepAlive: true,
+                        child: MediaPreviewPlayer(
+                          key: ValueKey('overlay_${overlay.path}'),
+                          path: overlay.path,
+                          isVideo: false,
+                          volume: overlay.volume,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
+        ],
         const SizedBox(height: 16),
         ElevatedButton.icon(
-          onPressed: _convertAudioPath != null ? _convertAudio : null,
-          icon: const Icon(Icons.swap_horiz),
-          label: const Text('Convert'),
+          onPressed: (_baseAudios.isNotEmpty || _audioOverlays.isNotEmpty)
+              ? _processAudioWithOverlays
+              : null,
+          icon: const Icon(Icons.layers),
+          label: const Text('Apply Overlays'),
         ),
       ],
-    );
-  }
-
-  Widget _buildFormatDropdown({
-    required String value,
-    required ValueChanged<String?> onChanged,
-  }) {
-    return CompactDropdown<String>(
-      value: value,
-      label: 'Output Format:',
-      items: _audioFormats
-          .map(
-            (f) => DropdownMenuItem(
-              value: f,
-              child: Text(f.toUpperCase()),
-            ),
-          )
-          .toList(),
-      onChanged: onChanged,
     );
   }
 }

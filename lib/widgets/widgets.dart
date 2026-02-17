@@ -1,3 +1,4 @@
+export 'audio_overlay_player.dart';
 export 'color_picker_button.dart';
 export 'color_picker_dialog.dart';
 export 'compact_dropdown.dart';

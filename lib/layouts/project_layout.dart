@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:swaloka_looping_tool/features/media_tools/presentation/pages/audio_tools_page.dart';
+import 'package:swaloka_looping_tool/features/media_tools/presentation/pages/audio_tools_standalone_page.dart';
 import 'package:swaloka_looping_tool/features/media_tools/presentation/pages/video_tools_page.dart';
 import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/ffmpeg_provider.dart';
@@ -55,9 +55,6 @@ class _ProjectLayoutState extends ConsumerState<ProjectLayout> {
                             index: _selectedTab,
                             children: [
                               widget.looperContent,
-                              AudioToolsPage(
-                                initialDirectory: widget.project.rootPath,
-                              ),
                               VideoToolsPage(
                                 initialDirectory: widget.project.rootPath,
                               ),
@@ -103,8 +100,8 @@ class _ProjectLayoutState extends ConsumerState<ProjectLayout> {
                 _buildSectionTitle(context, 'Navigation'),
                 SizedBox(height: baseFontSize * 0.86),
                 _buildNavButton(0, 'Looping Tools', Icons.loop),
-                _buildNavButton(1, 'Audio Tools', Icons.audio_file),
-                _buildNavButton(2, 'Video Tools', Icons.video_library),
+                _buildAudioToolsButton(),
+                _buildNavButton(1, 'Video Tools', Icons.video_library),
                 SizedBox(height: baseFontSize * 2.29),
                 if (_selectedTab == 0 && widget.looperQuickAction != null) ...[
                   _buildSectionTitle(context, 'Quick Actions'),
@@ -164,6 +161,54 @@ class _ProjectLayoutState extends ConsumerState<ProjectLayout> {
                       ? Theme.of(context).colorScheme.onSurface
                       : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAudioToolsButton() {
+    final baseFontSize = Theme.of(context).textTheme.bodyMedium!.fontSize!;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: baseFontSize * 0.57),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (context) => AudioToolsStandalonePage(
+                projectRootPath: widget.project.rootPath,
+              ),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(baseFontSize * 0.57),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: baseFontSize * 0.86,
+            vertical: baseFontSize * 0.71,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(baseFontSize * 0.57),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.audio_file,
+                size: baseFontSize * 1.43,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              SizedBox(width: baseFontSize * 0.86),
+              Text(
+                'Audio Tools',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.normal,
                 ),
               ),
             ],

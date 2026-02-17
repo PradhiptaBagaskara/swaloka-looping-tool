@@ -9,20 +9,28 @@ class MediaPreviewPlayer extends StatefulWidget {
     required this.path,
     super.key,
     this.isVideo = true,
+    this.volume = 1.0,
     this.onDurationAvailable,
+    this.onPlaybackComplete,
   });
   final String path;
   final bool isVideo;
+  final double volume; // 0.0 to 1.0
   final void Function(Duration duration)? onDurationAvailable;
+  final void Function()? onPlaybackComplete;
 
   @override
   State<MediaPreviewPlayer> createState() => _MediaPreviewPlayerState();
 }
 
-class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
+class _MediaPreviewPlayerState extends State<MediaPreviewPlayer>
+    with AutomaticKeepAliveClientMixin {
   VideoPlayerController? _controller;
   bool _initialized = false;
   String? _error;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -35,6 +43,18 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.path != widget.path) {
       _handlePathChange();
+    } else if (oldWidget.volume != widget.volume) {
+      final controller = _controller;
+      if (controller != null && controller.value.isInitialized) {
+        // Volume changed without path change - update in real-time
+        // Get current playing state before volume change
+        final wasPlaying = controller.value.isPlaying;
+        controller.setVolume(widget.volume);
+        // Ensure playback continues if it was playing
+        if (wasPlaying && !controller.value.isPlaying) {
+          controller.play();
+        }
+      }
     }
   }
 
@@ -69,8 +89,11 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
               // Auto-play when preview opens (skip on Linux - not supported)
               if (!Platform.isLinux) {
                 controller
-                  ..setLooping(true)
+                  ..setVolume(widget.volume)
                   ..play();
+              } else {
+                // Set volume even on Linux (though auto-play doesn't work)
+                controller.setVolume(widget.volume);
               }
             }
           })
@@ -91,9 +114,23 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
   }
 
   void _onControllerUpdate() {
-    if (mounted) {
-      setState(() {});
+    if (!mounted) return;
+
+    final controller = _controller;
+    if (controller != null) {
+      // Check if playback completed
+      final position = controller.value.position;
+      final duration = controller.value.duration;
+
+      if (duration > Duration.zero &&
+          position >= duration &&
+          controller.value.isPlaying) {
+        // Playback completed
+        widget.onPlaybackComplete?.call();
+      }
     }
+
+    setState(() {});
   }
 
   void _disposePlayer() {
@@ -138,6 +175,7 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     if (_error != null) {
       return Center(
         child: Padding(

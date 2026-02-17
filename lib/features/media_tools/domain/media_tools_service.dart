@@ -4,6 +4,17 @@ import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
 import 'package:swaloka_looping_tool/core/utils/temp_directory_helper.dart';
 
+/// Configuration for a single audio overlay
+class AudioOverlayConfig {
+  const AudioOverlayConfig({
+    required this.path,
+    required this.volume,
+  });
+
+  final String path;
+  final double volume; // 0.0 to 1.0
+}
+
 class MediaToolsService {
   String _scaleFlagsForQuality(String quality) {
     switch (quality) {
@@ -111,6 +122,192 @@ class MediaToolsService {
 
       onLog?.call(LogEntry.success('Audio concatenated to $outputPath'));
     } finally {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    }
+  }
+
+  Future<void> applyAudioOverlays({
+    required List<AudioOverlayConfig> overlays,
+    required String outputPath,
+    void Function(LogEntry)? onLog,
+  }) async {
+    final log = LogEntry.info(
+      'Applying ${overlays.length} audio overlay(s)...',
+    );
+    onLog?.call(log);
+
+    if (overlays.isEmpty) {
+      throw Exception('No audio overlays provided');
+    }
+
+    try {
+      // Build inputs
+      final inputs = <String>[];
+      for (final overlay in overlays) {
+        inputs.addAll(['-i', overlay.path]);
+      }
+
+      // Build filter_complex to mix all audio with volume adjustments
+      final filterParts = <String>[];
+      final inputLabels = <String>[];
+
+      // Apply volume to each input and create labels
+      for (var i = 0; i < overlays.length; i++) {
+        final volume = overlays[i].volume;
+        filterParts.add('[$i:a]volume=$volume[a$i];');
+        inputLabels.add('[a$i]');
+      }
+
+      // Mix all inputs using amerge
+      final allInputs = inputLabels.join();
+      filterParts.add(
+        '$allInputs${overlays.length == 2
+            ? 'amerge=inputs=2'
+            : overlays.length == 3
+            ? 'amerge=inputs=3'
+            : 'amerge=inputs=${overlays.length}'}[aout]',
+      );
+
+      final filterComplex = filterParts.join();
+
+      final codecArgs = _audioCodecArgs(outputPath);
+
+      await FFmpegService.run(
+        [
+          '-y',
+          ...inputs,
+          '-filter_complex',
+          filterComplex,
+          '-map',
+          '[aout]',
+          ...codecArgs,
+          outputPath,
+        ],
+        errorMessage: 'Failed to apply audio overlays',
+        onLog: log.addSubLog,
+      );
+
+      onLog?.call(LogEntry.success('Audio overlays applied to $outputPath'));
+    } on Exception catch (e) {
+      onLog?.call(LogEntry.error('Failed to apply audio overlays: $e'));
+      rethrow;
+    }
+  }
+
+  Future<void> applyAudioOverlaysToBaseAudios({
+    required List<String> baseAudios,
+    required List<AudioOverlayConfig> overlays,
+    required String outputPath,
+    void Function(LogEntry)? onLog,
+  }) async {
+    final log = LogEntry.info(
+      'Processing ${baseAudios.length} base audio(s) with ${overlays.length} overlay(s)...',
+    );
+    onLog?.call(log);
+
+    if (baseAudios.isEmpty) {
+      throw Exception('No base audios provided');
+    }
+
+    if (overlays.isEmpty) {
+      // No overlays, just concatenate base audios
+      await concatAudio(
+        audioPaths: baseAudios,
+        outputPath: outputPath,
+        onLog: onLog,
+      );
+      return;
+    }
+
+    // Step 1: Create concat demuxer file for base audios (more efficient)
+    // This avoids opening many separate files - concat demuxer handles all base audios as one stream
+    final tempDir = await TempDirectoryHelper.create(
+      prefix: 'swaloka_audio_${DateTime.now().millisecondsSinceEpoch}',
+      onLog: onLog,
+    );
+
+    try {
+      final concatListPath = p.join(tempDir.path, 'base_audios.txt');
+      final concatContent = baseAudios
+          .map((f) => "file '${_formatPathForConcatFile(f)}'")
+          .join('\n');
+      await File(concatListPath).writeAsString(concatContent);
+
+      log.addSubLog(LogEntry.info('Base audios: ${baseAudios.length} files'));
+
+      // Step 2: Build FFmpeg command using concat demuxer
+      // Input 0: concat demuxer (all base audios merged as one stream)
+      // Inputs 1-N: overlays (each with stream_loop for infinite looping)
+      // -vn skips video processing (we only need audio)
+      final cmd = <String>[
+        '-y',
+        '-threads',
+        '0',
+        '-vn',
+        '-f',
+        'concat',
+        '-safe',
+        '0',
+        '-i',
+        concatListPath,
+      ];
+
+      // Add overlay inputs with stream_loop
+      for (final overlay in overlays) {
+        cmd.addAll(['-stream_loop', '-1', '-i', overlay.path]);
+      }
+
+      // Step 3: Build filter_complex
+      // Input 0:a = base audios from concat demuxer (already merged)
+      // Inputs 1:a, 2:a, etc. = overlays with stream_loop
+      final filterParts = <String>[];
+
+      // Mix base with overlays using amix with volume control
+      final weights = [
+        '1.0',
+        ...overlays.map((o) => o.volume.toStringAsFixed(2)),
+      ].join(' ');
+
+      // Build input labels for amix: [0:a][1:a][2:a]...
+      final amixInputs = <String>['[0:a]']; // base audios from concat demuxer
+      for (var i = 0; i < overlays.length; i++) {
+        final inputIndex = i + 1; // overlay inputs start at 1 (0 is concat)
+        amixInputs.add('[$inputIndex:a]');
+      }
+      final amixInputLabels = amixInputs.join();
+
+      final totalInputs = overlays.length + 1; // base + overlays
+      filterParts.add(
+        '$amixInputLabels'
+        'amix=inputs=$totalInputs:duration=first:weights=$weights[out]',
+      );
+
+      final filterComplex = filterParts.join('; ');
+
+      log.addSubLog(LogEntry.info('Mixing audio with complex filter...'));
+
+      final codecArgs = _audioCodecArgs(outputPath);
+
+      cmd.addAll([
+        '-filter_complex',
+        filterComplex,
+        '-map',
+        '[out]',
+        ...codecArgs,
+        outputPath,
+      ]);
+
+      await FFmpegService.run(
+        cmd,
+        errorMessage: 'Failed to process audio',
+        onLog: log.addSubLog,
+      );
+
+      onLog?.call(LogEntry.success('Audio processing complete: $outputPath'));
+    } finally {
+      // Auto clean temp directory after processing
       if (await tempDir.exists()) {
         await tempDir.delete(recursive: true);
       }
