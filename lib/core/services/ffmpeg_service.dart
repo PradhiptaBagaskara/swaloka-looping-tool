@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
@@ -14,6 +15,7 @@ class VideoMetadata {
     required this.hasAudio,
     this.audioCodec,
     this.metadataTags = const {},
+    this.rawJson,
   });
 
   final String? codec;
@@ -25,6 +27,7 @@ class VideoMetadata {
   final bool hasAudio;
   final String? audioCodec;
   final Map<String, String> metadataTags;
+  final Map<String, dynamic>? rawJson;
 }
 
 /// Service for handling FFmpeg operations
@@ -105,8 +108,14 @@ class FFmpegService {
   /// Get video metadata flags for YouTube
   static Future<List<String>> getStandardYouTubeVideoMetadataFlags() async {
     return [
-      '-bsf:v',
-      'h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1',
+      '-colorspace',
+      'bt709',
+      '-color_trc',
+      'bt709',
+      '-color_primaries',
+      'bt709',
+      '-color_range',
+      'tv',
     ];
   }
 
@@ -337,6 +346,14 @@ class FFmpegService {
       if (result.exitCode == 0) {
         final jsonStr = result.stdout as String;
 
+        // Parse full JSON for raw data
+        Map<String, dynamic>? rawJson;
+        try {
+          rawJson = jsonDecode(jsonStr) as Map<String, dynamic>?;
+        } on Exception catch (_) {
+          // If JSON parsing fails, continue without raw data
+        }
+
         // Parse codec
         final codecMatch = RegExp(
           r'"codec_name":\s*"([^"]+)"',
@@ -409,6 +426,7 @@ class FFmpegService {
           hasAudio: audioInfo.hasAudio,
           audioCodec: audioInfo.codec,
           metadataTags: metadataTags,
+          rawJson: rawJson,
         );
 
         // Cache the result
