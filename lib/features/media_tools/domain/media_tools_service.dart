@@ -28,59 +28,6 @@ class MediaToolsService {
     }
   }
 
-  Future<void> extractAudio({
-    required String videoPath,
-    required String outputPath,
-    void Function(LogEntry)? onLog,
-  }) async {
-    final log = LogEntry.info(
-      'Extracting audio from ${p.basename(videoPath)}...',
-    );
-    onLog?.call(log);
-
-    final codecArgs = _audioCodecArgs(outputPath);
-
-    await FFmpegService.run(
-      [
-        '-y',
-        '-i',
-        videoPath,
-        '-vn', // No video
-        ...codecArgs,
-        outputPath,
-      ],
-      errorMessage: 'Failed to extract audio',
-      onLog: log.addSubLog,
-    );
-
-    onLog?.call(LogEntry.success('Audio extracted to $outputPath'));
-  }
-
-  Future<void> convertAudio({
-    required String inputPath,
-    required String outputPath,
-    void Function(LogEntry)? onLog,
-  }) async {
-    final log = LogEntry.info('Converting audio ${p.basename(inputPath)}...');
-    onLog?.call(log);
-
-    final codecArgs = _audioCodecArgs(outputPath);
-
-    await FFmpegService.run(
-      [
-        '-y',
-        '-i',
-        inputPath,
-        ...codecArgs,
-        outputPath, // FFmpeg infers container from extension, codec is enforced above
-      ],
-      errorMessage: 'Failed to convert audio',
-      onLog: log.addSubLog,
-    );
-
-    onLog?.call(LogEntry.success('Audio converted to $outputPath'));
-  }
-
   Future<void> concatAudio({
     required List<String> audioPaths,
     required String outputPath,
