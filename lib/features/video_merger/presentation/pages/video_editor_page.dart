@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show lerpDouble;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -7,7 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
-import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
 import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
 import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
@@ -32,9 +32,6 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
   List<String> _audioFiles = [];
   String? _backgroundVideo;
   String? _introVideo;
-  String? _title;
-  String? _author;
-  String? _comment;
   int _audioLoopCount = 1;
 
   @override
@@ -89,12 +86,15 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 ),
                 const SizedBox(height: 16),
                 if (_backgroundVideo != null)
-                  _buildMediaItem(
-                    context,
-                    _backgroundVideo!,
-                    Icons.videocam,
+                  MediaItemCard(
+                    path: _backgroundVideo!,
+                    icon: Icons.videocam,
                     isVideo: true,
                     onRemove: () => setState(() => _backgroundVideo = null),
+                    onPreview: () => _showPreview(
+                      context,
+                      _backgroundVideo!,
+                    ),
                   )
                 else
                   _buildDropZone(context, ref, isVideo: true),
@@ -121,20 +121,184 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 _buildDropZone(context, ref, isVideo: false),
                 if (_audioFiles.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  // Audio list
-                  for (int i = 0; i < _audioFiles.length; i++)
-                    _buildMediaItem(
-                      context,
-                      _audioFiles[i],
-                      Icons.music_note,
-                      onRemove: () {
-                        setState(() {
-                          _audioFiles = List<String>.from(_audioFiles)
-                            ..removeAt(i);
-                        });
-                      },
-                      index: i + 1,
-                    ),
+                  // Audio list with drag-and-drop reordering
+                  ReorderableListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    buildDefaultDragHandles: false,
+                    itemCount: _audioFiles.length,
+                    onReorder: (oldIndex, newIndex) {
+                      setState(() {
+                        if (newIndex > oldIndex) {
+                          newIndex -= 1;
+                        }
+                        final files = List<String>.from(_audioFiles);
+                        final item = files.removeAt(oldIndex);
+                        files.insert(newIndex, item);
+                        _audioFiles = files;
+                      });
+                    },
+                    proxyDecorator: (child, index, animation) {
+                      final fileName = p.basename(_audioFiles[index]);
+                      final t = Curves.easeInOut.transform(animation.value);
+                      final elevation = lerpDouble(0, 6, t)!;
+                      final scale = lerpDouble(1.0, 1.02, t)!;
+
+                      return Transform.scale(
+                        scale: scale,
+                        child: Material(
+                          elevation: elevation,
+                          borderRadius: BorderRadius.circular(8),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: MediaQuery.of(context).size.width * 0.5,
+                              minWidth: 300,
+                            ),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.drag_indicator,
+                                    size: 20,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary
+                                          .withValues(alpha: 0.2),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '${index + 1}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall
+                                            ?.copyWith(
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .tertiaryContainer
+                                          .withValues(alpha: 0.5),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.tertiaryContainer,
+                                        width: 0.5,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.music_note,
+                                      size: 16,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onTertiaryContainer,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          fileName,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Text(
+                                          'Audio',
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.labelSmall,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Static icons instead of buttons
+                                  Icon(
+                                    Icons.play_circle_outline,
+                                    size: 20,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Icon(
+                                    Icons.close,
+                                    size: 16,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    itemBuilder: (context, i) {
+                      return ReorderableDragStartListener(
+                        key: ValueKey(_audioFiles[i]),
+                        index: i,
+                        child: MediaItemCard(
+                          path: _audioFiles[i],
+                          icon: Icons.music_note,
+                          onRemove: () {
+                            setState(() {
+                              _audioFiles = List<String>.from(_audioFiles)
+                                ..removeAt(i);
+                            });
+                          },
+                          onPreview: () => _showPreview(
+                            context,
+                            _audioFiles[i],
+                          ),
+                          index: i + 1,
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ],
             ),
@@ -147,17 +311,6 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
           child: ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              _buildSectionHeader(
-                context,
-                ref,
-                'Video Metadata (Optional)',
-                Icons.settings_suggest_outlined,
-              ),
-              if (!collapsedSections.contains('Video Metadata (Optional)')) ...[
-                const SizedBox(height: 16),
-                _buildProjectSettingsInputs(context, ref),
-              ],
-              const SizedBox(height: 24),
               _buildSectionHeader(
                 context,
                 ref,
@@ -177,154 +330,32 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 ),
                 child: Column(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      'Parallel Processing',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  const CompactTooltip(
-                                    message:
-                                        'Process multiple tasks simultaneously.\n\n'
-                                        '• Faster processing\n'
-                                        '• May trigger antivirus (disable if needed)',
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Enable parallel processing',
-                                style: Theme.of(context).textTheme.labelSmall,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Checkbox(
-                          value: widget.project.enableParallelProcessing,
-                          onChanged: (value) {
-                            if (value != null) {
-                              ref
-                                  .read(activeProjectProvider.notifier)
-                                  .updateSettings(
-                                    enableParallelProcessing: value,
-                                  );
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                    if (widget.project.enableParallelProcessing) ...[
-                      const Divider(height: 24),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        'Max Concurrency',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .labelMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    CompactTooltip(
-                                      message:
-                                          '${SystemInfoService.getCpuInfo()}.\n\n'
-                                          'Controls parallel processing tasks.\n'
-                                          '• Higher values = faster\n'
-                                          '• Lower values = less CPU load',
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Simultaneous tasks (default: ${SystemInfoService.getRecommendedConcurrency()})',
-                                  style: Theme.of(context).textTheme.labelSmall,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          SettingsNumberInput(
-                            initialValue: widget.project.concurrencyLimit
-                                .toString(),
-                            width: 85,
-                            onChanged: (value) {
-                              final intValue = int.tryParse(value);
-                              if (intValue != null && intValue > 0) {
-                                ref
-                                    .read(activeProjectProvider.notifier)
-                                    .updateSettings(concurrencyLimit: intValue);
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                    ],
                     const Divider(height: 24),
                     Row(
                       children: [
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Row(
                             children: [
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      'Loop Audio Sequence',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  const CompactTooltip(
-                                    message:
-                                        'Repeats the audio playlist.\n\n'
-                                        'Useful when video is longer\n'
-                                        'than your audio tracks.',
-                                  ),
-                                ],
+                              Flexible(
+                                child: Text(
+                                  'Loop Count',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Repeat count for audio playlist',
-                                style: Theme.of(context).textTheme.labelSmall,
+                              const SizedBox(width: 4),
+                              const CompactTooltip(
+                                message:
+                                    'Repeats the audio playlist.\n\n'
+                                    'Useful when video is longer\n'
+                                    'than your audio tracks.',
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         SettingsNumberInput(
                           initialValue: _audioLoopCount.toString(),
-                          width: 85,
                           onChanged: (value) {
                             final intValue = int.tryParse(value);
                             if (intValue != null && intValue >= 1) {
@@ -536,53 +567,26 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
             ),
           ),
           const SizedBox(height: 12),
-          Text(
-            'Intro Audio',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              return SegmentedButton<IntroAudioMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: IntroAudioMode.keepOriginal,
-                    label: Text('Keep Original'),
-                    icon: Icon(Icons.volume_up),
-                  ),
-                  ButtonSegment(
-                    value: IntroAudioMode.silent,
-                    label: Text('Mute Intro'),
-                    icon: Icon(Icons.volume_off),
-                  ),
-                  ButtonSegment(
-                    value: IntroAudioMode.overlayPlaylist,
-                    label: Text('Overlay Playlist'),
-                    icon: Icon(Icons.queue_music),
-                  ),
-                ],
-                selected: {widget.project.introAudioMode},
-                onSelectionChanged: (Set<IntroAudioMode> newSelection) {
-                  ref
-                      .read(activeProjectProvider.notifier)
-                      .updateSettings(introAudioMode: newSelection.first);
-                },
-                style: ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  textStyle: WidgetStateProperty.all(
-                    const TextStyle(fontSize: 11),
-                  ),
+          Row(
+            children: [
+              Icon(
+                Icons.queue_music,
+                size: 16,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Intro Audio: Playlist Overlay',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
-              );
-            },
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(
-            _getIntroAudioDescription(widget.project.introAudioMode),
+            'The main audio playlist will play during the intro video',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -591,29 +595,21 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
           const Divider(height: 1),
           const SizedBox(height: 16),
           if (_introVideo != null)
-            _buildMediaItem(
-              context,
-              _introVideo!,
-              Icons.videocam,
+            MediaItemCard(
+              path: _introVideo!,
+              icon: Icons.videocam,
               isVideo: true,
               onRemove: () => setState(() => _introVideo = null),
+              onPreview: () => _showPreview(
+                context,
+                _introVideo!,
+              ),
             )
           else
             _buildDropZone(context, ref, isVideo: true, isIntro: true),
         ],
       ),
     );
-  }
-
-  String _getIntroAudioDescription(IntroAudioMode mode) {
-    switch (mode) {
-      case IntroAudioMode.keepOriginal:
-        return 'Play audio from the intro video';
-      case IntroAudioMode.silent:
-        return 'Intro video plays in silence';
-      case IntroAudioMode.overlayPlaylist:
-        return 'Play main audio playlist during intro';
-    }
   }
 
   Widget _buildDropZone(
@@ -673,245 +669,6 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
       onTap: () => isVideo
           ? _selectVideo(context, ref, isIntro: isIntro)
           : _selectAudioFiles(context, ref),
-    );
-  }
-
-  Widget _buildProjectSettingsInputs(BuildContext context, WidgetRef ref) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Theme.of(
-                context,
-              ).colorScheme.primaryContainer.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: Theme.of(context).colorScheme.primaryContainer,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline,
-                  size: 12,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'These details will be embedded into the video metadata.',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildInputField(
-            label: 'Video Title',
-            hint: 'e.g., Relaxing Music Mix',
-            initialValue: _title,
-            onChanged: (v) => setState(() => _title = v),
-          ),
-          const SizedBox(height: 16),
-          _buildInputField(
-            label: 'Creator / Channel Name',
-            hint: 'e.g., Your Channel Name',
-            initialValue: _author,
-            onChanged: (v) => setState(() => _author = v),
-          ),
-          const SizedBox(height: 16),
-          _buildInputField(
-            label: 'Comment',
-            hint: 'e.g., Made with Swaloka',
-            initialValue: _comment,
-            onChanged: (v) => setState(() => _comment = v),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInputField({
-    required String label,
-    required String hint,
-    required ValueChanged<String> onChanged,
-    String? initialValue,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          initialValue: initialValue,
-          style: Theme.of(context).textTheme.labelMedium,
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: Theme.of(context).textTheme.labelSmall,
-            filled: true,
-            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(
-                color: Theme.of(context).colorScheme.outline,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(
-                color: Theme.of(context).colorScheme.outline,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(
-                color: Theme.of(context).colorScheme.primary,
-                width: 2,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 12,
-            ),
-          ),
-          onChanged: onChanged,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMediaItem(
-    BuildContext context,
-    String path,
-    IconData icon, {
-    required VoidCallback onRemove,
-    bool isVideo = false,
-    int? index,
-  }) {
-    final fileName = p.basename(path);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline,
-        ),
-      ),
-      child: Row(
-        children: [
-          // Show index number for audio files
-          if (index != null) ...[
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.primary.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '$index',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isVideo
-                  ? Theme.of(
-                      context,
-                    ).colorScheme.primaryContainer.withValues(alpha: 0.5)
-                  : Theme.of(
-                      context,
-                    ).colorScheme.tertiaryContainer.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: isVideo
-                    ? Theme.of(context).colorScheme.primaryContainer
-                    : Theme.of(context).colorScheme.tertiaryContainer,
-                width: 0.5,
-              ),
-            ),
-            child: Icon(
-              icon,
-              size: 16,
-              color: isVideo
-                  ? Theme.of(context).colorScheme.onPrimaryContainer
-                  : Theme.of(context).colorScheme.onTertiaryContainer,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  fileName,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  isVideo ? 'Video' : 'Audio',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ],
-            ),
-          ),
-          // Preview button for both video and audio
-          IconButton(
-            icon: Icon(
-              Icons.play_circle_outline,
-              size: 20,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            onPressed: () => _showPreview(context, path, isVideo: isVideo),
-            tooltip: 'Preview',
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.close,
-              size: 16,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            onPressed: onRemove,
-            tooltip: 'Remove',
-          ),
-        ],
-      ),
     );
   }
 
@@ -1343,13 +1100,8 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     String? logFilePath;
     try {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final sanitizedTitle = (_title ?? 'video').replaceAll(
-        RegExp(r'[^a-zA-Z0-9\s]'),
-        '',
-      );
       final loopPrefix = _audioLoopCount > 1 ? 'loop_${_audioLoopCount}x_' : '';
-      final outputFileName =
-          '${sanitizedTitle.replaceAll(' ', '_')}_$loopPrefix$timestamp.mp4';
+      final outputFileName = 'video_$loopPrefix$timestamp.mp4';
       final outputPath = p.join(outputDir, outputFileName);
       logFilePath = p.join(
         widget.project.rootPath,
@@ -1365,13 +1117,8 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
         audioFiles: audioFiles,
         outputPath: outputPath,
         projectRootPath: widget.project.rootPath,
-        title: _title,
-        author: _author,
-        comment: _comment,
-        concurrencyLimit: widget.project.concurrencyLimit,
         audioLoopCount: _audioLoopCount,
         introVideoPath: _introVideo,
-        introAudioMode: widget.project.introAudioMode,
         enableParallelProcessing: widget.project.enableParallelProcessing,
         onProgress: (p) =>
             ref.read(processingStateProvider.notifier).updateProgress(p),

@@ -230,121 +230,6 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
     );
   }
 
-  Widget _buildMediaItem(
-    BuildContext context,
-    String path,
-    IconData icon, {
-    required VoidCallback onRemove,
-    bool isVideo = false,
-    int? index,
-  }) {
-    final fileName = p.basename(path);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline,
-        ),
-      ),
-      child: Row(
-        children: [
-          // Show index number if provided
-          if (index != null) ...[
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.primary.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '$index',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isVideo
-                  ? Theme.of(
-                      context,
-                    ).colorScheme.primaryContainer.withValues(alpha: 0.5)
-                  : Theme.of(
-                      context,
-                    ).colorScheme.tertiaryContainer.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: isVideo
-                    ? Theme.of(context).colorScheme.primaryContainer
-                    : Theme.of(context).colorScheme.tertiaryContainer,
-                width: 0.5,
-              ),
-            ),
-            child: Icon(
-              icon,
-              size: 16,
-              color: isVideo
-                  ? Theme.of(context).colorScheme.onPrimaryContainer
-                  : Theme.of(context).colorScheme.onTertiaryContainer,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  fileName,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  isVideo ? 'Video' : 'Audio',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ],
-            ),
-          ),
-          // Preview button
-          IconButton(
-            icon: Icon(
-              Icons.play_circle_outline,
-              size: 20,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            onPressed: () => _showPreview(context, path, isVideo: isVideo),
-            tooltip: 'Preview',
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.close,
-              size: 16,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            onPressed: onRemove,
-            tooltip: 'Remove',
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -430,12 +315,16 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
             },
           )
         else
-          _buildMediaItem(
-            context,
-            _extractVideoPath!,
-            Icons.movie,
+          MediaItemCard(
+            path: _extractVideoPath!,
+            icon: Icons.movie,
             isVideo: true,
             onRemove: () => setState(() => _extractVideoPath = null),
+            onPreview: () => _showPreview(
+              context,
+              _extractVideoPath!,
+              isVideo: true,
+            ),
           ),
         const SizedBox(height: 16),
         _buildFormatDropdown(
@@ -495,24 +384,36 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
             ],
           ),
           const SizedBox(height: 8),
-          Column(
-            children: [
-              for (int i = 0; i < _concatAudioPaths.length; i++)
-                Padding(
-                  padding: EdgeInsets.zero,
-                  child: _buildMediaItem(
-                    context,
-                    _concatAudioPaths[i],
-                    Icons.music_note,
-                    index: i + 1,
-                    onRemove: () {
-                      setState(() {
-                        _concatAudioPaths.removeAt(i);
-                      });
-                    },
-                  ),
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _concatAudioPaths.length,
+            onReorder: (oldIndex, newIndex) {
+              setState(() {
+                if (newIndex > oldIndex) {
+                  newIndex -= 1;
+                }
+                final item = _concatAudioPaths.removeAt(oldIndex);
+                _concatAudioPaths.insert(newIndex, item);
+              });
+            },
+            itemBuilder: (context, i) {
+              return MediaItemCard(
+                key: ValueKey(_concatAudioPaths[i]),
+                path: _concatAudioPaths[i],
+                icon: Icons.music_note,
+                onRemove: () {
+                  setState(() {
+                    _concatAudioPaths.removeAt(i);
+                  });
+                },
+                onPreview: () => _showPreview(
+                  context,
+                  _concatAudioPaths[i],
                 ),
-            ],
+                index: i + 1,
+              );
+            },
           ),
         ],
         const SizedBox(height: 16),
@@ -552,11 +453,14 @@ class _AudioToolsPageState extends ConsumerState<AudioToolsPage> {
             },
           )
         else
-          _buildMediaItem(
-            context,
-            _convertAudioPath!,
-            Icons.music_note,
+          MediaItemCard(
+            path: _convertAudioPath!,
+            icon: Icons.music_note,
             onRemove: () => setState(() => _convertAudioPath = null),
+            onPreview: () => _showPreview(
+              context,
+              _convertAudioPath!,
+            ),
           ),
         const SizedBox(height: 16),
         _buildFormatDropdown(

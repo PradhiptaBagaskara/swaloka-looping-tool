@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
+import 'package:swaloka_looping_tool/core/services/log_service.dart';
+import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
 import 'package:swaloka_looping_tool/features/media_tools/presentation/providers/media_tools_providers.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
 import 'package:swaloka_looping_tool/widgets/widgets.dart';
@@ -41,12 +43,15 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   String _hwAccelEncoder = 'libx264'; // Will be updated in initState
 
   // Re-encode Video State
-  String? _reencodeVideoPath;
+  final List<String> _reencodeVideoPaths = [];
   String _reencodeResolution = '1080p'; // 480p, 720p, 1080p, 2K, 4K, 8K
   String _reencodeAspectRatio =
       'original'; // original, 16:9, 9:16, 1:1, 3:2, 2:3
   int _reencodeFps = 30;
   String _reencodePreset = 'veryfast';
+  String _reencodeQuality = 'auto'; // auto, high, balanced, smaller, tiny
+  String _reencodeScalingQuality = 'high'; // fast, balanced, high
+  bool _reencodeEnhanceQuality = false;
   bool _reencodeKeepAudio = true;
   bool _reencodeUseHwAccel = false;
   String _reencodeHwEncoder = 'libx264';
@@ -55,6 +60,15 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   // Video Info State
   String? _infoVideoPath;
   Map<String, dynamic>? _videoInfo;
+
+  void _addUniquePaths(List<String> target, Iterable<String> paths) {
+    final existing = target.toSet();
+    for (final path in paths) {
+      if (existing.add(path)) {
+        target.add(path);
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -73,7 +87,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   }
 
   Future<String> _ensureOutputsDir() async {
-    final outputsDir = Directory(p.join(widget.initialDirectory, 'outputs'));
+    final project = ref.read(activeProjectProvider);
+    final outputsDir = Directory(
+      project?.effectiveOutputPath ??
+          p.join(widget.initialDirectory, 'outputs'),
+    );
     if (!await outputsDir.exists()) {
       await outputsDir.create(recursive: true);
     }
@@ -88,7 +106,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     );
     if (result != null) {
       setState(() {
-        _videoPaths.addAll(result.paths.whereType<String>().toList());
+        _addUniquePaths(_videoPaths, result.paths.whereType<String>());
       });
     }
   }
@@ -193,11 +211,12 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   Future<void> _pickReencodeVideo() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.video,
+      allowMultiple: true,
       initialDirectory: widget.initialDirectory,
     );
-    if (result != null && result.files.single.path != null) {
+    if (result != null) {
       setState(() {
-        _reencodeVideoPath = result.files.single.path;
+        _addUniquePaths(_reencodeVideoPaths, result.paths.whereType<String>());
       });
     }
   }
@@ -315,8 +334,8 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     }
   }
 
-  Future<void> _reencodeVideo() async {
-    if (_reencodeVideoPath == null) return;
+  Future<void> _reencodeVideos() async {
+    if (_reencodeVideoPaths.isEmpty) return;
 
     final notifier = ref.read(processingStateProvider.notifier);
     notifier.startProcessing();
@@ -331,7 +350,6 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
 
     try {
       final outputsDir = await _ensureOutputsDir();
-      final name = p.basenameWithoutExtension(_reencodeVideoPath!);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
 
       // Get target height from resolution
@@ -345,62 +363,126 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       };
       final targetHeight = heightMap[_reencodeResolution] ?? 1080;
 
-      // Calculate dimensions based on aspect ratio
-      int targetWidth;
-      var preserveAspectRatio = false;
+      final project = ref.read(activeProjectProvider);
+      final enableParallelProcessing =
+          project?.enableParallelProcessing ?? true;
+      final concurrencyLimit = SystemInfoService.getRecommendedConcurrency();
+      final parallelism = enableParallelProcessing ? concurrencyLimit : 1;
+      final safeParallelism = max(1, parallelism);
 
-      if (_reencodeAspectRatio == 'original') {
-        // Get original video dimensions to preserve aspect ratio
-        final metadata = await FFmpegService.getVideoMetadata(
-          _reencodeVideoPath!,
-        );
-        if (metadata.width != null && metadata.height != null) {
-          final originalAspect = metadata.width! / metadata.height!;
-          targetWidth = (targetHeight * originalAspect).round();
-          // Ensure even width
-          if (targetWidth % 2 != 0) targetWidth++;
-        } else {
-          // Fallback to 16:9 if metadata unavailable
-          targetWidth = (targetHeight * 16 / 9).round();
-        }
-        preserveAspectRatio = true;
-      } else {
-        final dimensions = _getResolutionDimensions(
-          _reencodeResolution,
-          _reencodeAspectRatio,
-        );
-        if (dimensions != null) {
-          targetWidth = dimensions.width;
-        } else {
-          // Fallback
-          targetWidth = (targetHeight * 16 / 9).round();
+      final total = _reencodeVideoPaths.length;
+      final maxWorkers = min(safeParallelism, total);
+      final batchLog = LogEntry.info(
+        'Re-encoding $total video(s) (parallel: $maxWorkers)...',
+      );
+      notifier.addLog(batchLog);
+
+      var completed = 0;
+      var nextIndex = 0;
+      Object? firstError;
+
+      String? lastOutputPath;
+
+      int? crfOverride;
+      switch (_reencodeQuality) {
+        case 'high':
+          crfOverride = 20;
+        case 'balanced':
+          crfOverride = 23;
+        case 'smaller':
+          crfOverride = 28;
+        case 'tiny':
+          crfOverride = 32;
+        case 'auto':
+        default:
+          crfOverride = null;
+      }
+
+      Future<void> worker() async {
+        while (true) {
+          if (firstError != null) return;
+          final current = nextIndex++;
+          if (current >= total) return;
+
+          final videoPath = _reencodeVideoPaths[current];
+          final name = p.basenameWithoutExtension(videoPath);
+
+          // Calculate dimensions based on aspect ratio
+          int targetWidth;
+          var preserveAspectRatio = false;
+
+          if (_reencodeAspectRatio == 'original') {
+            // Get original video dimensions to preserve aspect ratio
+            final metadata = await FFmpegService.getVideoMetadata(videoPath);
+            if (metadata.width != null && metadata.height != null) {
+              final originalAspect = metadata.width! / metadata.height!;
+              targetWidth = (targetHeight * originalAspect).round();
+              // Ensure even width
+              if (targetWidth % 2 != 0) targetWidth++;
+            } else {
+              // Fallback to 16:9 if metadata unavailable
+              targetWidth = (targetHeight * 16 / 9).round();
+            }
+            preserveAspectRatio = true;
+          } else {
+            final dimensions = _getResolutionDimensions(
+              _reencodeResolution,
+              _reencodeAspectRatio,
+            );
+            if (dimensions != null) {
+              targetWidth = dimensions.width;
+            } else {
+              // Fallback
+              targetWidth = (targetHeight * 16 / 9).round();
+            }
+          }
+
+          final aspectRatioLabel = _reencodeAspectRatio == 'original'
+              ? 'original'
+              : _reencodeAspectRatio.replaceAll(':', '_');
+          final outputPath = p.join(
+            outputsDir,
+            '${name}_${_reencodeResolution}_${aspectRatioLabel}_${_reencodeFps}fps_${timestamp}_$current.mp4',
+          );
+
+          try {
+            await ref
+                .read(mediaToolsServiceProvider)
+                .reencodeVideo(
+                  videoPath: videoPath,
+                  outputPath: outputPath,
+                  width: targetWidth,
+                  height: targetHeight,
+                  fps: _reencodeFps,
+                  preset: _reencodePreset,
+                  crf: crfOverride,
+                  scalingQuality: _reencodeScalingQuality,
+                  enhanceQuality: _reencodeEnhanceQuality,
+                  keepAudio: _reencodeKeepAudio,
+                  preserveAspectRatio: preserveAspectRatio,
+                  hwEncoder: _reencodeUseHwAccel ? _reencodeHwEncoder : null,
+                  onLog: batchLog.addSubLog,
+                );
+            lastOutputPath = outputPath;
+          } on Exception catch (e) {
+            firstError = e;
+            return;
+          } finally {
+            if (firstError == null) {
+              completed++;
+              notifier.updateProgress(completed / total);
+            }
+          }
         }
       }
 
-      final aspectRatioLabel = _reencodeAspectRatio == 'original'
-          ? 'original'
-          : _reencodeAspectRatio.replaceAll(':', '_');
-      final outputPath = p.join(
-        outputsDir,
-        '${name}_${_reencodeResolution}_${aspectRatioLabel}_${_reencodeFps}fps_$timestamp.mp4',
-      );
+      await Future.wait(List.generate(maxWorkers, (_) => worker()));
 
-      await ref
-          .read(mediaToolsServiceProvider)
-          .reencodeVideo(
-            videoPath: _reencodeVideoPath!,
-            outputPath: outputPath,
-            width: targetWidth,
-            height: targetHeight,
-            fps: _reencodeFps,
-            preset: _reencodePreset,
-            keepAudio: _reencodeKeepAudio,
-            preserveAspectRatio: preserveAspectRatio,
-            hwEncoder: _reencodeUseHwAccel ? _reencodeHwEncoder : null,
-            onLog: notifier.addLog,
-          );
+      if (firstError != null) {
+        throw firstError!; // handled below
+      }
 
-      notifier.setSuccess(outputPath);
+      notifier.setSuccess(lastOutputPath ?? outputsDir);
     } on Exception catch (e) {
       notifier.setError(e.toString());
     }
@@ -514,119 +596,6 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     );
   }
 
-  Widget _buildMediaItem(
-    BuildContext context,
-    String path,
-    IconData icon, {
-    required VoidCallback onRemove,
-    bool isVideo = true,
-    int? index,
-  }) {
-    final fileName = p.basename(path);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline,
-        ),
-      ),
-      child: Row(
-        children: [
-          if (index != null) ...[
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.primary.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '$index',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isVideo
-                  ? Theme.of(
-                      context,
-                    ).colorScheme.primaryContainer.withValues(alpha: 0.5)
-                  : Theme.of(
-                      context,
-                    ).colorScheme.tertiaryContainer.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: isVideo
-                    ? Theme.of(context).colorScheme.primaryContainer
-                    : Theme.of(context).colorScheme.tertiaryContainer,
-                width: 0.5,
-              ),
-            ),
-            child: Icon(
-              icon,
-              size: 16,
-              color: isVideo
-                  ? Theme.of(context).colorScheme.onPrimaryContainer
-                  : Theme.of(context).colorScheme.onTertiaryContainer,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  fileName,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  isVideo ? 'Video' : 'Audio',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.play_circle_outline,
-              size: 20,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            onPressed: () => _showPreview(context, path, isVideo: isVideo),
-            tooltip: 'Preview',
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.close,
-              size: 16,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            onPressed: onRemove,
-            tooltip: 'Remove',
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -716,7 +685,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 .toList();
             if (videos.isNotEmpty) {
               setState(() {
-                _videoPaths.addAll(videos);
+                _addUniquePaths(_videoPaths, videos);
               });
             }
           },
@@ -740,24 +709,37 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             ],
           ),
           const SizedBox(height: 8),
-          Column(
-            children: [
-              for (int i = 0; i < _videoPaths.length; i++)
-                Padding(
-                  padding: EdgeInsets.zero,
-                  child: _buildMediaItem(
-                    context,
-                    _videoPaths[i],
-                    Icons.movie,
-                    index: i + 1,
-                    onRemove: () {
-                      setState(() {
-                        _videoPaths.removeAt(i);
-                      });
-                    },
-                  ),
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _videoPaths.length,
+            onReorder: (oldIndex, newIndex) {
+              setState(() {
+                if (newIndex > oldIndex) {
+                  newIndex -= 1;
+                }
+                final item = _videoPaths.removeAt(oldIndex);
+                _videoPaths.insert(newIndex, item);
+              });
+            },
+            itemBuilder: (context, i) {
+              return MediaItemCard(
+                key: ValueKey(_videoPaths[i]),
+                path: _videoPaths[i],
+                icon: Icons.movie,
+                onRemove: () {
+                  setState(() {
+                    _videoPaths.removeAt(i);
+                  });
+                },
+                onPreview: () => _showPreview(
+                  context,
+                  _videoPaths[i],
                 ),
-            ],
+                isVideo: true,
+                index: i + 1,
+              );
+            },
           ),
         ],
         const SizedBox(height: 16),
@@ -1004,6 +986,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       child: Text('Very Fast'),
                     ),
                     DropdownMenuItem(value: 'fast', child: Text('Fast')),
+                    DropdownMenuItem(value: 'slow', child: Text('Slow')),
                   ],
                   onChanged: (v) =>
                       setState(() => _encodingPreset = v ?? 'veryfast'),
@@ -1117,11 +1100,15 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             },
           )
         else
-          _buildMediaItem(
-            context,
-            _compressVideoPath!,
-            Icons.movie,
+          MediaItemCard(
+            path: _compressVideoPath!,
+            icon: Icons.movie,
             onRemove: () => setState(() => _compressVideoPath = null),
+            onPreview: () => _showPreview(
+              context,
+              _compressVideoPath!,
+            ),
+            isVideo: true,
           ),
         const SizedBox(height: 24),
         // Group: Compression Settings
@@ -1348,30 +1335,80 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_reencodeVideoPath == null)
-          DropZoneWidget(
-            label: 'Drop Video Here (or Click)',
-            icon: Icons.movie,
-            onTap: _pickReencodeVideo,
-            onFilesDropped: (files) {
-              final video = files.firstWhere(
-                (f) => _videoExtensions.contains(
-                  p.extension(f.path).replaceAll('.', '').toLowerCase(),
-                ),
-                orElse: () => files.first,
-              );
+        DropZoneWidget(
+          label: _reencodeVideoPaths.isNotEmpty
+              ? '${_reencodeVideoPaths.length} ${_reencodeVideoPaths.length == 1 ? "file" : "files"} selected'
+              : 'Drop Video File(s) Here (or Click)',
+          icon: Icons.movie,
+          onTap: _pickReencodeVideo,
+          onFilesDropped: (files) {
+            final videos = files
+                .where(
+                  (f) => _videoExtensions.contains(
+                    p.extension(f.path).replaceAll('.', '').toLowerCase(),
+                  ),
+                )
+                .map((f) => f.path)
+                .toList();
+            if (videos.isNotEmpty) {
               setState(() {
-                _reencodeVideoPath = video.path;
+                _addUniquePaths(_reencodeVideoPaths, videos);
+              });
+            }
+          },
+        ),
+        if (_reencodeVideoPaths.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                onPressed: () => setState(_reencodeVideoPaths.clear),
+                icon: const Icon(Icons.delete_sweep, size: 16),
+                label: const Text('Clear All'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(
+                    context,
+                  ).colorScheme.onSurfaceVariant,
+                  textStyle: Theme.of(context).textTheme.labelMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _reencodeVideoPaths.length,
+            onReorder: (oldIndex, newIndex) {
+              setState(() {
+                if (newIndex > oldIndex) {
+                  newIndex -= 1;
+                }
+                final item = _reencodeVideoPaths.removeAt(oldIndex);
+                _reencodeVideoPaths.insert(newIndex, item);
               });
             },
-          )
-        else
-          _buildMediaItem(
-            context,
-            _reencodeVideoPath!,
-            Icons.movie,
-            onRemove: () => setState(() => _reencodeVideoPath = null),
+            itemBuilder: (context, i) {
+              return MediaItemCard(
+                key: ValueKey(_reencodeVideoPaths[i]),
+                path: _reencodeVideoPaths[i],
+                icon: Icons.movie,
+                onRemove: () {
+                  setState(() {
+                    _reencodeVideoPaths.removeAt(i);
+                  });
+                },
+                onPreview: () => _showPreview(
+                  context,
+                  _reencodeVideoPaths[i],
+                ),
+                isVideo: true,
+                index: i + 1,
+              );
+            },
           ),
+        ],
         const SizedBox(height: 24),
         // Info box
         Container(
@@ -1395,7 +1432,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Use this to convert videos to specific resolution & frame rate. Perfect for preparing intro videos to match your main video format!',
+                  'Convert videos to specific resolution & frame rate. Supports batch processing and will follow your project’s parallel processing setting.',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onPrimaryContainer,
                   ),
@@ -1699,6 +1736,85 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 onChanged: (v) =>
                     setState(() => _reencodePreset = v ?? 'veryfast'),
               ),
+              const SizedBox(height: 12),
+              CompactDropdown<String>(
+                value: _reencodeScalingQuality,
+                label: 'Scaling Quality:',
+                icon: Icons.photo_size_select_large,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'fast',
+                    child: Text('Fast (Bilinear)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'balanced',
+                    child: Text('Balanced (Bicubic)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'high',
+                    child: Text('High (Lanczos)'),
+                  ),
+                ],
+                onChanged: (v) =>
+                    setState(() => _reencodeScalingQuality = v ?? 'high'),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Enhance Quality',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const CompactTooltip(
+                          message:
+                              'Applies light denoise + mild sharpen.\n\n'
+                              'Helps upscales look less soft, but increases processing time.',
+                        ),
+                      ],
+                    ),
+                  ),
+                  Checkbox(
+                    value: _reencodeEnhanceQuality,
+                    onChanged: (v) =>
+                        setState(() => _reencodeEnhanceQuality = v ?? false),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              CompactDropdown<String>(
+                value: _reencodeQuality,
+                label: 'Quality (CRF):',
+                icon: Icons.high_quality,
+                items: const [
+                  DropdownMenuItem(value: 'auto', child: Text('Auto')),
+                  DropdownMenuItem(value: 'high', child: Text('High Quality')),
+                  DropdownMenuItem(value: 'balanced', child: Text('Balanced')),
+                  DropdownMenuItem(
+                    value: 'smaller',
+                    child: Text('Smaller File'),
+                  ),
+                  DropdownMenuItem(value: 'tiny', child: Text('Tiny File')),
+                ],
+                onChanged: (v) =>
+                    setState(() => _reencodeQuality = v ?? 'auto'),
+              ),
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Lower CRF = better quality (larger file). Auto adjusts based on resolution.',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -1795,9 +1911,13 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           width: double.infinity,
           height: 48,
           child: ElevatedButton.icon(
-            onPressed: _reencodeVideoPath != null ? _reencodeVideo : null,
+            onPressed: _reencodeVideoPaths.isNotEmpty ? _reencodeVideos : null,
             icon: const Icon(Icons.settings_backup_restore),
-            label: const Text('Process Video'),
+            label: Text(
+              _reencodeVideoPaths.length <= 1
+                  ? 'Process Video'
+                  : 'Process Videos',
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.primary,
               foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -1832,14 +1952,18 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             },
           )
         else ...[
-          _buildMediaItem(
-            context,
-            _infoVideoPath!,
-            Icons.movie,
+          MediaItemCard(
+            path: _infoVideoPath!,
+            icon: Icons.movie,
             onRemove: () => setState(() {
               _infoVideoPath = null;
               _videoInfo = null;
             }),
+            onPreview: () => _showPreview(
+              context,
+              _infoVideoPath!,
+            ),
+            isVideo: true,
           ),
           const SizedBox(height: 24),
           if (_videoInfo != null) ...[

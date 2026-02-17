@@ -100,16 +100,12 @@ class ActiveProjectNotifier extends Notifier<SwalokaProject?> {
   Future<void> updateSettings({
     String? customOutputPath,
     bool clearCustomOutputPath = false,
-    int? concurrencyLimit,
-    IntroAudioMode? introAudioMode,
     bool? enableParallelProcessing,
   }) async {
     if (state == null) return;
     final newState = state!.copyWith(
       customOutputPath: customOutputPath,
       clearCustomOutputPath: clearCustomOutputPath,
-      concurrencyLimit: concurrencyLimit,
-      introAudioMode: introAudioMode,
       enableParallelProcessing: enableParallelProcessing,
     );
     state = newState;

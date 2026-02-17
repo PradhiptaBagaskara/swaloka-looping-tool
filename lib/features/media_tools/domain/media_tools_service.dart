@@ -5,6 +5,18 @@ import 'package:swaloka_looping_tool/core/services/log_service.dart';
 import 'package:swaloka_looping_tool/core/utils/temp_directory_helper.dart';
 
 class MediaToolsService {
+  String _scaleFlagsForQuality(String quality) {
+    switch (quality) {
+      case 'fast':
+        return 'bilinear';
+      case 'balanced':
+        return 'bicubic';
+      case 'high':
+      default:
+        return 'lanczos';
+    }
+  }
+
   Future<void> extractAudio({
     required String videoPath,
     required String outputPath,
@@ -575,6 +587,9 @@ class MediaToolsService {
     required int fps,
     required String preset,
     required bool keepAudio,
+    int? crf,
+    String scalingQuality = 'high', // fast|balanced|high
+    bool enhanceQuality = false,
     bool preserveAspectRatio = false,
     String? hwEncoder, // Optional HW Encoder
     void Function(LogEntry)? onLog,
@@ -589,22 +604,35 @@ class MediaToolsService {
       ),
     );
 
+    final flags = _scaleFlagsForQuality(scalingQuality);
+    log.addSubLog(
+      LogEntry.info(
+        'Scaling: $scalingQuality ($flags)${enhanceQuality ? ' + enhance' : ''}',
+      ),
+    );
+
     // Build filter based on aspect ratio handling
     final String filter;
     if (preserveAspectRatio) {
       // Preserve original aspect ratio with padding (black bars if needed)
       filter =
-          'scale=$width:$height:force_original_aspect_ratio=decrease,'
+          // Denoise before scaling can reduce upscaling artifacts a bit.
+          '${enhanceQuality ? 'hqdn3d=1.5:1.5:3:3,' : ''}'
+          'scale=$width:$height:force_original_aspect_ratio=decrease:flags=$flags,'
           'pad=$width:$height:(ow-iw)/2:(oh-ih)/2,'
           'fps=$fps,'
+          // Mild sharpen after scaling (avoid over-sharpening).
+          '${enhanceQuality ? 'unsharp=5:5:0.6:5:5:0.0,' : ''}'
           'format=yuv420p,'
           'setsar=1';
     } else {
       // Enforce exact aspect ratio by cropping if needed
       filter =
-          'scale=$width:$height:force_original_aspect_ratio=increase,'
+          '${enhanceQuality ? 'hqdn3d=1.5:1.5:3:3,' : ''}'
+          'scale=$width:$height:force_original_aspect_ratio=increase:flags=$flags,'
           'crop=$width:$height,'
           'fps=$fps,'
+          '${enhanceQuality ? 'unsharp=5:5:0.6:5:5:0.0,' : ''}'
           'format=yuv420p,'
           'setsar=1';
     }
@@ -617,17 +645,23 @@ class MediaToolsService {
       filter,
     ];
 
-    // Add Video Encoder settings (use CRF 23 for quality)
-    const crf = 23;
+    // Add Video Encoder settings.
+    //
+    // CRF notes:
+    // - Lower CRF => better quality, bigger files.
+    // - If `crf` is not provided, we pick a sensible default based on target
+    //   resolution (smaller outputs usually need lower CRF to avoid artifacts).
+    final resolvedCrf = crf ?? _autoReencodeCrf(height);
+    log.addSubLog(LogEntry.info('Video quality: CRF $resolvedCrf'));
     if (hwEncoder != null && hwEncoder.isNotEmpty && hwEncoder != 'libx264') {
       cmd.addAll(['-c:v', hwEncoder]);
-      cmd.addAll(_getHwEncoderArgs(hwEncoder, crf, preset));
+      cmd.addAll(_getHwEncoderArgs(hwEncoder, resolvedCrf, preset));
     } else {
       cmd.addAll([
         '-c:v',
         'libx264',
         '-crf',
-        crf.toString(),
+        resolvedCrf.toString(),
         '-preset',
         preset,
       ]);
@@ -651,6 +685,12 @@ class MediaToolsService {
     onLog?.call(LogEntry.success('Video re-encoded to $outputPath'));
   }
 
+  int _autoReencodeCrf(int targetHeight) {
+    if (targetHeight <= 480) return 20;
+    if (targetHeight <= 720) return 22;
+    return 23;
+  }
+
   List<String> _getHwEncoderArgs(String encoder, int crf, String preset) {
     // Map standard CRF (0-51, lower=better) and Preset to HW specific args
 
@@ -666,11 +706,11 @@ class MediaToolsService {
         // CRF 32 (Very Low) -> ~35
         var quality = 60;
         if (crf <= 18) {
-          quality = 75;
-        } else if (crf >= 28) {
-          quality = 45;
+          quality = 85;
         } else if (crf >= 32) {
           quality = 35;
+        } else if (crf >= 28) {
+          quality = 45;
         }
 
         return ['-q:v', quality.toString(), '-allow_sw', '1'];
