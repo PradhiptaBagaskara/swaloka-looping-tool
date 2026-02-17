@@ -363,13 +363,13 @@ class VideoMergerService {
           onLog,
         );
       } else {
-        // If intro exists: Split audio, create intro+background separately, then concat
+        // If intro exists: Split audio into intro/remaining parts, create videos separately, then concat
         final log = LogEntry.info(
-          'Creating video with intro and playlist audio from start...',
+          'Creating video with intro and background...',
         );
         onLog?.call(log);
 
-        // Get intro and audio durations
+        // Get intro video duration
         var introSeconds = 0.0;
         try {
           final introMeta = await FFmpegService.getVideoMetadata(
@@ -380,65 +380,26 @@ class VideoMergerService {
           }
         } on Exception catch (_) {}
 
+        if (introSeconds <= 0) {
+          throw Exception('Could not determine intro video duration');
+        }
+
+        // Get merged audio duration
         final audioSeconds = await _getAudioDurationSeconds(mergedAudioPath);
         if (audioSeconds == null || audioSeconds <= 0) {
           throw Exception('Could not determine audio duration');
         }
 
-        final remainingAudioSeconds = audioSeconds - introSeconds;
-
-        // Step 1: Split playlist audio into intro part and remaining part
-        final audioIntroPart = p.join(tempDir.path, 'audio_intro_part.m4a');
-        final audioRemainingPart = p.join(
-          tempDir.path,
-          'audio_remaining_part.m4a',
-        );
-
-        final splitLog = LogEntry.info('Splitting playlist audio...');
-        log.addSubLog(splitLog);
-
-        // Extract first part (for intro duration)
-        await FFmpegService.run(
-          [
-            '-y',
-            '-hwaccel',
-            'auto',
-            '-i',
-            p.absolute(mergedAudioPath),
-            '-t',
-            introSeconds.toStringAsFixed(3),
-            '-c',
-            'copy',
-            p.absolute(audioIntroPart),
-          ],
-          errorMessage: 'Failed to extract intro audio part',
-          onLog: splitLog.addSubLog,
-        );
-
-        // Extract remaining part
-        await FFmpegService.run(
-          [
-            '-y',
-            '-hwaccel',
-            'auto',
-            '-i',
-            p.absolute(mergedAudioPath),
-            '-ss',
-            introSeconds.toStringAsFixed(3),
-            '-c',
-            'copy',
-            p.absolute(audioRemainingPart),
-          ],
-          errorMessage: 'Failed to extract remaining audio part',
-          onLog: splitLog.addSubLog,
-        );
+        final totalAudioDuration = audioSeconds;
 
         onProgress?.call(0.6);
 
-        // Step 2: Create intro video with first audio part
+        // Step 1: Create intro video with looped audio (audio loops to match intro duration)
         final introWithAudioPath = p.join(tempDir.path, 'intro_with_audio.mp4');
 
-        final introLog = LogEntry.info('Creating intro with audio...');
+        final introLog = LogEntry.info(
+          'Creating intro video (${introSeconds.toStringAsFixed(1)}s) with looped audio...',
+        );
         log.addSubLog(introLog);
 
         await FFmpegService.run(
@@ -446,8 +407,10 @@ class VideoMergerService {
             '-y',
             '-i',
             p.absolute(introVideoPath),
+            '-stream_loop',
+            '-1', // Loop audio infinitely
             '-i',
-            p.absolute(audioIntroPart),
+            p.absolute(mergedAudioPath),
             '-map',
             '0:v',
             '-map',
@@ -457,25 +420,30 @@ class VideoMergerService {
             ...await FFmpegService.getStandardYouTubeVideoMetadataFlags(),
             '-c:a',
             'copy',
-            '-shortest',
+            '-t',
+            introSeconds.toStringAsFixed(
+              3,
+            ), // Limit output to intro video duration
             '-movflags',
             '+faststart',
             p.absolute(introWithAudioPath),
           ],
-          errorMessage: 'Failed to create intro with audio',
+          errorMessage: 'Failed to create intro with looped audio',
           onLog: introLog.addSubLog,
         );
 
         onProgress?.call(0.7);
 
-        // Step 3: Create background video with remaining audio
+        // Step 2: Create background video with audio starting from intro offset
         final backgroundWithAudioPath = p.join(
           tempDir.path,
           'background_with_audio.mp4',
         );
 
+        final remainingAudioSeconds = totalAudioDuration - introSeconds;
+
         final bgLog = LogEntry.info(
-          'Creating background with remaining audio (${remainingAudioSeconds.toStringAsFixed(1)}s)...',
+          'Creating background video with audio (${remainingAudioSeconds.toStringAsFixed(1)}s remaining)...',
         );
         log.addSubLog(bgLog);
 
@@ -483,11 +451,13 @@ class VideoMergerService {
           [
             '-y',
             '-stream_loop',
-            '-1',
+            '-1', // Loop background video infinitely
             '-i',
             p.absolute(backgroundVideoPath),
+            '-ss',
+            introSeconds.toStringAsFixed(3), // Start audio from intro offset
             '-i',
-            p.absolute(audioRemainingPart),
+            p.absolute(mergedAudioPath),
             '-map',
             '0:v',
             '-map',
@@ -497,7 +467,10 @@ class VideoMergerService {
             ...await FFmpegService.getStandardYouTubeVideoMetadataFlags(),
             '-c:a',
             'copy',
-            '-shortest',
+            '-t',
+            remainingAudioSeconds.toStringAsFixed(
+              3,
+            ), // Limit to remaining audio duration
             '-movflags',
             '+faststart',
             p.absolute(backgroundWithAudioPath),
@@ -508,7 +481,7 @@ class VideoMergerService {
 
         onProgress?.call(0.8);
 
-        // Step 4: Concat intro + background (both have video+audio)
+        // Step 3: Concat intro + background (both have video+audio)
         final concatLog = LogEntry.info(
           'Concatenating intro with background...',
         );
