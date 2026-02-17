@@ -132,12 +132,12 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                     itemCount: _audioFiles.length,
                     onReorder: (oldIndex, newIndex) {
                       setState(() {
-                        if (newIndex > oldIndex) {
-                          newIndex -= 1;
-                        }
+                        final adjustedIndex = newIndex > oldIndex
+                            ? newIndex - 1
+                            : newIndex;
                         final files = List<String>.from(_audioFiles);
                         final item = files.removeAt(oldIndex);
-                        files.insert(newIndex, item);
+                        files.insert(adjustedIndex, item);
                         _audioFiles = files;
                       });
                     },

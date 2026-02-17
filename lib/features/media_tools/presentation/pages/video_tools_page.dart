@@ -716,11 +716,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             itemCount: _videoPaths.length,
             onReorder: (oldIndex, newIndex) {
               setState(() {
-                if (newIndex > oldIndex) {
-                  newIndex -= 1;
-                }
+                final adjustedIndex = newIndex > oldIndex
+                    ? newIndex - 1
+                    : newIndex;
                 final item = _videoPaths.removeAt(oldIndex);
-                _videoPaths.insert(newIndex, item);
+                _videoPaths.insert(adjustedIndex, item);
               });
             },
             itemBuilder: (context, i) {
@@ -1383,11 +1383,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             itemCount: _reencodeVideoPaths.length,
             onReorder: (oldIndex, newIndex) {
               setState(() {
-                if (newIndex > oldIndex) {
-                  newIndex -= 1;
-                }
+                final adjustedIndex = newIndex > oldIndex
+                    ? newIndex - 1
+                    : newIndex;
                 final item = _reencodeVideoPaths.removeAt(oldIndex);
-                _reencodeVideoPaths.insert(newIndex, item);
+                _reencodeVideoPaths.insert(adjustedIndex, item);
               });
             },
             itemBuilder: (context, i) {
