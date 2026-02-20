@@ -1,14 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
-import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
 import 'package:swaloka_looping_tool/core/utils/timestamp_formatter.dart';
 import 'package:swaloka_looping_tool/features/media_tools/presentation/providers/media_tools_providers.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
@@ -40,7 +40,6 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   int _compressCrf = 23; // Default balanced
   String _compressPreset = 'veryfast';
   bool _compressKeepAudio = true;
-  bool _useHwAccel = false;
   String _hwAccelEncoder = 'libx264'; // Will be updated in initState
 
   // Re-encode Video State
@@ -49,13 +48,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   String _reencodeAspectRatio =
       'original'; // original, 16:9, 9:16, 1:1, 3:2, 2:3
   int _reencodeFps = 30;
-  String _reencodePreset = 'veryfast';
-  String _reencodeQuality = 'auto'; // auto, high, balanced, smaller, tiny
-  String _reencodeScalingQuality = 'high'; // fast, balanced, high
-  bool _reencodeEnhanceQuality = false;
-  bool _reencodeKeepAudio = true;
-  bool _reencodeUseHwAccel = false;
-  String _reencodeHwEncoder = 'libx264';
+  bool _reencodeAllowUpscale = false; // Allow upscaling to higher resolution
   String? _reencodeReferenceVideoName;
 
   // Video Info State
@@ -74,17 +67,9 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
   @override
   void initState() {
     super.initState();
-    // Set default HW encoder based on Platform
-    if (Platform.isMacOS) {
-      _hwAccelEncoder = 'h264_videotoolbox';
-      _reencodeHwEncoder = 'h264_videotoolbox';
-    } else if (Platform.isWindows) {
-      _hwAccelEncoder = 'h264_nvenc';
-      _reencodeHwEncoder = 'h264_nvenc';
-    } else if (Platform.isLinux) {
-      _hwAccelEncoder = 'h264_vaapi';
-      _reencodeHwEncoder = 'h264_vaapi';
-    }
+    // Use global encoder setting from FFmpegService
+    // This already includes auto-detection with libx264 as fallback
+    _hwAccelEncoder = FFmpegService.hwAccelEncoder;
   }
 
   Future<String> _ensureOutputsDir() async {
@@ -158,7 +143,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             fadeInColor: _colorToHex(_fadeInColor),
             fadeOutColor: _colorToHex(_fadeOutColor),
             encodingPreset: _encodingPreset,
-            hwEncoder: _useHwAccel ? _hwAccelEncoder : null,
+            hwEncoder: _hwAccelEncoder,
             onLog: notifier.addLog,
           );
 
@@ -199,7 +184,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
             crf: _compressCrf,
             preset: _compressPreset,
             keepAudio: _compressKeepAudio,
-            hwEncoder: _useHwAccel ? _hwAccelEncoder : null,
+            hwEncoder: _hwAccelEncoder,
             onLog: notifier.addLog,
           );
 
@@ -353,134 +338,101 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       final outputsDir = await _ensureOutputsDir();
       final timestamp = TimestampFormatter.format();
 
-      // Get target height from resolution
-      final heightMap = {
-        '480p': 480,
-        '720p': 720,
-        '1080p': 1080,
-        '2K': 1440,
-        '4K': 2160,
-        '8K': 4320,
-      };
-      final targetHeight = heightMap[_reencodeResolution] ?? 1080;
-
-      final project = ref.read(activeProjectProvider);
-      final enableParallelProcessing =
-          project?.enableParallelProcessing ?? true;
-      final concurrencyLimit = SystemInfoService.getRecommendedConcurrency();
-      final parallelism = enableParallelProcessing ? concurrencyLimit : 1;
-      final safeParallelism = max(1, parallelism);
-
       final total = _reencodeVideoPaths.length;
-      final maxWorkers = min(safeParallelism, total);
       final batchLog = LogEntry.info(
-        'Re-encoding $total video(s) (parallel: $maxWorkers)...',
+        'Re-encoding $total video(s) with YouTube-optimized settings...',
       );
       notifier.addLog(batchLog);
 
-      var completed = 0;
-      var nextIndex = 0;
-      Object? firstError;
-
       String? lastOutputPath;
 
-      int? crfOverride;
-      switch (_reencodeQuality) {
-        case 'high':
-          crfOverride = 20;
-        case 'balanced':
-          crfOverride = 23;
-        case 'smaller':
-          crfOverride = 28;
-        case 'tiny':
-          crfOverride = 32;
-        case 'auto':
-        default:
-          crfOverride = null;
-      }
+      // Process videos one by one sequentially
+      for (var i = 0; i < total; i++) {
+        final videoPath = _reencodeVideoPaths[i];
+        final name = p.basenameWithoutExtension(videoPath);
 
-      Future<void> worker() async {
-        while (true) {
-          if (firstError != null) return;
-          final current = nextIndex++;
-          if (current >= total) return;
+        // Get original video metadata
+        final metadata = await FFmpegService.getVideoMetadata(videoPath);
+        final originalHeight = metadata.height ?? 1080;
 
-          final videoPath = _reencodeVideoPaths[current];
-          final name = p.basenameWithoutExtension(videoPath);
+        // Calculate target resolution
+        int targetHeight;
+        int targetWidth;
+        var preserveAspectRatio = false;
 
-          // Calculate dimensions based on aspect ratio
-          int targetWidth;
-          var preserveAspectRatio = false;
+        // Use resolution from dropdown
+        final heightMap = {
+          '480p': 480,
+          '720p': 720,
+          '1080p': 1080,
+          '2K': 1440,
+          '4K': 2160,
+          '8K': 4320,
+        };
+        targetHeight = heightMap[_reencodeResolution] ?? 1080;
 
-          if (_reencodeAspectRatio == 'original') {
-            // Get original video dimensions to preserve aspect ratio
-            final metadata = await FFmpegService.getVideoMetadata(videoPath);
-            if (metadata.width != null && metadata.height != null) {
-              final originalAspect = metadata.width! / metadata.height!;
-              targetWidth = (targetHeight * originalAspect).round();
-              // Ensure even width
-              if (targetWidth % 2 != 0) targetWidth++;
-            } else {
-              // Fallback to 16:9 if metadata unavailable
-              targetWidth = (targetHeight * 16 / 9).round();
-            }
-            preserveAspectRatio = true;
-          } else {
-            final dimensions = _getResolutionDimensions(
-              _reencodeResolution,
-              _reencodeAspectRatio,
-            );
-            if (dimensions != null) {
-              targetWidth = dimensions.width;
-            } else {
-              // Fallback
-              targetWidth = (targetHeight * 16 / 9).round();
-            }
-          }
-
-          final aspectRatioLabel = _reencodeAspectRatio == 'original'
-              ? 'original'
-              : _reencodeAspectRatio.replaceAll(':', '_');
-          final outputPath = p.join(
-            outputsDir,
-            '${name}_${_reencodeResolution}_${aspectRatioLabel}_${_reencodeFps}fps_${timestamp}_$current.mp4',
+        // Check if upscale is needed
+        final needsUpscale = originalHeight < targetHeight;
+        if (needsUpscale && !_reencodeAllowUpscale) {
+          batchLog.addSubLog(
+            LogEntry.warning(
+              'Skipping ${p.basename(videoPath)}: source is ${originalHeight}p, target is $_reencodeResolution (upscale disabled)',
+            ),
           );
+          notifier.updateProgress((i + 1) / total);
+          continue;
+        }
 
-          try {
-            await ref
-                .read(mediaToolsServiceProvider)
-                .reencodeVideo(
-                  videoPath: videoPath,
-                  outputPath: outputPath,
-                  width: targetWidth,
-                  height: targetHeight,
-                  fps: _reencodeFps,
-                  preset: _reencodePreset,
-                  crf: crfOverride,
-                  scalingQuality: _reencodeScalingQuality,
-                  enhanceQuality: _reencodeEnhanceQuality,
-                  keepAudio: _reencodeKeepAudio,
-                  preserveAspectRatio: preserveAspectRatio,
-                  hwEncoder: _reencodeUseHwAccel ? _reencodeHwEncoder : null,
-                  onLog: batchLog.addSubLog,
-                );
-            lastOutputPath = outputPath;
-          } on Exception catch (e) {
-            firstError = e;
-            return;
-          } finally {
-            if (firstError == null) {
-              completed++;
-              notifier.updateProgress(completed / total);
-            }
+        // Calculate dimensions based on aspect ratio
+        if (_reencodeAspectRatio == 'original') {
+          // Get original video dimensions to preserve aspect ratio
+          if (metadata.width != null && metadata.height != null) {
+            final originalAspect = metadata.width! / metadata.height!;
+            targetWidth = (targetHeight * originalAspect).round();
+            // Ensure even width
+            if (targetWidth % 2 != 0) targetWidth++;
+          } else {
+            // Fallback to 16:9 if metadata unavailable
+            targetWidth = (targetHeight * 16 / 9).round();
+          }
+          preserveAspectRatio = true;
+        } else {
+          final dimensions = _getResolutionDimensions(
+            _reencodeResolution,
+            _reencodeAspectRatio,
+          );
+          if (dimensions != null) {
+            targetWidth = dimensions.width;
+          } else {
+            // Fallback
+            targetWidth = (targetHeight * 16 / 9).round();
           }
         }
-      }
 
-      await Future.wait(List.generate(maxWorkers, (_) => worker()));
+        final aspectRatioLabel = _reencodeAspectRatio == 'original'
+            ? 'original'
+            : _reencodeAspectRatio.replaceAll(':', '_');
 
-      if (firstError != null) {
-        throw firstError!; // handled below
+        final outputPath = p.join(
+          outputsDir,
+          '${name}_${_reencodeResolution}_${aspectRatioLabel}_${_reencodeFps}fps_${timestamp}_$i.mp4',
+        );
+
+        await ref
+            .read(mediaToolsServiceProvider)
+            .reencodeVideoWithYouTubeSettings(
+              videoPath: videoPath,
+              outputPath: outputPath,
+              width: targetWidth,
+              height: targetHeight,
+              fps: _reencodeFps,
+              preserveAspectRatio: preserveAspectRatio,
+              hwEncoder: _hwAccelEncoder,
+              onLog: batchLog.addSubLog,
+            );
+        lastOutputPath = outputPath;
+
+        notifier.updateProgress((i + 1) / total);
       }
 
       notifier.setSuccess(lastOutputPath ?? outputsDir);
@@ -510,6 +462,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       final metadata = await FFmpegService.getVideoMetadata(_infoVideoPath!);
       final fileInfo = await File(_infoVideoPath!).stat();
 
+      // Check YouTube standards
+      final youtubeValidation = await FFmpegService.checkYouTubeStandards(
+        metadata,
+      );
+
       setState(() {
         _videoInfo = {
           'fileName': p.basename(_infoVideoPath!),
@@ -522,7 +479,21 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           'pixelFormat': metadata.pixFmt,
           'duration': metadata.duration,
           'hasAudio': metadata.hasAudio,
+          'audioCodec': metadata.audioCodec,
           'metadataTags': metadata.metadataTags,
+          'rawJson': metadata.rawJson,
+          'youtubeValidation': youtubeValidation,
+          'colorSpace': metadata.colorSpace,
+          'colorPrimaries': metadata.colorPrimaries,
+          'colorTransfer': metadata.colorTransfer,
+          'colorRange': metadata.colorRange,
+          'profile': metadata.profile,
+          'level': metadata.level,
+          'bFrames': metadata.bFrames,
+          'gopSize': metadata.gopSize,
+          'cabac': metadata.cabac,
+          'interlaced': metadata.interlaced,
+          'bitrate': metadata.bitrate,
         };
       });
     } on Exception catch (e) {
@@ -713,6 +684,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           ReorderableListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
             itemCount: _videoPaths.length,
             onReorder: (oldIndex, newIndex) {
               setState(() {
@@ -723,22 +695,41 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 _videoPaths.insert(adjustedIndex, item);
               });
             },
-            itemBuilder: (context, i) {
-              return MediaItemCard(
-                key: ValueKey(_videoPaths[i]),
-                path: _videoPaths[i],
-                icon: Icons.movie,
-                onRemove: () {
-                  setState(() {
-                    _videoPaths.removeAt(i);
-                  });
+            proxyDecorator: (child, index, animation) {
+              return AnimatedBuilder(
+                animation: animation,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: 1.02,
+                    child: Material(
+                      elevation: 4,
+                      borderRadius: BorderRadius.circular(8),
+                      child: child,
+                    ),
+                  );
                 },
-                onPreview: () => _showPreview(
-                  context,
-                  _videoPaths[i],
+                child: child,
+              );
+            },
+            itemBuilder: (context, i) {
+              return ReorderableDragStartListener(
+                key: ValueKey(_videoPaths[i]),
+                index: i,
+                child: MediaItemCard(
+                  path: _videoPaths[i],
+                  icon: Icons.movie,
+                  onRemove: () {
+                    setState(() {
+                      _videoPaths.removeAt(i);
+                    });
+                  },
+                  onPreview: () => _showPreview(
+                    context,
+                    _videoPaths[i],
+                  ),
+                  isVideo: true,
+                  index: i + 1,
                 ),
-                isVideo: true,
-                index: i + 1,
               );
             },
           ),
@@ -1003,58 +994,40 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                   ),
                 ),
                 const Divider(height: 24),
-                CheckboxListTile(
-                  title: Text(
-                    'Akselerasi Hardware',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  subtitle: Text(
-                    'Gunakan GPU untuk encoding lebih cepat',
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                  value: _useHwAccel,
-                  onChanged: (v) => setState(() => _useHwAccel = v ?? false),
-                  contentPadding: EdgeInsets.zero,
-                  activeColor: Theme.of(context).colorScheme.primary,
-                  dense: true,
-                ),
-                if (_useHwAccel) ...[
-                  const SizedBox(height: 12),
-                  CompactDropdown<String>(
-                    value: _hwAccelEncoder,
-                    label: 'Encoder:',
-                    icon: Icons.memory,
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'libx264',
-                        child: Text('Default (CPU)'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'h264_videotoolbox',
-                        child: Text('macOS (Apple/Intel)'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'h264_nvenc',
-                        child: Text('NVIDIA (Win/Linux)'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'h264_amf',
-                        child: Text('AMD (Windows)'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'h264_qsv',
-                        child: Text('Intel QuickSync'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'h264_vaapi',
-                        child: Text('VAAPI (Linux)'),
-                      ),
-                    ],
-                    onChanged: (v) => setState(
-                      () => _hwAccelEncoder = v ?? 'h264_videotoolbox',
+                CompactDropdown<String>(
+                  value: _hwAccelEncoder,
+                  label: 'Encoder:',
+                  icon: Icons.memory,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'libx264',
+                      child: Text('Default (CPU)'),
                     ),
+                    DropdownMenuItem(
+                      value: 'h264_videotoolbox',
+                      child: Text('macOS (Apple/Intel)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'h264_nvenc',
+                      child: Text('NVIDIA (Win/Linux)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'h264_amf',
+                      child: Text('AMD (Windows)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'h264_qsv',
+                      child: Text('Intel QuickSync'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'h264_vaapi',
+                      child: Text('VAAPI (Linux)'),
+                    ),
+                  ],
+                  onChanged: (v) => setState(
+                    () => _hwAccelEncoder = v ?? 'libx264',
                   ),
-                ],
+                ),
               ],
             ),
           ),
@@ -1259,58 +1232,40 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 dense: true,
               ),
               const Divider(),
-              CheckboxListTile(
-                title: Text(
-                  'Akselerasi Hardware',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                subtitle: Text(
-                  'Gunakan GPU untuk encoding lebih cepat',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-                value: _useHwAccel,
-                onChanged: (v) => setState(() => _useHwAccel = v ?? false),
-                contentPadding: EdgeInsets.zero,
-                activeColor: Theme.of(context).colorScheme.primary,
-                dense: true,
-              ),
-              if (_useHwAccel) ...[
-                const SizedBox(height: 12),
-                CompactDropdown<String>(
-                  value: _hwAccelEncoder,
-                  label: 'Encoder:',
-                  icon: Icons.memory,
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'libx264',
-                      child: Text('Default (CPU)'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'h264_videotoolbox',
-                      child: Text('macOS (Apple/Intel)'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'h264_nvenc',
-                      child: Text('NVIDIA (Win/Linux)'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'h264_amf',
-                      child: Text('AMD (Windows)'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'h264_qsv',
-                      child: Text('Intel QuickSync'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'h264_vaapi',
-                      child: Text('VAAPI (Linux)'),
-                    ),
-                  ],
-                  onChanged: (v) => setState(
-                    () => _hwAccelEncoder = v ?? 'h264_videotoolbox',
+              CompactDropdown<String>(
+                value: _hwAccelEncoder,
+                label: 'Encoder:',
+                icon: Icons.memory,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'libx264',
+                    child: Text('Default (CPU)'),
                   ),
+                  DropdownMenuItem(
+                    value: 'h264_videotoolbox',
+                    child: Text('macOS (Apple/Intel)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'h264_nvenc',
+                    child: Text('NVIDIA (Win/Linux)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'h264_amf',
+                    child: Text('AMD (Windows)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'h264_qsv',
+                    child: Text('Intel QuickSync'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'h264_vaapi',
+                    child: Text('VAAPI (Linux)'),
+                  ),
+                ],
+                onChanged: (v) => setState(
+                  () => _hwAccelEncoder = v ?? 'libx264',
                 ),
-              ],
+              ),
             ],
           ),
         ),
@@ -1380,6 +1335,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           ReorderableListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
             itemCount: _reencodeVideoPaths.length,
             onReorder: (oldIndex, newIndex) {
               setState(() {
@@ -1390,22 +1346,41 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 _reencodeVideoPaths.insert(adjustedIndex, item);
               });
             },
-            itemBuilder: (context, i) {
-              return MediaItemCard(
-                key: ValueKey(_reencodeVideoPaths[i]),
-                path: _reencodeVideoPaths[i],
-                icon: Icons.movie,
-                onRemove: () {
-                  setState(() {
-                    _reencodeVideoPaths.removeAt(i);
-                  });
+            proxyDecorator: (child, index, animation) {
+              return AnimatedBuilder(
+                animation: animation,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: 1.02,
+                    child: Material(
+                      elevation: 4,
+                      borderRadius: BorderRadius.circular(8),
+                      child: child,
+                    ),
+                  );
                 },
-                onPreview: () => _showPreview(
-                  context,
-                  _reencodeVideoPaths[i],
+                child: child,
+              );
+            },
+            itemBuilder: (context, i) {
+              return ReorderableDragStartListener(
+                key: ValueKey(_reencodeVideoPaths[i]),
+                index: i,
+                child: MediaItemCard(
+                  path: _reencodeVideoPaths[i],
+                  icon: Icons.movie,
+                  onRemove: () {
+                    setState(() {
+                      _reencodeVideoPaths.removeAt(i);
+                    });
+                  },
+                  onPreview: () => _showPreview(
+                    context,
+                    _reencodeVideoPaths[i],
+                  ),
+                  isVideo: true,
+                  index: i + 1,
                 ),
-                isVideo: true,
-                index: i + 1,
               );
             },
           ),
@@ -1720,49 +1695,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 },
               ),
               const SizedBox(height: 16),
-              CompactDropdown<String>(
-                value: _reencodePreset,
-                label: 'Kecepatan Encoding:',
-                icon: Icons.speed,
-                items: const [
-                  DropdownMenuItem(
-                    value: 'ultrafast',
-                    child: Text('Ultra Cepat'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'veryfast',
-                    child: Text('Sangat Cepat'),
-                  ),
-                  DropdownMenuItem(value: 'fast', child: Text('Cepat')),
-                  DropdownMenuItem(value: 'medium', child: Text('Sedang')),
-                  DropdownMenuItem(value: 'slow', child: Text('Lambat')),
-                ],
-                onChanged: (v) =>
-                    setState(() => _reencodePreset = v ?? 'veryfast'),
-              ),
-              const SizedBox(height: 12),
-              CompactDropdown<String>(
-                value: _reencodeScalingQuality,
-                label: 'Kualitas Scaling:',
-                icon: Icons.photo_size_select_large,
-                items: const [
-                  DropdownMenuItem(
-                    value: 'fast',
-                    child: Text('Cepat (Bilinear)'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'balanced',
-                    child: Text('Seimbang (Bicubic)'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'high',
-                    child: Text('Tinggi (Lanczos)'),
-                  ),
-                ],
-                onChanged: (v) =>
-                    setState(() => _reencodeScalingQuality = v ?? 'high'),
-              ),
-              const SizedBox(height: 12),
+              // Upscale option
               Row(
                 children: [
                   Expanded(
@@ -1770,7 +1703,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                       children: [
                         Flexible(
                           child: Text(
-                            'Tingkatkan Kualitas',
+                            'Perbaiki Kualitas',
                             style: Theme.of(context).textTheme.labelLarge
                                 ?.copyWith(fontWeight: FontWeight.w500),
                           ),
@@ -1778,138 +1711,83 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                         const SizedBox(width: 6),
                         const CompactTooltip(
                           message:
-                              'Menerapkan denoise ringan + sharpening sedang.\n\n'
-                              'Membuat upscale terlihat kurang lembut, tapi meningkatkan waktu pemrosesan.',
+                              'Gunakan upscale saat resolusi output lebih tinggi dari source.\n\n'
+                              'Secara default, video akan di-downscale saja. Aktifkan opsi ini untuk memaksa encoding ke resolusi lebih tinggi.',
                         ),
                       ],
                     ),
                   ),
                   Checkbox(
-                    value: _reencodeEnhanceQuality,
+                    value: _reencodeAllowUpscale,
                     onChanged: (v) =>
-                        setState(() => _reencodeEnhanceQuality = v ?? false),
+                        setState(() => _reencodeAllowUpscale = v ?? false),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              CompactDropdown<String>(
-                value: _reencodeQuality,
-                label: 'Kualitas (CRF):',
-                icon: Icons.high_quality,
-                items: const [
-                  DropdownMenuItem(value: 'auto', child: Text('Auto')),
-                  DropdownMenuItem(
-                    value: 'high',
-                    child: Text('Kualitas Tinggi'),
-                  ),
-                  DropdownMenuItem(value: 'balanced', child: Text('Seimbang')),
-                  DropdownMenuItem(
-                    value: 'smaller',
-                    child: Text('File Lebih Kecil'),
-                  ),
-                  DropdownMenuItem(value: 'tiny', child: Text('File Kecil')),
-                ],
-                onChanged: (v) =>
-                    setState(() => _reencodeQuality = v ?? 'auto'),
+              const SizedBox(height: 16),
+              // Info tentang encoder settings otomatis
+              Builder(
+                builder: (context) {
+                  final settings = _getYouTubeSettings(
+                    _reencodeResolution,
+                    _reencodeFps,
+                  );
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.auto_awesome,
+                              size: 16,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onPrimaryContainer,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Encoder settings dioptimalkan untuk YouTube',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onPrimaryContainer,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 28),
+                          child: Text(
+                            'Bitrate: ${settings['bitrate']} Mbps • CRF: ${settings['crf']} • Preset: ${settings['preset']}',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onPrimaryContainer,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
-              const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'CRF lebih rendah = kualitas lebih baik (file lebih besar). Menyesuaikan otomatis berdasarkan resolusi.',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        // Group: Audio & Hardware Acceleration
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outline,
-            ),
-          ),
-          child: Column(
-            children: [
-              CheckboxListTile(
-                title: Text(
-                  'Pertahankan Audio',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                subtitle: Text(
-                  'Encode ulang audio ke format AAC',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-                value: _reencodeKeepAudio,
-                onChanged: (v) =>
-                    setState(() => _reencodeKeepAudio = v ?? true),
-                contentPadding: EdgeInsets.zero,
-                activeColor: Theme.of(context).colorScheme.primary,
-                dense: true,
-              ),
-              const Divider(),
-              CheckboxListTile(
-                title: Text(
-                  'Akselerasi Hardware',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                subtitle: Text(
-                  'Gunakan GPU untuk encoding lebih cepat',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-                value: _reencodeUseHwAccel,
-                onChanged: (v) =>
-                    setState(() => _reencodeUseHwAccel = v ?? false),
-                contentPadding: EdgeInsets.zero,
-                activeColor: Theme.of(context).colorScheme.primary,
-                dense: true,
-              ),
-              if (_reencodeUseHwAccel) ...[
-                const SizedBox(height: 12),
-                CompactDropdown<String>(
-                  value: _reencodeHwEncoder,
-                  label: 'Encoder:',
-                  icon: Icons.memory,
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'libx264',
-                      child: Text('Default (CPU)'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'h264_videotoolbox',
-                      child: Text('macOS (Apple/Intel)'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'h264_nvenc',
-                      child: Text('NVIDIA (Win/Linux)'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'h264_amf',
-                      child: Text('AMD (Windows)'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'h264_qsv',
-                      child: Text('Intel QuickSync'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'h264_vaapi',
-                      child: Text('VAAPI (Linux)'),
-                    ),
-                  ],
-                  onChanged: (v) {
-                    if (v != null) {
-                      setState(() => _reencodeHwEncoder = v);
-                    }
-                  },
-                ),
-              ],
             ],
           ),
         ),
@@ -2088,6 +1966,406 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 ],
               ),
             ),
+            // YouTube Standards Section
+            if (_videoInfo!['youtubeValidation'] != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color:
+                        (_videoInfo!['youtubeValidation']
+                                    as ({
+                                      String result,
+                                      List<String> issues,
+                                      Map<String, String> details,
+                                    }))
+                                .result ==
+                            FFmpegService.youtubeValidationPassed
+                        ? Colors.green
+                        : (_videoInfo!['youtubeValidation']
+                                      as ({
+                                        String result,
+                                        List<String> issues,
+                                        Map<String, String> details,
+                                      }))
+                                  .result ==
+                              FFmpegService.youtubeValidationWarning
+                        ? Colors.orange
+                        : Colors.red,
+                    width: 2,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          (_videoInfo!['youtubeValidation']
+                                          as ({
+                                            String result,
+                                            List<String> issues,
+                                            Map<String, String> details,
+                                          }))
+                                      .result ==
+                                  FFmpegService.youtubeValidationPassed
+                              ? Icons.check_circle
+                              : (_videoInfo!['youtubeValidation']
+                                            as ({
+                                              String result,
+                                              List<String> issues,
+                                              Map<String, String> details,
+                                            }))
+                                        .result ==
+                                    FFmpegService.youtubeValidationWarning
+                              ? Icons.warning
+                              : Icons.error,
+                          color:
+                              (_videoInfo!['youtubeValidation']
+                                          as ({
+                                            String result,
+                                            List<String> issues,
+                                            Map<String, String> details,
+                                          }))
+                                      .result ==
+                                  FFmpegService.youtubeValidationPassed
+                              ? Colors.green
+                              : (_videoInfo!['youtubeValidation']
+                                            as ({
+                                              String result,
+                                              List<String> issues,
+                                              Map<String, String> details,
+                                            }))
+                                        .result ==
+                                    FFmpegService.youtubeValidationWarning
+                              ? Colors.orange
+                              : Colors.red,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Standar YouTube',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const Spacer(),
+                        // Copy button
+                        InkWell(
+                          onTap: () {
+                            final validation =
+                                _videoInfo!['youtubeValidation']
+                                    as ({
+                                      String result,
+                                      List<String> issues,
+                                      Map<String, String> details,
+                                    });
+                            final buffer = StringBuffer();
+                            buffer.writeln(
+                              '=== YouTube Standards Validation ===',
+                            );
+                            buffer.writeln(
+                              'Status: ${validation.result == FFmpegService.youtubeValidationPassed
+                                  ? "✅ Sesuai"
+                                  : validation.result == FFmpegService.youtubeValidationWarning
+                                  ? "⚠️ Sebagian"
+                                  : "❌ Tidak Sesuai"}',
+                            );
+                            buffer.writeln();
+
+                            if (validation.issues.isEmpty) {
+                              buffer.writeln(
+                                '✅ Video sepenuhnya sesuai dengan standar upload YouTube',
+                              );
+                            } else {
+                              buffer.writeln('Masalah yang terdeteksi:');
+                              for (final issue in validation.issues) {
+                                buffer.writeln('  • $issue');
+                              }
+                            }
+                            buffer.writeln();
+                            buffer.writeln('Detail Parameter:');
+                            validation.details.forEach((key, value) {
+                              buffer.writeln(
+                                '  ${_getDetailLabel(key)}: $value',
+                              );
+                            });
+
+                            // Copy to clipboard
+                            Clipboard.setData(
+                              ClipboardData(text: buffer.toString()),
+                            );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Hasil validasi disalin!'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.copy,
+                                  size: 16,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Salin',
+                                  style: Theme.of(context).textTheme.labelSmall
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                (_videoInfo!['youtubeValidation']
+                                            as ({
+                                              String result,
+                                              List<String> issues,
+                                              Map<String, String> details,
+                                            }))
+                                        .result ==
+                                    FFmpegService.youtubeValidationPassed
+                                ? Colors.green.withValues(alpha: 0.2)
+                                : (_videoInfo!['youtubeValidation']
+                                              as ({
+                                                String result,
+                                                List<String> issues,
+                                                Map<String, String> details,
+                                              }))
+                                          .result ==
+                                      FFmpegService.youtubeValidationWarning
+                                ? Colors.orange.withValues(alpha: 0.2)
+                                : Colors.red.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            (_videoInfo!['youtubeValidation']
+                                            as ({
+                                              String result,
+                                              List<String> issues,
+                                              Map<String, String> details,
+                                            }))
+                                        .result ==
+                                    FFmpegService.youtubeValidationPassed
+                                ? 'Sesuai'
+                                : (_videoInfo!['youtubeValidation']
+                                              as ({
+                                                String result,
+                                                List<String> issues,
+                                                Map<String, String> details,
+                                              }))
+                                          .result ==
+                                      FFmpegService.youtubeValidationWarning
+                                ? 'Sebagian'
+                                : 'Tidak Sesuai',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color:
+                                      (_videoInfo!['youtubeValidation']
+                                                  as ({
+                                                    String result,
+                                                    List<String> issues,
+                                                    Map<String, String> details,
+                                                  }))
+                                              .result ==
+                                          FFmpegService.youtubeValidationPassed
+                                      ? Colors.green
+                                      : (_videoInfo!['youtubeValidation']
+                                                    as ({
+                                                      String result,
+                                                      List<String> issues,
+                                                      Map<String, String>
+                                                      details,
+                                                    }))
+                                                .result ==
+                                            FFmpegService
+                                                .youtubeValidationWarning
+                                      ? Colors.orange
+                                      : Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // Show validation details
+                    if ((_videoInfo!['youtubeValidation']
+                            as ({
+                              String result,
+                              List<String> issues,
+                              Map<String, String> details,
+                            }))
+                        .issues
+                        .isEmpty)
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.check_circle_outline,
+                            size: 16,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Video sepenuhnya sesuai dengan standar upload YouTube',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Masalah yang terdeteksi:',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          ...(_videoInfo!['youtubeValidation']
+                                  as ({
+                                    String result,
+                                    List<String> issues,
+                                    Map<String, String> details,
+                                  }))
+                              .issues
+                              .take(5)
+                              .map(
+                                (issue) => Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 8,
+                                    bottom: 4,
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        '• ',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          issue,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          if ((_videoInfo!['youtubeValidation']
+                                      as ({
+                                        String result,
+                                        List<String> issues,
+                                        Map<String, String> details,
+                                      }))
+                                  .issues
+                                  .length >
+                              5)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8, top: 4),
+                              child: Text(
+                                '...dan ${(_videoInfo!['youtubeValidation'] as ({String result, List<String> issues, Map<String, String> details})).issues.length - 5} lainnya',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    // Show all validation details
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Detail Parameter:',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          // Show all details from validation
+                          ...(_videoInfo!['youtubeValidation']
+                                  as ({
+                                    String result,
+                                    List<String> issues,
+                                    Map<String, String> details,
+                                  }))
+                              .details
+                              .entries
+                              .map(
+                                (entry) => _buildInfoRow(
+                                  _getDetailLabel(entry.key),
+                                  entry.value,
+                                ),
+                              ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             // Metadata Tags Section
             if (_videoInfo!['metadataTags'] != null &&
                 _videoInfo!['metadataTags'] is Map) ...[
@@ -2133,6 +2411,59 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                   ),
                 ),
               ],
+            ],
+            // Raw JSON Section
+            if (_videoInfo!['rawJson'] != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.code,
+                          color: Colors.orange[300],
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'JSON Lengkap',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E1E),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SelectableText(
+                          const JsonEncoder.withIndent('  ').convert(
+                            _videoInfo!['rawJson'],
+                          ),
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                            color: Colors.green[300],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ],
         ],
@@ -2223,6 +2554,41 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     return '#${r.toUpperCase()}${g.toUpperCase()}${b.toUpperCase()}';
   }
 
+  String _getDetailLabel(String key) {
+    switch (key) {
+      case 'codec':
+        return 'Codec Video';
+      case 'audioCodec':
+        return 'Codec Audio';
+      case 'pixFmt':
+        return 'Format Pixel';
+      case 'colorSpace':
+        return 'Color Space';
+      case 'interlaced':
+        return 'Scan';
+      case 'profile':
+        return 'Profile H.264';
+      case 'level':
+        return 'Level H.264';
+      case 'bFrames':
+        return 'B-Frames';
+      case 'gopSize':
+        return 'GOP Size';
+      case 'cabac':
+        return 'CABAC';
+      case 'bitrate':
+        return 'Bitrate';
+      case 'colorPrimaries':
+        return 'Color Primaries';
+      case 'colorTransfer':
+        return 'Color Transfer';
+      case 'colorRange':
+        return 'Color Range';
+      default:
+        return key;
+    }
+  }
+
   ({int width, int height})? _getResolutionDimensions(
     String resolution,
     String aspectRatio,
@@ -2266,5 +2632,41 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
 
     // Fallback to 16:9 if parsing fails
     return (width: (baseHeight * 16 / 9).round(), height: baseHeight);
+  }
+
+  /// Get YouTube settings for display in UI
+  Map<String, String> _getYouTubeSettings(String resolution, int fps) {
+    final heightMap = {
+      '480p': 480,
+      '720p': 720,
+      '1080p': 1080,
+      '2K': 1440,
+      '4K': 2160,
+      '8K': 4320,
+    };
+    final height = heightMap[resolution] ?? 1080;
+
+    // 60fps requires ~1.5x the bitrate of 30fps
+    final bitrateMultiplier = fps >= 50 ? 1.5 : 1.0;
+
+    if (height >= 2160) {
+      final bitrate = (35.0 * bitrateMultiplier).toStringAsFixed(1);
+      return {'bitrate': bitrate, 'crf': '18', 'preset': 'slow'};
+    } else if (height >= 1440) {
+      final bitrate = (16.0 * bitrateMultiplier).toStringAsFixed(1);
+      return {'bitrate': bitrate, 'crf': '20', 'preset': 'slow'};
+    } else if (height >= 1080) {
+      final bitrate = (8.0 * bitrateMultiplier).toStringAsFixed(1);
+      return {'bitrate': bitrate, 'crf': '21', 'preset': 'slow'};
+    } else if (height >= 720) {
+      final bitrate = (5.0 * bitrateMultiplier).toStringAsFixed(1);
+      return {'bitrate': bitrate, 'crf': '22', 'preset': 'slow'};
+    } else if (height >= 480) {
+      final bitrate = (2.5 * bitrateMultiplier).toStringAsFixed(1);
+      return {'bitrate': bitrate, 'crf': '23', 'preset': 'medium'};
+    } else {
+      final bitrate = (1.5 * bitrateMultiplier).toStringAsFixed(1);
+      return {'bitrate': bitrate, 'crf': '24', 'preset': 'medium'};
+    }
   }
 }

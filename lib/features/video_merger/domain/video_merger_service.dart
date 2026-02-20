@@ -154,7 +154,11 @@ class VideoMergerService {
         '-c:a',
         'aac',
         '-b:a',
-        '192k',
+        '384k', // YouTube recommended bitrate
+        '-ar',
+        '48000', // YouTube recommended sample rate
+        '-ac',
+        '2', // Stereo
         p.absolute(outPath),
       ]);
 
@@ -284,6 +288,8 @@ class VideoMergerService {
     await FFmpegService.run(
       [
         '-y',
+        '-hwaccel',
+        'auto', // Hardware-accelerated decoding
         '-stream_loop',
         '-1',
         '-i',
@@ -405,6 +411,8 @@ class VideoMergerService {
         await FFmpegService.run(
           [
             '-y',
+            '-hwaccel',
+            'auto', // Hardware-accelerated decoding
             '-i',
             p.absolute(introVideoPath),
             '-stream_loop',
@@ -450,6 +458,8 @@ class VideoMergerService {
         await FFmpegService.run(
           [
             '-y',
+            '-hwaccel',
+            'auto', // Hardware-accelerated decoding
             '-stream_loop',
             '-1', // Loop background video infinitely
             '-i',

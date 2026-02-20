@@ -37,15 +37,16 @@ class MediaItemCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Drag handle for reordering
-          if (index != null) ...[
-            Icon(
-              Icons.drag_indicator,
-              size: 20,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+          // Drag handle for reordering (left side)
+          if (index != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Icon(
+                Icons.drag_indicator,
+                size: 20,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
-            const SizedBox(width: 8),
-          ],
           // Show index number
           if (index != null) ...[
             Container(
@@ -59,7 +60,7 @@ class MediaItemCard extends StatelessWidget {
               ),
               child: Center(
                 child: Text(
-                  '$index',
+                  '${index! + 1}',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.bold,
@@ -115,15 +116,15 @@ class MediaItemCard extends StatelessWidget {
               ],
             ),
           ),
-          // Preview button
-          if (onPreview != null)
+          // Preview button (right side)
+          if (onPreview != null) ...[
             Tooltip(
               message: 'Preview',
               child: GestureDetector(
                 onTap: onPreview,
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
-                  child: Padding(
+                  child: Container(
                     padding: const EdgeInsets.all(8),
                     child: Icon(
                       Icons.play_circle_outline,
@@ -134,17 +135,20 @@ class MediaItemCard extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(width: 4),
+          ],
+          // Close button (right side)
           Tooltip(
             message: 'Remove',
             child: GestureDetector(
               onTap: onRemove,
               child: MouseRegion(
                 cursor: SystemMouseCursors.click,
-                child: Padding(
+                child: Container(
                   padding: const EdgeInsets.all(8),
                   child: Icon(
                     Icons.close,
-                    size: 16,
+                    size: 18,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),

@@ -952,6 +952,201 @@ class MediaToolsService {
     onLog?.call(LogEntry.success('Video re-encoded to $outputPath'));
   }
 
+  /// Re-encode video with YouTube-optimized settings
+  /// Automatically applies YouTube's recommended encoding parameters based on resolution
+  Future<void> reencodeVideoWithYouTubeSettings({
+    required String videoPath,
+    required String outputPath,
+    required int width,
+    required int height,
+    required int fps,
+    bool preserveAspectRatio = false,
+    String? hwEncoder, // Optional: use hardware encoder from global settings
+    void Function(LogEntry)? onLog,
+  }) async {
+    final log = LogEntry.info(
+      'Re-encoding video with YouTube settings: ${p.basename(videoPath)}...',
+    );
+    onLog?.call(log);
+
+    final aspectMode = preserveAspectRatio ? 'preserved' : 'enforced';
+    log.addSubLog(
+      LogEntry.info(
+        'Target format: ${width}x$height @ ${fps}fps (aspect ratio $aspectMode)',
+      ),
+    );
+
+    // YouTube-optimized settings based on resolution
+    final ytSettings = _getYouTubeSettingsForResolution(height, fps);
+    final encoderLabel = hwEncoder == null || hwEncoder == 'libx264'
+        ? 'CPU (libx264)'
+        : hwEncoder;
+    log.addSubLog(
+      LogEntry.info(
+        'Encoder: $encoderLabel | Settings: ${ytSettings.bitrate}Mbps, CRF ${ytSettings.crf}, preset ${ytSettings.preset}',
+      ),
+    );
+
+    // Use high quality scaling (lanczos) for best results
+    const scalingFlags = 'lanczos';
+
+    // Build filter based on aspect ratio handling
+    final String filter;
+    if (preserveAspectRatio) {
+      // Preserve original aspect ratio with padding (black bars if needed)
+      filter =
+          'scale=$width:$height:force_original_aspect_ratio=decrease:flags=$scalingFlags,'
+          'pad=$width:$height:(ow-iw)/2:(oh-ih)/2,'
+          'fps=$fps,'
+          'format=yuv420p,'
+          'setsar=1';
+    } else {
+      // Enforce exact aspect ratio by cropping if needed
+      filter =
+          'scale=$width:$height:force_original_aspect_ratio=increase:flags=$scalingFlags,'
+          'crop=$width:$height,'
+          'fps=$fps,'
+          'format=yuv420p,'
+          'setsar=1';
+    }
+
+    final cmd = [
+      '-y',
+      '-hwaccel',
+      'auto', // Hardware-accelerated decoding (faster, less CPU)
+      '-i',
+      videoPath,
+      '-vf',
+      filter,
+    ];
+
+    // Add video encoder settings
+    if (hwEncoder != null && hwEncoder.isNotEmpty && hwEncoder != 'libx264') {
+      // Use hardware encoder with YouTube specifications
+      final gopSize = (fps / 2).round(); // GOP size = half the frame rate
+      cmd.addAll(['-c:v', hwEncoder]);
+      cmd.addAll(
+        _getYouTubeHwEncoderArgs(
+          hwEncoder,
+          ytSettings.crf,
+          ytSettings.preset,
+          ytSettings.bitrate,
+          gopSize,
+        ),
+      );
+    } else {
+      // YouTube specifications:
+      // - Progressive scan (no interlacing)
+      // - High Profile
+      // - 2 consecutive B frames
+      // - Closed GOP. GOP of half the frame rate.
+      // - CABAC
+      // - Variable bitrate
+      // - Chroma subsampling: 4:2:0
+      final gopSize = (fps / 2).round(); // GOP size = half the frame rate
+      cmd.addAll([
+        '-c:v',
+        'libx264',
+        '-profile:v',
+        'high',
+        '-preset',
+        ytSettings.preset,
+        '-crf',
+        ytSettings.crf.toString(),
+        '-maxrate',
+        '${ytSettings.bitrate.toStringAsFixed(1)}M',
+        '-bufsize',
+        '${(ytSettings.bitrate * 2).toStringAsFixed(1)}M',
+        '-g',
+        gopSize.toString(), // GOP size: half the frame rate
+        '-bf',
+        '2', // 2 consecutive B-frames (YouTube spec)
+        '-flags',
+        '+cgop', // Closed GOP (YouTube spec)
+        '-coder',
+        '1', // CABAC
+      ]);
+    }
+
+    // Add YouTube metadata flags for BT.709 color space
+    final ytMetadataFlags =
+        await FFmpegService.getStandardYouTubeVideoMetadataFlags();
+
+    cmd.addAll([
+      '-movflags',
+      '+faststart',
+      ...ytMetadataFlags, // Add YouTube color space metadata
+      '-c:a',
+      'aac',
+      '-b:a',
+      '384k', // YouTube recommended audio bitrate
+      '-ar',
+      '48000', // YouTube recommended sample rate
+      '-ac',
+      '2', // Stereo
+      outputPath,
+    ]);
+
+    await FFmpegService.run(
+      cmd,
+      errorMessage: 'Failed to re-encode video',
+      onLog: log.addSubLog,
+    );
+
+    onLog?.call(LogEntry.success('Video re-encoded to $outputPath'));
+  }
+
+  /// Get YouTube-optimized encoding settings for a given resolution and fps
+  ({String preset, int crf, double bitrate}) _getYouTubeSettingsForResolution(
+    int height,
+    int fps,
+  ) {
+    // Based on YouTube's recommended upload encoding settings
+    // Source: https://support.google.com/youtube/answer/1722171?hl=en
+    // 60fps requires ~1.5x the bitrate of 30fps
+    // Quality-focused: using slower presets for better compression within bitrate limits
+    final bitrateMultiplier = fps >= 50 ? 1.5 : 1.0;
+
+    return switch (height) {
+      >= 2160 => (
+        // 4K
+        preset: 'slow',
+        crf: 18,
+        bitrate: 35.0 * bitrateMultiplier,
+      ),
+      >= 1440 => (
+        // 2K
+        preset: 'slow',
+        crf: 20,
+        bitrate: 16.0 * bitrateMultiplier,
+      ),
+      >= 1080 => (
+        // 1080p
+        preset: 'slow',
+        crf: 21,
+        bitrate: 8.0 * bitrateMultiplier,
+      ),
+      >= 720 => (
+        // 720p
+        preset: 'slow',
+        crf: 22,
+        bitrate: 5.0 * bitrateMultiplier,
+      ),
+      >= 480 => (
+        // 480p
+        preset: 'medium',
+        crf: 23,
+        bitrate: 2.5 * bitrateMultiplier,
+      ),
+      _ => (
+        // Lower resolutions
+        preset: 'medium',
+        crf: 24,
+        bitrate: 1.5 * bitrateMultiplier,
+      ),
+    };
+  }
+
   int _autoReencodeCrf(int targetHeight) {
     if (targetHeight <= 480) return 20;
     if (targetHeight <= 720) return 22;
@@ -1022,6 +1217,146 @@ class MediaToolsService {
     }
   }
 
+  List<String> _getYouTubeHwEncoderArgs(
+    String encoder,
+    int crf,
+    String preset,
+    double bitrate,
+    int gopSize,
+  ) {
+    // Map CRF and preset to hardware encoder specific args for YouTube-optimized encoding
+    // Includes bitrate targeting and YouTube specifications:
+    // - High Profile
+    // - 2 consecutive B frames
+    // - Closed GOP. GOP of half the frame rate.
+    // - Variable bitrate
+
+    switch (encoder) {
+      case 'h264_videotoolbox': // macOS
+        // Uses -q:v (0-100, higher=better).
+        // CRF 18 (High) -> ~85
+        // CRF 21-23 (Balanced) -> ~70
+        // CRF 24+ (Low) -> ~55
+        var quality = 70;
+        if (crf <= 18) {
+          quality = 85;
+        } else if (crf >= 24) {
+          quality = 55;
+        }
+        return [
+          '-b:v',
+          '${bitrate.toStringAsFixed(1)}M',
+          '-maxrate',
+          '${(bitrate * 1.2).toStringAsFixed(1)}M',
+          '-bufsize',
+          '${(bitrate * 2).toStringAsFixed(1)}M',
+          '-profile:v',
+          'high', // High Profile
+          '-bf',
+          '2', // 2 consecutive B-frames
+          '-g',
+          gopSize.toString(), // GOP size: half the frame rate
+          '-allow_sw',
+          '1',
+          '-q:v',
+          quality.toString(),
+        ];
+
+      case 'h264_nvenc': // NVIDIA
+        // Uses -cq (0-51, lower=better) with -rc vbr
+        return [
+          '-rc',
+          'vbr',
+          '-cq',
+          crf.toString(),
+          '-b:v',
+          '${bitrate.toStringAsFixed(1)}M',
+          '-maxrate',
+          '${(bitrate * 1.2).toStringAsFixed(1)}M',
+          '-bufsize',
+          '${(bitrate * 2).toStringAsFixed(1)}M',
+          '-profile:v',
+          'high', // High Profile
+          '-bf',
+          '2', // 2 consecutive B-frames
+          '-g',
+          gopSize.toString(), // GOP size: half the frame rate
+          '-strict_gop', // Closed GOP (NVENC equivalent)
+          '-preset',
+          'p4', // Medium preset
+        ];
+
+      case 'h264_amf': // AMD
+        // AMD AMF with VBR bitrate control
+        var quality = 'balanced';
+        if (preset == 'slow') quality = 'quality';
+        if (preset == 'fast' || preset == 'veryfast' || preset == 'ultrafast') {
+          quality = 'speed';
+        }
+        return [
+          '-usage',
+          'transcoding',
+          '-quality',
+          quality,
+          '-b:v',
+          '${bitrate.toStringAsFixed(1)}M',
+          '-maxrate',
+          '${(bitrate * 1.2).toStringAsFixed(1)}M',
+          '-bufsize',
+          '${(bitrate * 2).toStringAsFixed(1)}M',
+          '-profile:v',
+          'high', // High Profile
+          '-bf',
+          '2', // 2 consecutive B-frames
+          '-g',
+          gopSize.toString(), // GOP size: half the frame rate
+        ];
+
+      case 'h264_qsv': // Intel QuickSync
+        return [
+          '-global_quality',
+          crf.toString(),
+          '-b:v',
+          '${bitrate.toStringAsFixed(1)}M',
+          '-maxrate',
+          '${(bitrate * 1.2).toStringAsFixed(1)}M',
+          '-bufsize',
+          '${(bitrate * 2).toStringAsFixed(1)}M',
+          '-profile:v',
+          'high', // High Profile
+          '-bf',
+          '2', // 2 consecutive B-frames
+          '-g',
+          gopSize.toString(), // GOP size: half the frame rate
+          '-gop_mode',
+          'strict', // Closed GOP (QSV equivalent)
+          '-look_ahead',
+          '0',
+        ];
+
+      case 'h264_vaapi': // Linux VAAPI
+        return [
+          '-qp',
+          crf.toString(),
+          '-b:v',
+          '${bitrate.toStringAsFixed(1)}M',
+          '-maxrate',
+          '${(bitrate * 1.2).toStringAsFixed(1)}M',
+          '-bufsize',
+          '${(bitrate * 2).toStringAsFixed(1)}M',
+          '-profile:v',
+          'high', // High Profile
+          '-bf',
+          '2', // 2 consecutive B-frames
+          '-g',
+          gopSize.toString(), // GOP size: half the frame rate
+        ];
+
+      default:
+        return [];
+    }
+  }
+
   String _formatPathForConcatFile(String path) {
     var safePath = p.normalize(path);
     if (Platform.isWindows) {
@@ -1034,19 +1369,42 @@ class MediaToolsService {
     final ext = p.extension(outputPath).toLowerCase();
     switch (ext) {
       case '.mp3':
+        // MP3: Keep 192kbps (standard for MP3)
         return ['-c:a', 'libmp3lame', '-b:a', '192k'];
       case '.m4a':
       case '.aac':
-        return ['-c:a', 'aac', '-b:a', '192k'];
+        // AAC: Use YouTube recommended settings (384kbps, 48kHz, stereo)
+        return [
+          '-c:a',
+          'aac',
+          '-b:a',
+          '384k',
+          '-ar',
+          '48000',
+          '-ac',
+          '2',
+        ];
       case '.wav':
+        // WAV: Lossless (keeps source sample rate and channels)
         return ['-c:a', 'pcm_s16le'];
       case '.flac':
+        // FLAC: Lossless (keeps source sample rate and channels)
         return ['-c:a', 'flac'];
       case '.ogg':
+        // OGG: Vorbis with quality 4
         return ['-c:a', 'libvorbis', '-qscale:a', '4'];
       default:
-        // Fallback to AAC as a safe, widely supported default
-        return ['-c:a', 'aac', '-b:a', '192k'];
+        // Fallback to AAC with YouTube recommended settings
+        return [
+          '-c:a',
+          'aac',
+          '-b:a',
+          '384k',
+          '-ar',
+          '48000',
+          '-ac',
+          '2',
+        ];
     }
   }
 }
