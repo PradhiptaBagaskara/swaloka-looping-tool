@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
@@ -461,6 +462,11 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
       final metadata = await FFmpegService.getVideoMetadata(_infoVideoPath!);
       final fileInfo = await File(_infoVideoPath!).stat();
 
+      // Check YouTube standards
+      final youtubeValidation = await FFmpegService.checkYouTubeStandards(
+        metadata,
+      );
+
       setState(() {
         _videoInfo = {
           'fileName': p.basename(_infoVideoPath!),
@@ -476,6 +482,18 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           'audioCodec': metadata.audioCodec,
           'metadataTags': metadata.metadataTags,
           'rawJson': metadata.rawJson,
+          'youtubeValidation': youtubeValidation,
+          'colorSpace': metadata.colorSpace,
+          'colorPrimaries': metadata.colorPrimaries,
+          'colorTransfer': metadata.colorTransfer,
+          'colorRange': metadata.colorRange,
+          'profile': metadata.profile,
+          'level': metadata.level,
+          'bFrames': metadata.bFrames,
+          'gopSize': metadata.gopSize,
+          'cabac': metadata.cabac,
+          'interlaced': metadata.interlaced,
+          'bitrate': metadata.bitrate,
         };
       });
     } on Exception catch (e) {
@@ -1948,6 +1966,406 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
                 ],
               ),
             ),
+            // YouTube Standards Section
+            if (_videoInfo!['youtubeValidation'] != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color:
+                        (_videoInfo!['youtubeValidation']
+                                    as ({
+                                      String result,
+                                      List<String> issues,
+                                      Map<String, String> details,
+                                    }))
+                                .result ==
+                            FFmpegService.youtubeValidationPassed
+                        ? Colors.green
+                        : (_videoInfo!['youtubeValidation']
+                                      as ({
+                                        String result,
+                                        List<String> issues,
+                                        Map<String, String> details,
+                                      }))
+                                  .result ==
+                              FFmpegService.youtubeValidationWarning
+                        ? Colors.orange
+                        : Colors.red,
+                    width: 2,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          (_videoInfo!['youtubeValidation']
+                                          as ({
+                                            String result,
+                                            List<String> issues,
+                                            Map<String, String> details,
+                                          }))
+                                      .result ==
+                                  FFmpegService.youtubeValidationPassed
+                              ? Icons.check_circle
+                              : (_videoInfo!['youtubeValidation']
+                                            as ({
+                                              String result,
+                                              List<String> issues,
+                                              Map<String, String> details,
+                                            }))
+                                        .result ==
+                                    FFmpegService.youtubeValidationWarning
+                              ? Icons.warning
+                              : Icons.error,
+                          color:
+                              (_videoInfo!['youtubeValidation']
+                                          as ({
+                                            String result,
+                                            List<String> issues,
+                                            Map<String, String> details,
+                                          }))
+                                      .result ==
+                                  FFmpegService.youtubeValidationPassed
+                              ? Colors.green
+                              : (_videoInfo!['youtubeValidation']
+                                            as ({
+                                              String result,
+                                              List<String> issues,
+                                              Map<String, String> details,
+                                            }))
+                                        .result ==
+                                    FFmpegService.youtubeValidationWarning
+                              ? Colors.orange
+                              : Colors.red,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Standar YouTube',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const Spacer(),
+                        // Copy button
+                        InkWell(
+                          onTap: () {
+                            final validation =
+                                _videoInfo!['youtubeValidation']
+                                    as ({
+                                      String result,
+                                      List<String> issues,
+                                      Map<String, String> details,
+                                    });
+                            final buffer = StringBuffer();
+                            buffer.writeln(
+                              '=== YouTube Standards Validation ===',
+                            );
+                            buffer.writeln(
+                              'Status: ${validation.result == FFmpegService.youtubeValidationPassed
+                                  ? "✅ Sesuai"
+                                  : validation.result == FFmpegService.youtubeValidationWarning
+                                  ? "⚠️ Sebagian"
+                                  : "❌ Tidak Sesuai"}',
+                            );
+                            buffer.writeln();
+
+                            if (validation.issues.isEmpty) {
+                              buffer.writeln(
+                                '✅ Video sepenuhnya sesuai dengan standar upload YouTube',
+                              );
+                            } else {
+                              buffer.writeln('Masalah yang terdeteksi:');
+                              for (final issue in validation.issues) {
+                                buffer.writeln('  • $issue');
+                              }
+                            }
+                            buffer.writeln();
+                            buffer.writeln('Detail Parameter:');
+                            validation.details.forEach((key, value) {
+                              buffer.writeln(
+                                '  ${_getDetailLabel(key)}: $value',
+                              );
+                            });
+
+                            // Copy to clipboard
+                            Clipboard.setData(
+                              ClipboardData(text: buffer.toString()),
+                            );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Hasil validasi disalin!'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.copy,
+                                  size: 16,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Salin',
+                                  style: Theme.of(context).textTheme.labelSmall
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                (_videoInfo!['youtubeValidation']
+                                            as ({
+                                              String result,
+                                              List<String> issues,
+                                              Map<String, String> details,
+                                            }))
+                                        .result ==
+                                    FFmpegService.youtubeValidationPassed
+                                ? Colors.green.withValues(alpha: 0.2)
+                                : (_videoInfo!['youtubeValidation']
+                                              as ({
+                                                String result,
+                                                List<String> issues,
+                                                Map<String, String> details,
+                                              }))
+                                          .result ==
+                                      FFmpegService.youtubeValidationWarning
+                                ? Colors.orange.withValues(alpha: 0.2)
+                                : Colors.red.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            (_videoInfo!['youtubeValidation']
+                                            as ({
+                                              String result,
+                                              List<String> issues,
+                                              Map<String, String> details,
+                                            }))
+                                        .result ==
+                                    FFmpegService.youtubeValidationPassed
+                                ? 'Sesuai'
+                                : (_videoInfo!['youtubeValidation']
+                                              as ({
+                                                String result,
+                                                List<String> issues,
+                                                Map<String, String> details,
+                                              }))
+                                          .result ==
+                                      FFmpegService.youtubeValidationWarning
+                                ? 'Sebagian'
+                                : 'Tidak Sesuai',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color:
+                                      (_videoInfo!['youtubeValidation']
+                                                  as ({
+                                                    String result,
+                                                    List<String> issues,
+                                                    Map<String, String> details,
+                                                  }))
+                                              .result ==
+                                          FFmpegService.youtubeValidationPassed
+                                      ? Colors.green
+                                      : (_videoInfo!['youtubeValidation']
+                                                    as ({
+                                                      String result,
+                                                      List<String> issues,
+                                                      Map<String, String>
+                                                      details,
+                                                    }))
+                                                .result ==
+                                            FFmpegService
+                                                .youtubeValidationWarning
+                                      ? Colors.orange
+                                      : Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // Show validation details
+                    if ((_videoInfo!['youtubeValidation']
+                            as ({
+                              String result,
+                              List<String> issues,
+                              Map<String, String> details,
+                            }))
+                        .issues
+                        .isEmpty)
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.check_circle_outline,
+                            size: 16,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Video sepenuhnya sesuai dengan standar upload YouTube',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Masalah yang terdeteksi:',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          ...(_videoInfo!['youtubeValidation']
+                                  as ({
+                                    String result,
+                                    List<String> issues,
+                                    Map<String, String> details,
+                                  }))
+                              .issues
+                              .take(5)
+                              .map(
+                                (issue) => Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 8,
+                                    bottom: 4,
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        '• ',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          issue,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          if ((_videoInfo!['youtubeValidation']
+                                      as ({
+                                        String result,
+                                        List<String> issues,
+                                        Map<String, String> details,
+                                      }))
+                                  .issues
+                                  .length >
+                              5)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8, top: 4),
+                              child: Text(
+                                '...dan ${(_videoInfo!['youtubeValidation'] as ({String result, List<String> issues, Map<String, String> details})).issues.length - 5} lainnya',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    // Show all validation details
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Detail Parameter:',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          // Show all details from validation
+                          ...(_videoInfo!['youtubeValidation']
+                                  as ({
+                                    String result,
+                                    List<String> issues,
+                                    Map<String, String> details,
+                                  }))
+                              .details
+                              .entries
+                              .map(
+                                (entry) => _buildInfoRow(
+                                  _getDetailLabel(entry.key),
+                                  entry.value,
+                                ),
+                              ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             // Metadata Tags Section
             if (_videoInfo!['metadataTags'] != null &&
                 _videoInfo!['metadataTags'] is Map) ...[
@@ -2134,6 +2552,41 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
     final g = color.g.toInt().toRadixString(16).padLeft(2, '0');
     final b = color.b.toInt().toRadixString(16).padLeft(2, '0');
     return '#${r.toUpperCase()}${g.toUpperCase()}${b.toUpperCase()}';
+  }
+
+  String _getDetailLabel(String key) {
+    switch (key) {
+      case 'codec':
+        return 'Codec Video';
+      case 'audioCodec':
+        return 'Codec Audio';
+      case 'pixFmt':
+        return 'Format Pixel';
+      case 'colorSpace':
+        return 'Color Space';
+      case 'interlaced':
+        return 'Scan';
+      case 'profile':
+        return 'Profile H.264';
+      case 'level':
+        return 'Level H.264';
+      case 'bFrames':
+        return 'B-Frames';
+      case 'gopSize':
+        return 'GOP Size';
+      case 'cabac':
+        return 'CABAC';
+      case 'bitrate':
+        return 'Bitrate';
+      case 'colorPrimaries':
+        return 'Color Primaries';
+      case 'colorTransfer':
+        return 'Color Transfer';
+      case 'colorRange':
+        return 'Color Range';
+      default:
+        return key;
+    }
   }
 
   ({int width, int height})? _getResolutionDimensions(

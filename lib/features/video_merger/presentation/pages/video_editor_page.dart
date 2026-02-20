@@ -1090,6 +1090,177 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
       }
     }
 
+    // 3. Check YouTube Standards (non-blocking, informational)
+    final bgMeta = await FFmpegService.getVideoMetadata(backgroundVideo);
+    final youtubeIssues = <String>[];
+    final youtubeDetails = <String, String>{};
+
+    // Check background video
+    final bgValidation = await FFmpegService.checkYouTubeStandards(bgMeta);
+    if (bgValidation.issues.isNotEmpty) {
+      youtubeIssues.addAll(bgValidation.issues.map((e) => 'Background: $e'));
+      youtubeDetails.addAll(
+        bgValidation.details.map((k, v) => MapEntry('BG $k', v)),
+      );
+    }
+
+    // Check intro video if exists
+    if (_introVideo != null) {
+      final introMeta = await FFmpegService.getVideoMetadata(_introVideo!);
+      final introValidation = await FFmpegService.checkYouTubeStandards(
+        introMeta,
+      );
+      if (introValidation.issues.isNotEmpty) {
+        youtubeIssues.addAll(introValidation.issues.map((e) => 'Intro: $e'));
+        youtubeDetails.addAll(
+          introValidation.details.map((k, v) => MapEntry('Intro $k', v)),
+        );
+      }
+    }
+
+    // Show YouTube standards warning if issues found
+    if (youtubeIssues.isNotEmpty) {
+      if (!context.mounted) return;
+      final shouldProceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          title: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Colors.blue),
+              const SizedBox(width: 12),
+              Text(
+                'Standar YouTube',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Video Anda tidak sepenuhnya mengikuti standar upload YouTube. Ini mungkin akan menyebabkan YouTube memproses ulang video Anda.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Masalah yang terdeteksi:',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...youtubeIssues
+                  .take(5)
+                  .map(
+                    (issue) => Padding(
+                      padding: const EdgeInsets.only(left: 12, bottom: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '• ',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          Expanded(
+                            child: Text(
+                              issue,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              if (youtubeIssues.length > 5)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, top: 4),
+                  child: Text(
+                    '...dan ${youtubeIssues.length - 5} lainnya',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.lightbulb_outline_rounded,
+                          size: 16,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onPrimaryContainer,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Rekomendasi',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onPrimaryContainer,
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Gunakan fitur "Konversi Resolusi" di Video Tools untuk mengonversi video sesuai standar YouTube sebelum menggabungkan.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(
+                'Batal',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              ),
+              child: const Text('Lanjut Saja'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldProceed != true) {
+        return; // User cancelled
+      }
+    }
+
     if (!context.mounted) return;
 
     unawaited(

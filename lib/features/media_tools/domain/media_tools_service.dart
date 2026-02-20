@@ -1369,19 +1369,42 @@ class MediaToolsService {
     final ext = p.extension(outputPath).toLowerCase();
     switch (ext) {
       case '.mp3':
+        // MP3: Keep 192kbps (standard for MP3)
         return ['-c:a', 'libmp3lame', '-b:a', '192k'];
       case '.m4a':
       case '.aac':
-        return ['-c:a', 'aac', '-b:a', '192k'];
+        // AAC: Use YouTube recommended settings (384kbps, 48kHz, stereo)
+        return [
+          '-c:a',
+          'aac',
+          '-b:a',
+          '384k',
+          '-ar',
+          '48000',
+          '-ac',
+          '2',
+        ];
       case '.wav':
+        // WAV: Lossless (keeps source sample rate and channels)
         return ['-c:a', 'pcm_s16le'];
       case '.flac':
+        // FLAC: Lossless (keeps source sample rate and channels)
         return ['-c:a', 'flac'];
       case '.ogg':
+        // OGG: Vorbis with quality 4
         return ['-c:a', 'libvorbis', '-qscale:a', '4'];
       default:
-        // Fallback to AAC as a safe, widely supported default
-        return ['-c:a', 'aac', '-b:a', '192k'];
+        // Fallback to AAC with YouTube recommended settings
+        return [
+          '-c:a',
+          'aac',
+          '-b:a',
+          '384k',
+          '-ar',
+          '48000',
+          '-ac',
+          '2',
+        ];
     }
   }
 }
