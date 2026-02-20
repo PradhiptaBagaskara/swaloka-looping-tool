@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [5.4.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.3.0...swaloka_looping_tool-v5.4.0) (2026-02-20)
+
+
+### Features
+
+* **youtube:** add YouTube encoding standards  ([#47](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/47)) ([09dfa4c](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/09dfa4c151f85c82c6bc83ed78c49fddf5f62654))
+
 ## [5.3.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.2.0...swaloka_looping_tool-v5.3.0) (2026-02-17)
 
 
