@@ -40,7 +40,7 @@ dependencies:
   logger: ^2.6.0
   package_info_plus: ^9.0.0
 
-  video_player: ^2.9.3
+  video_player: ^2.11.0
   video_player_win: ^3.2.2
 
   path: ^1.9.1
