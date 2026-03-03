@@ -68,7 +68,7 @@ jobs:
           mv "Swaloka-Looping-Tool-${VERSION}-macos.tar.gz" "${GITHUB_WORKSPACE}/build/"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}
           path: build/Swaloka-Looping-Tool-*-macos.tar.gz
