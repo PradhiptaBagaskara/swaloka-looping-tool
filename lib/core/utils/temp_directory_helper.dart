@@ -8,7 +8,7 @@ class TempDirectoryHelper {
   /// Creates a temporary directory for media processing.
   ///
   /// On macOS/Linux: uses system temp (faster, no indexing)
-  /// On Windows: uses fallback path (avoids path length limits, antivirus issues)
+  /// On Windows: uses temp dir in project directory (no admin required)
   static Future<Directory> create({
     String? fallbackBasePath,
     String prefix = 'swaloka_temp',
@@ -33,7 +33,7 @@ class TempDirectoryHelper {
         await tempDir.create(recursive: true);
       }
     } else {
-      // Windows: always use fallback path
+      // Windows: use temp directory in project folder
       final basePath = fallbackBasePath ?? Directory.current.path;
       tempDir = Directory(
         p.join(basePath, 'temp', '${prefix}_$timestamp'),

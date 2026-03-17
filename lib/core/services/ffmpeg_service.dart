@@ -911,6 +911,19 @@ class FFmpegService {
   /// Check if a line is important (errors, warnings, or key info)
   static bool _isImportantLine(String line) {
     final lower = line.toLowerCase();
+
+    // Exclude common harmless FFmpeg messages that contain "failed" but are not errors
+    // These are normal retry/recovery messages
+    final harmlessFailures = [
+      'udta parsing failed',
+      'retrying',
+    ];
+    for (final harmless in harmlessFailures) {
+      if (lower.contains(harmless)) {
+        return false; // Treat as normal info, not warning
+      }
+    }
+
     // Errors, warnings, and important info
     return lower.contains('error') ||
         lower.contains('warning') ||
