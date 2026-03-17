@@ -692,6 +692,7 @@ class _AudioToolsStandalonePageState
                   )
                   .toList(),
               outputPath: outputPath,
+              projectRootPath: widget.projectRootPath,
               onLog: logCallback,
             );
       }

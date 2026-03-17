@@ -31,9 +31,11 @@ class MediaToolsService {
   Future<void> concatAudio({
     required List<String> audioPaths,
     required String outputPath,
+    required String projectRootPath,
     void Function(LogEntry)? onLog,
   }) async {
     final tempDir = await TempDirectoryHelper.create(
+      fallbackBasePath: projectRootPath,
       prefix: 'swaloka_tools',
       onLog: onLog,
     );
@@ -83,9 +85,11 @@ class MediaToolsService {
     required List<String> audioPaths,
     required List<String> uniquePaths,
     required String outputPath,
+    required String projectRootPath,
     void Function(LogEntry)? onLog,
   }) async {
     final tempDir = await TempDirectoryHelper.create(
+      fallbackBasePath: projectRootPath,
       prefix: 'swaloka_optimized',
       onLog: onLog,
     );
@@ -302,6 +306,7 @@ class MediaToolsService {
     }
 
     final tempDir = await TempDirectoryHelper.create(
+      fallbackBasePath: Directory.current.path,
       prefix: 'swaloka_preset_${DateTime.now().millisecondsSinceEpoch}',
       onLog: onLog,
     );
@@ -401,6 +406,7 @@ class MediaToolsService {
     required List<String> baseAudios,
     required List<AudioOverlayConfig> overlays,
     required String outputPath,
+    required String projectRootPath,
     void Function(LogEntry)? onLog,
   }) async {
     final log = LogEntry.info(
@@ -422,6 +428,7 @@ class MediaToolsService {
           audioPaths: baseAudios,
           uniquePaths: uniqueBaseAudios,
           outputPath: outputPath,
+          projectRootPath: projectRootPath,
           onLog: onLog,
         );
       } else {
@@ -429,6 +436,7 @@ class MediaToolsService {
         await concatAudio(
           audioPaths: baseAudios,
           outputPath: outputPath,
+          projectRootPath: projectRootPath,
           onLog: onLog,
         );
       }
@@ -438,6 +446,7 @@ class MediaToolsService {
     // Step 1: Create concat demuxer file for base audios (more efficient)
     // This avoids opening many separate files - concat demuxer handles all base audios as one stream
     final tempDir = await TempDirectoryHelper.create(
+      fallbackBasePath: projectRootPath,
       prefix: 'swaloka_audio_${DateTime.now().millisecondsSinceEpoch}',
       onLog: onLog,
     );
@@ -537,6 +546,7 @@ class MediaToolsService {
   Future<void> concatVideos({
     required List<String> videoPaths,
     required String outputPath,
+    required String projectRootPath,
     required bool keepAudio,
     required bool smoothTransition,
     bool fadeIn = false,
@@ -549,6 +559,7 @@ class MediaToolsService {
   }) async {
     if (videoPaths.isEmpty) return;
     final tempDir = await TempDirectoryHelper.create(
+      fallbackBasePath: projectRootPath,
       prefix: 'swaloka_tools',
       onLog: onLog,
     );

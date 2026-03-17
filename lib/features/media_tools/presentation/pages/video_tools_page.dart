@@ -136,6 +136,7 @@ class _VideoToolsPageState extends ConsumerState<VideoToolsPage> {
           .concatVideos(
             videoPaths: _videoPaths,
             outputPath: outputPath,
+            projectRootPath: widget.initialDirectory,
             keepAudio: _keepAudio,
             smoothTransition: _smoothTransition,
             fadeIn: _fadeIn,
