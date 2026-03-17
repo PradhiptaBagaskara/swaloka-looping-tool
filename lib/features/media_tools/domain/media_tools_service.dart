@@ -31,9 +31,11 @@ class MediaToolsService {
   Future<void> concatAudio({
     required List<String> audioPaths,
     required String outputPath,
+    required String projectRootPath,
     void Function(LogEntry)? onLog,
   }) async {
     final tempDir = await TempDirectoryHelper.create(
+      fallbackBasePath: projectRootPath,
       prefix: 'swaloka_tools',
       onLog: onLog,
     );
@@ -73,6 +75,143 @@ class MediaToolsService {
         await tempDir.delete(recursive: true);
       }
     }
+  }
+
+  /// Optimized audio concatenation for looped audio
+  /// 1. Batch re-encode unique audio files to target format
+  /// 2. Concatenate re-encoded files using -c copy (instant)
+  /// This is faster when audioPaths contains duplicates from looping
+  Future<void> concatAudioOptimized({
+    required List<String> audioPaths,
+    required List<String> uniquePaths,
+    required String outputPath,
+    required String projectRootPath,
+    void Function(LogEntry)? onLog,
+  }) async {
+    final tempDir = await TempDirectoryHelper.create(
+      fallbackBasePath: projectRootPath,
+      prefix: 'swaloka_optimized',
+      onLog: onLog,
+    );
+
+    final log = LogEntry.info(
+      'Optimized concat: ${audioPaths.length} files (${uniquePaths.length} unique)...',
+    );
+    onLog?.call(log);
+
+    try {
+      // Step 1: Batch re-encode unique files to target format
+      final reEncodeLog = LogEntry.info(
+        'Batch re-encoding ${uniquePaths.length} unique file(s)...',
+      );
+      log.addSubLog(reEncodeLog);
+
+      final reEncodedFiles = await _batchReEncodeAudio(
+        uniquePaths,
+        tempDir,
+        outputPath,
+        reEncodeLog,
+      );
+
+      reEncodeLog.addSubLog(
+        LogEntry.success('Re-encoded ${reEncodedFiles.length} file(s)'),
+      );
+
+      // Step 2: Create mapping from original paths to re-encoded paths
+      final pathMap = <String, String>{};
+      for (var i = 0; i < uniquePaths.length; i++) {
+        pathMap[uniquePaths[i]] = reEncodedFiles[i];
+      }
+
+      // Step 3: Build concat list using re-encoded files
+      // Maintain the same order as audioPaths (with duplicates)
+      final concatListPath = p.join(tempDir.path, 'concat_list.txt');
+      final concatContent = audioPaths
+          .map((originalPath) {
+            final reEncodedPath = pathMap[originalPath]!;
+            return "file '${_formatPathForConcatFile(reEncodedPath)}'";
+          })
+          .join('\n');
+      await File(concatListPath).writeAsString(concatContent);
+
+      // Step 4: Concat with copy (instant!)
+      final concatLog = LogEntry.info('Concatenating with -c copy...');
+      log.addSubLog(concatLog);
+
+      await FFmpegService.run(
+        [
+          '-y',
+          '-f',
+          'concat',
+          '-safe',
+          '0',
+          '-i',
+          concatListPath,
+          '-c',
+          'copy', // No re-encoding, just copy bytes!
+          outputPath,
+        ],
+        errorMessage: 'Failed to concat audio',
+        onLog: concatLog.addSubLog,
+      );
+
+      concatLog.addSubLog(
+        LogEntry.success('Concatenated ${audioPaths.length} file(s)'),
+      );
+
+      onLog?.call(LogEntry.success('Audio concatenated: $outputPath'));
+    } finally {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    }
+  }
+
+  /// Batch re-encode multiple audio files in a single FFmpeg command
+  /// Similar to video merger approach - much faster than individual re-encodes
+  Future<List<String>> _batchReEncodeAudio(
+    List<String> audioPaths,
+    Directory tempDir,
+    String outputPath,
+    LogEntry parentLog,
+  ) async {
+    final args = ['-y'];
+
+    // Add all inputs
+    for (final path in audioPaths) {
+      args.addAll(['-i', p.absolute(path)]);
+    }
+
+    // Get codec args based on output format
+    final codecArgs = _audioCodecArgs(outputPath);
+
+    final results = <String>[];
+
+    // Map each input to its output
+    for (var i = 0; i < audioPaths.length; i++) {
+      final outPath = p.join(
+        tempDir.path,
+        'audio_part_$i${p.extension(outputPath)}',
+      );
+
+      args.addAll([
+        '-map',
+        '$i:a',
+        '-vn',
+        ...codecArgs,
+        p.absolute(outPath),
+      ]);
+
+      results.add(outPath);
+    }
+
+    await FFmpegService.run(
+      args,
+      errorMessage: 'Failed to batch re-encode audio',
+      onLog: parentLog.addSubLog,
+    );
+
+    return results;
   }
 
   Future<void> applyAudioOverlays({
@@ -167,6 +306,7 @@ class MediaToolsService {
     }
 
     final tempDir = await TempDirectoryHelper.create(
+      fallbackBasePath: Directory.current.path,
       prefix: 'swaloka_preset_${DateTime.now().millisecondsSinceEpoch}',
       onLog: onLog,
     );
@@ -242,8 +382,8 @@ class MediaToolsService {
     await FFmpegService.run(
       [
         '-y',
-        '-threads',
-        '0',
+        // '-threads',
+        // '0',
         '-vn',
         ...inputs,
         '-filter_complex',
@@ -266,6 +406,7 @@ class MediaToolsService {
     required List<String> baseAudios,
     required List<AudioOverlayConfig> overlays,
     required String outputPath,
+    required String projectRootPath,
     void Function(LogEntry)? onLog,
   }) async {
     final log = LogEntry.info(
@@ -279,17 +420,33 @@ class MediaToolsService {
 
     if (overlays.isEmpty) {
       // No overlays, just concatenate base audios
-      await concatAudio(
-        audioPaths: baseAudios,
-        outputPath: outputPath,
-        onLog: onLog,
-      );
+      // Check if we have duplicates (loop > 1) - use optimized path
+      final uniqueBaseAudios = baseAudios.toSet().toList();
+      if (uniqueBaseAudios.length < baseAudios.length) {
+        // Has duplicates from looping - use optimized concat
+        await concatAudioOptimized(
+          audioPaths: baseAudios,
+          uniquePaths: uniqueBaseAudios,
+          outputPath: outputPath,
+          projectRootPath: projectRootPath,
+          onLog: onLog,
+        );
+      } else {
+        // No duplicates - use standard concat
+        await concatAudio(
+          audioPaths: baseAudios,
+          outputPath: outputPath,
+          projectRootPath: projectRootPath,
+          onLog: onLog,
+        );
+      }
       return;
     }
 
     // Step 1: Create concat demuxer file for base audios (more efficient)
     // This avoids opening many separate files - concat demuxer handles all base audios as one stream
     final tempDir = await TempDirectoryHelper.create(
+      fallbackBasePath: projectRootPath,
       prefix: 'swaloka_audio_${DateTime.now().millisecondsSinceEpoch}',
       onLog: onLog,
     );
@@ -325,8 +482,8 @@ class MediaToolsService {
       // -vn skips video processing (we only need audio)
       final cmd = <String>[
         '-y',
-        '-threads',
-        '0',
+        // '-threads',
+        // '0',
         '-vn',
         '-f',
         'concat',
@@ -358,6 +515,8 @@ class MediaToolsService {
 
       log.addSubLog(LogEntry.info('Mixing audio with pre-mixed overlay...'));
 
+      // Note: We must use codec encoding here (not copy) because amix filter changes the audio
+      // The optimization is in re-encoding unique files BEFORE concat, not in the final output
       final codecArgs = _audioCodecArgs(outputPath);
 
       cmd.addAll([
@@ -387,6 +546,7 @@ class MediaToolsService {
   Future<void> concatVideos({
     required List<String> videoPaths,
     required String outputPath,
+    required String projectRootPath,
     required bool keepAudio,
     required bool smoothTransition,
     bool fadeIn = false,
@@ -399,6 +559,7 @@ class MediaToolsService {
   }) async {
     if (videoPaths.isEmpty) return;
     final tempDir = await TempDirectoryHelper.create(
+      fallbackBasePath: projectRootPath,
       prefix: 'swaloka_tools',
       onLog: onLog,
     );

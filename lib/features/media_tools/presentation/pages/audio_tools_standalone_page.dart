@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:swaloka_looping_tool/core/services/log_service.dart';
-import 'package:swaloka_looping_tool/core/utils/timestamp_formatter.dart';
 import 'package:swaloka_looping_tool/features/media_tools/domain/media_tools_service.dart';
 import 'package:swaloka_looping_tool/features/media_tools/presentation/providers/media_tools_providers.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
@@ -230,6 +229,7 @@ class _AudioOverlayItemState extends State<_AudioOverlayItem> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 10),
               // Play/Pause button
               InkWell(
                 onTap: _togglePlayPause,
@@ -243,6 +243,7 @@ class _AudioOverlayItemState extends State<_AudioOverlayItem> {
                       : null,
                 ),
               ),
+              const SizedBox(width: 14),
               // Remove button
               InkWell(
                 onTap: widget.onRemove,
@@ -392,6 +393,8 @@ class _AudioToolsStandalonePageState
 
   // Output format state
   String _outputFormat = 'm4a';
+  String _outputName = '';
+  late final TextEditingController _outputNameController;
 
   // Available output formats
   static const List<String> _outputFormats = ['m4a', 'mp3', 'wav', 'flac'];
@@ -402,11 +405,13 @@ class _AudioToolsStandalonePageState
     _loopCountController = TextEditingController(
       text: _baseAudioLoopCount.toString(),
     );
+    _outputNameController = TextEditingController(text: _outputName);
   }
 
   @override
   void dispose() {
     _loopCountController.dispose();
+    _outputNameController.dispose();
     super.dispose();
   }
 
@@ -552,6 +557,11 @@ class _AudioToolsStandalonePageState
             _baseAudios.add(file.path!);
           }
         }
+        // Auto-fill output name from first base audio if empty
+        if (_outputName.isEmpty && _baseAudios.isNotEmpty) {
+          _outputName = p.basenameWithoutExtension(_baseAudios.first);
+          _outputNameController.text = _outputName;
+        }
       });
     }
   }
@@ -618,23 +628,41 @@ class _AudioToolsStandalonePageState
 
     await _runOperation((logCallback) async {
       final outputDir = await _ensureOutputsDir();
-      final timestamp = TimestampFormatter.format();
+      // Use only last 4 digits of milliseconds for short, unique timestamp
+      final fullTimestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      final timestamp = fullTimestamp.substring(fullTimestamp.length - 4);
+      // Use custom output name if provided, otherwise use first base audio name
+      final baseName = _outputName.trim().isEmpty
+          ? (_baseAudios.isNotEmpty
+                ? p.basenameWithoutExtension(_baseAudios.first)
+                : 'audio_output')
+          : _outputName.trim();
       final outputPath = p.join(
         outputDir,
-        'audio_output_$timestamp.$_outputFormat',
+        '${baseName}_$timestamp.$_outputFormat',
       );
 
       // Expand base audios based on loop count
       var expandedBaseAudios = <String>[];
       if (_baseAudios.isNotEmpty) {
         if (_baseAudioLoopCount == 1) {
+          // Loop 1: Keep original order
           expandedBaseAudios = List.from(_baseAudios);
         } else {
-          // Repeat and shuffle base audios for each loop iteration
+          // Loop 2+: First loop keeps original order, subsequent loops are shuffled
+          // Example with 3 files and loopCount=3:
+          //   Loop 1: [file1, file2, file3] <- original order
+          //   Loop 2: [file2, file3, file1] <- shuffled
+          //   Loop 3: [file3, file1, file2] <- shuffled again
           for (var i = 0; i < _baseAudioLoopCount; i++) {
-            // Shuffle the base audios
-            final shuffled = List<String>.from(_baseAudios)..shuffle();
-            expandedBaseAudios.addAll(shuffled);
+            if (i == 0) {
+              // First iteration: original order
+              expandedBaseAudios.addAll(_baseAudios);
+            } else {
+              // Subsequent iterations: shuffle
+              final shuffled = List<String>.from(_baseAudios)..shuffle();
+              expandedBaseAudios.addAll(shuffled);
+            }
           }
         }
       }
@@ -664,6 +692,7 @@ class _AudioToolsStandalonePageState
                   )
                   .toList(),
               outputPath: outputPath,
+              projectRootPath: widget.projectRootPath,
               onLog: logCallback,
             );
       }
@@ -726,104 +755,270 @@ class _AudioToolsStandalonePageState
                       ),
                     ),
                   ),
-                  // Preview button
-                  ElevatedButton.icon(
-                    onPressed:
-                        (_baseAudios.isNotEmpty && _audioOverlays.isNotEmpty)
-                        ? _togglePreview
-                        : null,
-                    icon: Icon(
-                      _isPreviewPlaying ? Icons.stop : Icons.play_arrow,
-                      size: 18,
+                  // Loop input
+                  SizedBox(
+                    width: 100,
+                    child: TextField(
+                      controller: _loopCountController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Loop',
+                        hintText: '1',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        isDense: true,
+                      ),
+                      style: Theme.of(context).textTheme.bodySmall,
+                      onChanged: (value) {
+                        final intValue = int.tryParse(value);
+                        if (intValue != null && intValue >= 1) {
+                          setState(() {
+                            _baseAudioLoopCount = intValue;
+                          });
+                        }
+                      },
                     ),
-                    label: Text(_isPreviewPlaying ? 'Stop Preview' : 'Preview'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isPreviewPlaying
-                          ? Theme.of(context).colorScheme.error
-                          : Theme.of(context).colorScheme.primary,
-                      foregroundColor: _isPreviewPlaying
-                          ? Theme.of(context).colorScheme.onError
-                          : Theme.of(context).colorScheme.onPrimary,
-                      minimumSize: const Size(100, 44),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
+                  ),
+                  const SizedBox(width: 16),
+                  // Output name input
+                  SizedBox(
+                    width: 200,
+                    child: TextField(
+                      controller: _outputNameController,
+                      decoration: InputDecoration(
+                        labelText: 'Nama Output',
+                        hintText: 'Default: audio 1',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        isDense: true,
+                      ),
+                      style: Theme.of(context).textTheme.bodySmall,
+                      onChanged: (value) {
+                        setState(() => _outputName = value);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Preview button - modern style
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors:
+                            _baseAudios.isNotEmpty && _audioOverlays.isNotEmpty
+                            ? [
+                                Theme.of(context).colorScheme.primary,
+                                Theme.of(
+                                  context,
+                                ).colorScheme.primary.withValues(alpha: 0.8),
+                              ]
+                            : [
+                                Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                                Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                              ],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow:
+                          _baseAudios.isNotEmpty && _audioOverlays.isNotEmpty
+                          ? [
+                              BoxShadow(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.primary.withValues(alpha: 0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : [],
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed:
+                          (_baseAudios.isNotEmpty && _audioOverlays.isNotEmpty)
+                          ? _togglePreview
+                          : null,
+                      icon: Icon(
+                        _isPreviewPlaying
+                            ? Icons.stop_rounded
+                            : Icons.play_arrow_rounded,
+                        size: 18,
+                        color:
+                            _baseAudios.isNotEmpty && _audioOverlays.isNotEmpty
+                            ? (_isPreviewPlaying
+                                  ? Theme.of(context).colorScheme.onError
+                                  : Theme.of(context).colorScheme.onPrimary)
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      label: Text(
+                        _isPreviewPlaying ? 'Stop Preview' : 'Preview',
+                        style: TextStyle(
+                          color:
+                              _baseAudios.isNotEmpty &&
+                                  _audioOverlays.isNotEmpty
+                              ? (_isPreviewPlaying
+                                    ? Theme.of(context).colorScheme.onError
+                                    : Theme.of(context).colorScheme.onPrimary)
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        minimumSize: const Size(100, 40),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Output format dropdown (smaller)
+                  // Output format dropdown - modern style
                   Container(
+                    height: 48,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
+                      horizontal: 12,
+                      vertical: 4,
                     ),
                     decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: Theme.of(
                           context,
-                        ).colorScheme.outline.withValues(alpha: 0.5),
+                        ).colorScheme.outline.withValues(alpha: 0.3),
                       ),
-                      borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.audio_file,
-                          size: 12,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _outputFormat,
+                        icon: Icon(
+                          Icons.arrow_drop_down,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
-                        const SizedBox(width: 4),
-                        DropdownButton<String>(
-                          value: _outputFormat,
-                          icon: Icon(
-                            Icons.arrow_drop_down,
-                            size: 18,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(
-                                fontSize: 11,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                          underline: const SizedBox.shrink(),
-                          items: _outputFormats.map((format) {
-                            return DropdownMenuItem<String>(
-                              value: format,
-                              child: Text(format.toUpperCase()),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            if (value != null) {
-                              setState(() {
-                                _outputFormat = value;
-                              });
-                            }
-                          },
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
-                      ],
+                        underline: const SizedBox.shrink(),
+                        items: _outputFormats.map((format) {
+                          return DropdownMenuItem<String>(
+                            value: format,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.audio_file,
+                                  size: 16,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  format.toUpperCase(),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() {
+                              _outputFormat = value;
+                            });
+                          }
+                        },
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Process Audio button (bigger)
-                  // Requires: at least 1 base audio AND at least 1 overlay
-                  ElevatedButton.icon(
-                    onPressed:
-                        (_baseAudios.isNotEmpty && _audioOverlays.isNotEmpty)
-                        ? _processAudioWithOverlays
-                        : null,
-                    icon: const Icon(Icons.merge, size: 20),
-                    label: const Text('Proses Audio'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(120, 44),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
+                  // Process Audio button - modern gradient style
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: _baseAudios.isNotEmpty
+                            ? [
+                                Theme.of(context).colorScheme.primary,
+                                Theme.of(
+                                  context,
+                                ).colorScheme.primary.withValues(alpha: 0.8),
+                                Theme.of(context).colorScheme.secondary,
+                              ]
+                            : [
+                                Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                                Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                              ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: _baseAudios.isNotEmpty
+                          ? [
+                              BoxShadow(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.primary.withValues(alpha: 0.4),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                              BoxShadow(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.secondary.withValues(alpha: 0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : [],
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed: _baseAudios.isNotEmpty
+                          ? _processAudioWithOverlays
+                          : null,
+                      icon: const Icon(Icons.auto_awesome, size: 20),
+                      label: const Text(
+                        'Proses Audio',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        foregroundColor: _baseAudios.isNotEmpty
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                        minimumSize: const Size(130, 48),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
                   ),
@@ -865,10 +1060,37 @@ class _AudioToolsStandalonePageState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Audio Dasar',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
+          // Modern header with icon
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Theme.of(context).colorScheme.primaryContainer,
+                  Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withValues(alpha: 0.7),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.music_note,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Audio Dasar',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 8),
@@ -895,77 +1117,34 @@ class _AudioToolsStandalonePageState
               if (audios.isNotEmpty) {
                 setState(() {
                   _baseAudios.addAll(audios);
+                  // Auto-fill output name from first base audio if empty
+                  if (_outputName.isEmpty && _baseAudios.isNotEmpty) {
+                    _outputName = p.basenameWithoutExtension(_baseAudios.first);
+                    _outputNameController.text = _outputName;
+                  }
                 });
               }
             },
           ),
           if (_baseAudios.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Loop count input
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.repeat,
-                      size: 14,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Loop:',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    SizedBox(
-                      width: 60,
-                      child: TextField(
-                        controller: _loopCountController,
-                        keyboardType: TextInputType.number,
-                        style: Theme.of(context).textTheme.bodySmall,
-                        decoration: InputDecoration(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 6,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          isDense: true,
-                        ),
-                        onChanged: (value) {
-                          final intValue = int.tryParse(value);
-                          if (intValue != null && intValue >= 1) {
-                            setState(() {
-                              _baseAudioLoopCount = intValue;
-                            });
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                // Clear All button
-                TextButton.icon(
-                  onPressed: () => setState(() {
-                    _baseAudios.clear();
-                    _currentBaseAudioIndex = null;
-                    _isBaseAudioPlaying = false;
-                  }),
-                  icon: const Icon(Icons.delete_sweep, size: 16),
-                  label: const Text('Clear All'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Theme.of(
-                      context,
-                    ).colorScheme.onSurfaceVariant,
-                    textStyle: Theme.of(context).textTheme.labelMedium,
-                  ),
-                ),
-              ],
+            // Clear All button
+            TextButton.icon(
+              onPressed: () => setState(() {
+                _baseAudios.clear();
+                _currentBaseAudioIndex = null;
+                _isBaseAudioPlaying = false;
+                _outputName = '';
+                _outputNameController.clear();
+              }),
+              icon: const Icon(Icons.delete_sweep, size: 16),
+              label: const Text('Clear All'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(
+                  context,
+                ).colorScheme.onSurfaceVariant,
+                textStyle: Theme.of(context).textTheme.labelMedium,
+              ),
             ),
             const SizedBox(height: 8),
             Expanded(
@@ -1027,6 +1206,7 @@ class _AudioToolsStandalonePageState
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            const SizedBox(width: 10),
                             // Play/Pause button - start sequence from this position
                             IconButton(
                               icon: Icon(
@@ -1042,6 +1222,7 @@ class _AudioToolsStandalonePageState
                               onPressed: () => _toggleBaseAudioPlayback(i),
                               tooltip: 'Putar dari sini',
                             ),
+                            const SizedBox(width: 10),
                             IconButton(
                               icon: Icon(
                                 Icons.close,
@@ -1053,6 +1234,11 @@ class _AudioToolsStandalonePageState
                               onPressed: () {
                                 setState(() {
                                   _baseAudios.removeAt(i);
+                                  // Clear output name if no more base audios
+                                  if (_baseAudios.isEmpty) {
+                                    _outputName = '';
+                                    _outputNameController.clear();
+                                  }
                                   if (_currentBaseAudioIndex != null &&
                                       _currentBaseAudioIndex! >=
                                           _baseAudios.length) {
@@ -1092,10 +1278,37 @@ class _AudioToolsStandalonePageState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Audio Overlay',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
+          // Modern header with icon
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Theme.of(context).colorScheme.secondaryContainer,
+                  Theme.of(
+                    context,
+                  ).colorScheme.secondaryContainer.withValues(alpha: 0.7),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.layers,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.onSecondaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Audio Overlay',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 8),

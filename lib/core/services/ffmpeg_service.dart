@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -910,6 +911,19 @@ class FFmpegService {
   /// Check if a line is important (errors, warnings, or key info)
   static bool _isImportantLine(String line) {
     final lower = line.toLowerCase();
+
+    // Exclude common harmless FFmpeg messages that contain "failed" but are not errors
+    // These are normal retry/recovery messages
+    final harmlessFailures = [
+      'udta parsing failed',
+      'retrying',
+    ];
+    for (final harmless in harmlessFailures) {
+      if (lower.contains(harmless)) {
+        return false; // Treat as normal info, not warning
+      }
+    }
+
     // Errors, warnings, and important info
     return lower.contains('error') ||
         lower.contains('warning') ||
@@ -959,80 +973,72 @@ class FFmpegService {
     // Store for cancellation
     _currentProcess = process;
 
-    // Capture output
+    // Track all logs for summary at the end
     final stdoutLogs = <LogEntry>[];
-    final stdout = <int>[];
-    final stderr = <int>[];
-
-    // Listen to stdout
-    process.stdout.listen(stdout.addAll);
-
-    // Listen to stderr
-    process.stderr.listen(stderr.addAll);
-
-    // Wait for process to complete
-    final exitCode = await process.exitCode;
-
-    // Clear current process when done
-    _currentProcess = null;
-
-    // Decode stdout
-    final stdoutStr = String.fromCharCodes(stdout).trim();
-    if (stdoutStr.isNotEmpty) {
-      for (final line in stdoutStr.split('\n')) {
-        final trimmed = line.trim();
-        if (trimmed.isNotEmpty) {
-          stdoutLogs.add(LogEntry.simple(LogLevel.info, trimmed));
-        }
-      }
-    }
-
-    // Decode stderr
-    final stderrStr = String.fromCharCodes(stderr).trim();
-    final stderrLines = stderrStr
-        .split('\n')
-        .map((l) => l.trim())
-        .where((l) => l.isNotEmpty)
-        .toList();
-
-    final executionDuration = DateTime.now().difference(startTime);
-
-    // On failure: keep last 100 lines for debugging
-    // On success: filter out verbose progress lines
     final stderrLogs = <LogEntry>[];
     var skippedLines = 0;
     var stderrNote = '';
 
-    if (exitCode != 0 && stderrLines.isNotEmpty) {
-      // Keep last 100 lines for debugging
-      const tailCount = 100;
-      final totalLines = stderrLines.length;
-      final linesToShow = stderrLines.length > tailCount
-          ? stderrLines.sublist(stderrLines.length - tailCount)
-          : stderrLines;
+    // REALTIME: Listen to stdout and log immediately
+    process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen((line) {
+          final trimmed = line.trim();
+          if (trimmed.isNotEmpty) {
+            final log = LogEntry.simple(LogLevel.info, trimmed);
+            stdoutLogs.add(log);
+            onLog?.call(log); // Log immediately!
+          }
+        });
 
-      for (final line in linesToShow) {
-        final level = _isImportantLine(line) ? LogLevel.error : LogLevel.info;
-        stderrLogs.add(LogEntry.simple(level, line));
-      }
+    // REALTIME: Listen to stderr and log immediately
+    var exitCode = -1;
 
-      if (totalLines > tailCount) {
-        stderrNote = ' (showing last $tailCount of $totalLines lines)';
-      }
-    } else if (stderrLines.isNotEmpty) {
-      // Success: filter progress lines
-      for (final line in stderrLines) {
-        if (_isProgressLine(line)) {
-          skippedLines++;
-          continue;
-        }
-        final level = _isImportantLine(line) ? LogLevel.warning : LogLevel.info;
-        stderrLogs.add(LogEntry.simple(level, line));
-      }
+    // Use a completer to track when we've seen all stderr
+    final stderrCompleter = Completer<void>();
 
-      if (skippedLines > 0) {
-        stderrNote = ' ($skippedLines progress lines filtered)';
-      }
+    process.stderr
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen(
+          (line) {
+            final trimmed = line.trim();
+            if (trimmed.isEmpty) return;
+
+            // Check if this is a progress line
+            if (_isProgressLine(trimmed)) {
+              // For progress lines, only log if we're in debug mode or if it's important
+              // By default, skip verbose progress lines in realtime
+              skippedLines++;
+              return;
+            }
+
+            final level = _isImportantLine(trimmed)
+                ? LogLevel.warning
+                : LogLevel.info;
+            final log = LogEntry.simple(level, trimmed);
+            stderrLogs.add(log);
+            onLog?.call(log); // Log immediately!
+          },
+          onDone: stderrCompleter.complete,
+          onError: stderrCompleter.completeError,
+        );
+
+    // Wait for process to complete
+    exitCode = await process.exitCode;
+
+    // Wait for stderr to finish processing
+    await stderrCompleter.future;
+
+    // Clear current process when done
+    _currentProcess = null;
+
+    final executionDuration = DateTime.now().difference(startTime);
+
+    // Build summary note
+    if (skippedLines > 0) {
+      stderrNote = ' ($skippedLines progress lines filtered in realtime)';
     }
 
     // Add stdout/stderr directly to command log (flat structure)
