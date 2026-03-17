@@ -1,29 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:swaloka_looping_tool/features/video_merger/presentation/pages/project_landing_page.dart';
+
+import 'package:swaloka_looping_tool/features/landing_page/landing_page.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/pages/video_editor_page.dart';
+import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/ffmpeg_provider.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
+import 'package:swaloka_looping_tool/layouts/layouts.dart';
 
 export '../providers/ffmpeg_provider.dart';
-// Re-export for backwards compatibility
-export 'ffmpeg_error_page.dart';
-export 'project_landing_page.dart';
 export 'video_editor_page.dart';
 
-/// Main router page that shows either landing or editor based on project state
+/// Main router page that shows either FFmpeg error, landing, or editor
 class VideoMergerPage extends ConsumerWidget {
   const VideoMergerPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final project = ref.watch(activeProjectProvider);
+    final ffmpegStatus = ref.watch(ffmpegStatusProvider);
 
-    // No project loaded -> show landing page
-    if (project == null) {
-      return const ProjectLandingPage();
+    // Check FFmpeg first
+    if (ffmpegStatus == false) {
+      return const LandingLayout(
+        child: FFmpegErrorPage(),
+      );
     }
 
-    // Project loaded -> show editor
+    final project = ref.watch(activeProjectProvider);
+
+    // No project loaded -> show landing page with landing layout
+    if (project == null) {
+      return const LandingLayout(
+        child: ProjectLandingPage(),
+      );
+    }
+
+    // Project loaded -> show editor with project layout
     return VideoEditorPage(project: project);
   }
 }

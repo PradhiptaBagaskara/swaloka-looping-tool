@@ -1,428 +1,527 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show lerpDouble;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
-import 'package:swaloka_looping_tool/core/services/system_info_service.dart';
 import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
+import 'package:swaloka_looping_tool/core/utils/timestamp_formatter.dart';
 import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
-import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/ffmpeg_provider.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
-import 'package:swaloka_looping_tool/features/video_merger/presentation/state/processing_state.dart';
-import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/drop_zone_widget.dart';
-import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/media_preview_player.dart';
-import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/merge_progress_dialog.dart';
-import 'package:swaloka_looping_tool/features/video_merger/presentation/widgets/settings_dialog.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:swaloka_looping_tool/layouts/layouts.dart';
+import 'package:swaloka_looping_tool/widgets/widgets.dart';
 
 /// Supported file extensions
 const _videoExtensions = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv'];
 const _audioExtensions = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'];
 
-/// Main video editor page with sidebar and timeline
-class VideoEditorPage extends ConsumerWidget {
+/// Main video editor page - now just contains looper content
+class VideoEditorPage extends ConsumerStatefulWidget {
   const VideoEditorPage({required this.project, super.key});
   final SwalokaProject project;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final processingState = ref.watch(processingStateProvider);
-    final projectFiles = ref.watch(projectFilesProvider);
+  ConsumerState<VideoEditorPage> createState() => _VideoEditorPageState();
+}
 
-    final canMerge =
-        project.backgroundVideo != null &&
-        project.audioFiles.isNotEmpty &&
-        !processingState.isProcessing;
+class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
+  // Session-only state (not persisted)
+  List<String> _audioFiles = [];
+  String? _backgroundVideo;
+  String? _introVideo;
+  int _audioLoopCount = 1;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SizedBox(
-            width: constraints.maxWidth,
-            height: constraints.maxHeight,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Sidebar
-                _buildSidebar(
-                  context,
-                  ref,
-                  processingState,
-                  projectFiles,
-                  canMerge,
-                ),
-                // Main Area
-                Expanded(
-                  child: Column(
-                    children: [
-                      _buildMainHeader(context),
-                      Expanded(
-                        child: Container(
-                          width: double.infinity,
-                          color: const Color(0xFF0F0F0F),
-                          child: _buildTimelineView(context, ref),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildSidebar(
-    BuildContext context,
-    WidgetRef ref,
-    ProcessingState processingState,
-    List<FileSystemEntity> projectFiles,
-    bool canMerge,
-  ) {
-    return Container(
-      width: 320,
-      decoration: const BoxDecoration(
-        color: Color(0xFF1A1A1A),
-        border: Border(right: BorderSide(color: Color(0xFF333333))),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSidebarHeader(context, ref),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              children: [
-                _buildSectionTitle(context, 'Current Project'),
-                const SizedBox(height: 12),
-                _buildProjectInfo(context),
-                const SizedBox(height: 32),
-                _buildSectionTitle(context, 'Quick Actions'),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: canMerge ? () => _mergeVideos(context, ref) : null,
-                  icon: const Icon(Icons.auto_fix_high),
-                  label: const Text('Generate Video'),
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 50),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextButton.icon(
-                  onPressed: () =>
-                      ref.read(activeProjectProvider.notifier).closeProject(),
-                  icon: const Icon(Icons.close, size: 16),
-                  label: const Text('Close Project'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.grey,
-                    minimumSize: const Size(double.infinity, 40),
-                  ),
-                ),
-                if (processingState.isProcessing) ...[
-                  const SizedBox(height: 24),
-                  _buildProcessingStatus(context, processingState),
-                ],
-                if (processingState.error != null) ...[
-                  const SizedBox(height: 24),
-                  _buildErrorMessage(context, processingState.error!),
-                ],
-                const SizedBox(height: 32),
-                if (projectFiles.isNotEmpty) ...[
-                  _buildSectionTitle(context, 'Generated Videos'),
-                  const SizedBox(height: 12),
-                  ...projectFiles
-                      .take(5)
-                      .map((file) => _buildRecentFileItem(context, file)),
-                ],
-              ],
-            ),
-          ),
-          _buildSidebarFooter(context),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProjectInfo(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.deepPurple.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            project.name,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            project.rootPath,
-            style: TextStyle(fontSize: 10, color: Colors.grey[500]),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSidebarHeader(BuildContext context, WidgetRef ref) {
-    final appVersion = ref.watch(appVersionProvider);
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.movie_filter,
-                  color: Colors.black,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                'SWALOKA',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  letterSpacing: 2,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Text(
-                'LOOPING TOOL',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              const SizedBox(width: 8),
-              appVersion.when(
-                data: (version) => Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.deepPurple.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    version,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey[400],
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                loading: () => const SizedBox.shrink(),
-                error: (_, _) => const SizedBox.shrink(),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    return Text(
-      title.toUpperCase(),
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: Colors.grey[600],
-        fontWeight: FontWeight.bold,
-        letterSpacing: 1.2,
-      ),
-    );
-  }
-
-  Widget _buildMainHeader(BuildContext context) {
-    return Container(
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1A1A1A),
-        border: Border(bottom: BorderSide(color: Color(0xFF333333))),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.folder_open, size: 14, color: Colors.grey[600]),
-          const SizedBox(width: 8),
-          Text(
-            project.name,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.white70,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text('/', style: TextStyle(color: Colors.grey[800], fontSize: 12)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              project.rootPath,
-              style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const VerticalDivider(
-            indent: 12,
-            endIndent: 12,
-            width: 32,
-            color: Colors.white10,
-            thickness: 1,
-          ),
-          TextButton.icon(
-            onPressed: () => _showDonateDialog(context),
-            icon: const Icon(Icons.favorite, size: 14, color: Colors.redAccent),
-            label: const Text(
-              'Support Us',
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.white70,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-            ),
-          ),
-        ],
-      ),
+  @override
+  Widget build(BuildContext context) {
+    return ProjectLayout(
+      project: widget.project,
+      looperContent: _buildTimelineView(context, ref),
     );
   }
 
   Widget _buildTimelineView(BuildContext context, WidgetRef ref) {
     final collapsedSections = ref.watch(collapsedSectionsProvider);
+    final processingState = ref.watch(processingStateProvider);
 
-    return ListView(
-      padding: const EdgeInsets.all(32),
+    final canMerge =
+        _backgroundVideo != null &&
+        _audioFiles.isNotEmpty &&
+        !processingState.isProcessing;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildTimelineHeader(
-          context,
-          ref,
-          'PROJECT SETTINGS & METADATA (Required)',
-          Icons.settings_suggest_outlined,
-        ),
-        if (!collapsedSections.contains(
-          'PROJECT SETTINGS & METADATA (Required)',
-        )) ...[
-          const SizedBox(height: 12),
-          _buildProjectSettingsInputs(context, ref),
-        ],
-        const SizedBox(height: 32),
-        _buildTimelineHeader(
-          context,
-          ref,
-          'ADVANCED ENCODING SETTINGS',
-          Icons.tune,
-        ),
-        if (!collapsedSections.contains('ADVANCED ENCODING SETTINGS')) ...[
-          const SizedBox(height: 12),
-          _buildAdvancedEncodingSettings(context, ref),
-        ],
-        const SizedBox(height: 48),
-
-        // Intro Video Section
-        _buildTimelineHeader(
-          context,
-          ref,
-          'Intro Video (Optional)',
-          Icons.play_circle_filled,
-        ),
-        if (!collapsedSections.contains('Intro Video (Optional)')) ...[
-          const SizedBox(height: 12),
-          _buildIntroSection(context, ref),
-        ],
-        const SizedBox(height: 48),
-
-        // Background Video Section
-        _buildTimelineHeader(
-          context,
-          ref,
-          'Background Video',
-          Icons.movie_outlined,
-        ),
-        if (!collapsedSections.contains('Background Video')) ...[
-          const SizedBox(height: 12),
-          if (project.backgroundVideo != null)
-            _buildMediaItem(
-              context,
-              project.backgroundVideo!,
-              Icons.videocam,
-              isVideo: true,
-              onRemove: () => ref
-                  .read(activeProjectProvider.notifier)
-                  .setBackgroundVideo(null),
-            )
-          else
-            _buildDropZone(context, ref, isVideo: true),
-        ],
-        const SizedBox(height: 32),
-        _buildTimelineHeader(
-          context,
-          ref,
-          'Audio Tracks (${project.audioFiles.length})',
-          Icons.audiotrack,
-          action: project.audioFiles.isNotEmpty
-              ? IconButton(
-                  onPressed: () {
-                    ref.read(activeProjectProvider.notifier).removeAllAudios();
-                  },
-                  icon: const Icon(Icons.delete_sweep, size: 18),
-                  tooltip: 'Remove all audio tracks',
-                  color: Colors.grey[500],
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  splashRadius: 16,
-                )
-              : null,
-        ),
-        if (!collapsedSections.contains(
-          'Audio Tracks (${project.audioFiles.length})',
-        )) ...[
-          const SizedBox(height: 12),
-          _buildDropZone(context, ref, isVideo: false),
-          // Audio list
-          for (int i = 0; i < project.audioFiles.length; i++)
-            _buildMediaItem(
-              context,
-              project.audioFiles[i],
-              Icons.music_note,
-              onRemove: () {
-                final updated = List<String>.from(project.audioFiles)
-                  ..removeAt(i);
-                ref.read(activeProjectProvider.notifier).setAudioFiles(updated);
-              },
-              index: i + 1,
+        // LEFT PANEL: Media Assets (Videos + Audio)
+        Expanded(
+          flex: 6,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(
+                right: BorderSide(color: Theme.of(context).colorScheme.outline),
+              ),
             ),
-        ],
+            child: ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                _buildSectionHeader(
+                  context,
+                  ref,
+                  'Video Pembuka (Opsional)',
+                  Icons.play_circle_filled,
+                ),
+                if (!collapsedSections.contains(
+                  'Video Pembuka (Opsional)',
+                )) ...[
+                  const SizedBox(height: 16),
+                  _buildIntroSection(context, ref),
+                ],
+                const SizedBox(height: 32),
+                _buildSectionHeader(
+                  context,
+                  ref,
+                  'Video Latar Belakang',
+                  Icons.movie_outlined,
+                  isCollapsible: false,
+                ),
+                const SizedBox(height: 16),
+                if (_backgroundVideo != null)
+                  MediaItemCard(
+                    path: _backgroundVideo!,
+                    icon: Icons.videocam,
+                    isVideo: true,
+                    onRemove: () => setState(() => _backgroundVideo = null),
+                    onPreview: () => _showPreview(
+                      context,
+                      _backgroundVideo!,
+                    ),
+                  )
+                else
+                  _buildDropZone(context, ref, isVideo: true),
+                const SizedBox(height: 32),
+                _buildSectionHeader(
+                  context,
+                  ref,
+                  'Track Audio (${_audioFiles.length})',
+                  Icons.audiotrack,
+                  isCollapsible: false,
+                  action: _audioFiles.isNotEmpty
+                      ? IconButton(
+                          onPressed: () => setState(() => _audioFiles = []),
+                          icon: const Icon(Icons.delete_sweep, size: 18),
+                          tooltip: 'Hapus semua track audio',
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          splashRadius: 16,
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                _buildDropZone(context, ref, isVideo: false),
+                if (_audioFiles.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  // Audio list with drag-and-drop reordering
+                  ReorderableListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    buildDefaultDragHandles: false,
+                    itemCount: _audioFiles.length,
+                    onReorder: (oldIndex, newIndex) {
+                      setState(() {
+                        final adjustedIndex = newIndex > oldIndex
+                            ? newIndex - 1
+                            : newIndex;
+                        final files = List<String>.from(_audioFiles);
+                        final item = files.removeAt(oldIndex);
+                        files.insert(adjustedIndex, item);
+                        _audioFiles = files;
+                      });
+                    },
+                    proxyDecorator: (child, index, animation) {
+                      final fileName = p.basename(_audioFiles[index]);
+                      final t = Curves.easeInOut.transform(animation.value);
+                      final elevation = lerpDouble(0, 6, t)!;
+                      final scale = lerpDouble(1.0, 1.02, t)!;
+
+                      return Transform.scale(
+                        scale: scale,
+                        child: Material(
+                          elevation: elevation,
+                          borderRadius: BorderRadius.circular(8),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: MediaQuery.of(context).size.width * 0.5,
+                              minWidth: 300,
+                            ),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.drag_indicator,
+                                    size: 20,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary
+                                          .withValues(alpha: 0.2),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '${index + 1}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall
+                                            ?.copyWith(
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .tertiaryContainer
+                                          .withValues(alpha: 0.5),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.tertiaryContainer,
+                                        width: 0.5,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.music_note,
+                                      size: 16,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onTertiaryContainer,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          fileName,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Text(
+                                          'Audio',
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.labelSmall,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Static icons instead of buttons
+                                  Icon(
+                                    Icons.play_circle_outline,
+                                    size: 20,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Icon(
+                                    Icons.close,
+                                    size: 16,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    itemBuilder: (context, i) {
+                      return ReorderableDragStartListener(
+                        key: ValueKey(_audioFiles[i]),
+                        index: i,
+                        child: MediaItemCard(
+                          path: _audioFiles[i],
+                          icon: Icons.music_note,
+                          onRemove: () {
+                            setState(() {
+                              _audioFiles = List<String>.from(_audioFiles)
+                                ..removeAt(i);
+                            });
+                          },
+                          onPreview: () => _showPreview(
+                            context,
+                            _audioFiles[i],
+                          ),
+                          index: i + 1,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+
+        // RIGHT PANEL: Settings & Metadata
+        Expanded(
+          flex: 4,
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              _buildSectionHeader(
+                context,
+                ref,
+                'Pengaturan Pemrosesan',
+                Icons.tune,
+                isCollapsible: false,
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const Divider(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  'Jumlah Loop',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const CompactTooltip(
+                                message:
+                                    'Mengulang playlist audio.\n\n'
+                                    'Berguna ketika video lebih panjang\n'
+                                    'dari track audio Anda.',
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SettingsNumberInput(
+                          initialValue: _audioLoopCount.toString(),
+                          onChanged: (value) {
+                            final intValue = int.tryParse(value);
+                            if (intValue != null && intValue >= 1) {
+                              setState(() => _audioLoopCount = intValue);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  onPressed: canMerge ? () => _mergeVideos(context, ref) : null,
+                  icon: const Icon(Icons.auto_fix_high, size: 20),
+                  label: const Text(
+                    'Buat Video',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                    disabledBackgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    disabledForegroundColor: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant,
+                    elevation: 4,
+                    shadowColor: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.4),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+
+  Widget _buildSectionHeader(
+    BuildContext context,
+    WidgetRef ref,
+    String title,
+    IconData icon, {
+    Widget? action,
+    bool isCollapsible = true,
+  }) {
+    final baseFontSize = Theme.of(context).textTheme.bodyMedium!.fontSize!;
+
+    if (!isCollapsible) {
+      return Row(
+        children: [
+          Icon(
+            icon,
+            size: baseFontSize * 1.14,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          SizedBox(width: baseFontSize * 0.86),
+          Expanded(
+            child: Text(
+              title.toUpperCase(),
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+          ?action,
+        ],
+      );
+    }
+
+    final collapsedSections = ref.watch(collapsedSectionsProvider);
+    final isCollapsed = collapsedSections.contains(title);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: InkWell(
+        onTap: () => ref.read(collapsedSectionsProvider.notifier).toggle(title),
+        borderRadius: BorderRadius.circular(baseFontSize * 0.57),
+        hoverColor: Theme.of(
+          context,
+        ).colorScheme.primary.withValues(alpha: 0.1),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: baseFontSize * 0.86,
+            vertical: baseFontSize * 0.71,
+          ),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(baseFontSize * 0.57),
+            border: Border.all(
+              color: isCollapsed
+                  ? Theme.of(context).colorScheme.outline.withValues(alpha: 0.5)
+                  : Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(baseFontSize * 0.43),
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(baseFontSize * 0.43),
+                ),
+                child: Icon(
+                  icon,
+                  size: baseFontSize * 1.14,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              SizedBox(width: baseFontSize * 0.86),
+              Expanded(
+                child: Text(
+                  title.toUpperCase(),
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+              if (action != null) ...[
+                action,
+                SizedBox(width: baseFontSize * 0.57),
+              ],
+              Container(
+                padding: EdgeInsets.all(baseFontSize * 0.29),
+                decoration: BoxDecoration(
+                  color: isCollapsed
+                      ? Theme.of(
+                          context,
+                        ).colorScheme.outline.withValues(alpha: 0.2)
+                      : Theme.of(
+                          context,
+                        ).colorScheme.primary.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(baseFontSize * 0.29),
+                ),
+                child: Icon(
+                  isCollapsed ? Icons.expand_more : Icons.expand_less,
+                  size: baseFontSize * 1.29,
+                  color: isCollapsed
+                      ? Theme.of(context).colorScheme.onSurfaceVariant
+                      : Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -430,9 +529,11 @@ class VideoEditorPage extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF333333)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -441,153 +542,74 @@ class VideoEditorPage extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.blue.withValues(alpha: 0.1),
+              color: Theme.of(
+                context,
+              ).colorScheme.primaryContainer.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primaryContainer,
+              ),
             ),
             child: Row(
               children: [
-                Icon(Icons.info_outline, size: 16, color: Colors.blue[300]),
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Adding an intro video will increase processing time',
-                    style: TextStyle(fontSize: 11, color: Colors.blue[200]),
+                    'Menambahkan video pembuka akan meningkatkan waktu pemrosesan',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 12),
-          Text(
-            'Intro Audio',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[300],
-            ),
-          ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              return SegmentedButton<IntroAudioMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: IntroAudioMode.keepOriginal,
-                    label: Text('Keep Original'),
-                    icon: Icon(Icons.volume_up),
-                  ),
-                  ButtonSegment(
-                    value: IntroAudioMode.silent,
-                    label: Text('Mute Intro'),
-                    icon: Icon(Icons.volume_off),
-                  ),
-                  ButtonSegment(
-                    value: IntroAudioMode.overlayPlaylist,
-                    label: Text('Overlay Playlist'),
-                    icon: Icon(Icons.queue_music),
-                  ),
-                ],
-                selected: {project.introAudioMode},
-                onSelectionChanged: (Set<IntroAudioMode> newSelection) {
-                  ref
-                      .read(activeProjectProvider.notifier)
-                      .updateSettings(introAudioMode: newSelection.first);
-                },
-                style: ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  textStyle: WidgetStateProperty.all(
-                    const TextStyle(fontSize: 11),
-                  ),
+          Row(
+            children: [
+              Icon(
+                Icons.queue_music,
+                size: 16,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Audio Pembuka: Overlay Playlist',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
-              );
-            },
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(
-            _getIntroAudioDescription(project.introAudioMode),
-            style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+            'Playlist audio utama akan diputar selama video pembuka',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 16),
-          const Divider(height: 1, color: Color(0xFF333333)),
+          const Divider(height: 1),
           const SizedBox(height: 16),
-          if (project.introVideo != null)
-            _buildMediaItem(
-              context,
-              project.introVideo!,
-              Icons.videocam,
+          if (_introVideo != null)
+            MediaItemCard(
+              path: _introVideo!,
+              icon: Icons.videocam,
               isVideo: true,
-              onRemove: () =>
-                  ref.read(activeProjectProvider.notifier).setIntroVideo(null),
+              onRemove: () => setState(() => _introVideo = null),
+              onPreview: () => _showPreview(
+                context,
+                _introVideo!,
+              ),
             )
           else
             _buildDropZone(context, ref, isVideo: true, isIntro: true),
-        ],
-      ),
-    );
-  }
-
-  String _getIntroAudioDescription(IntroAudioMode mode) {
-    switch (mode) {
-      case IntroAudioMode.keepOriginal:
-        return 'Play audio from the intro video';
-      case IntroAudioMode.silent:
-        return 'Intro video plays in silence';
-      case IntroAudioMode.overlayPlaylist:
-        return 'Play main audio playlist during intro';
-    }
-  }
-
-  Widget _buildTimelineHeader(
-    BuildContext context,
-    WidgetRef ref,
-    String title,
-    IconData icon, {
-    Widget? action,
-  }) {
-    final collapsedSections = ref.watch(collapsedSectionsProvider);
-    final isCollapsed = collapsedSections.contains(title);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF333333)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: InkWell(
-              onTap: () =>
-                  ref.read(collapsedSectionsProvider.notifier).toggle(title),
-              borderRadius: BorderRadius.circular(8),
-              child: Row(
-                children: [
-                  Icon(icon, size: 16, color: Colors.deepPurple[200]),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[400],
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    isCollapsed ? Icons.expand_more : Icons.expand_less,
-                    size: 18,
-                    color: Colors.grey[600],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (action != null) ...[const SizedBox(width: 8), action],
         ],
       ),
     );
@@ -604,14 +626,14 @@ class VideoEditorPage extends ConsumerWidget {
 
     if (isVideo) {
       if (isIntro) {
-        label = 'Add optional intro video (drag & drop or click)';
+        label = 'Intro video opsional (Drag & Drop atau Klik)';
         icon = Icons.play_circle_outline;
       } else {
-        label = 'Add your background video (drag & drop or click)';
+        label = 'Background video (Drag & Drop atau Klik)';
         icon = Icons.video_library_outlined;
       }
     } else {
-      label = 'Add audio files (drag & drop or click to select multiple)';
+      label = 'Tambahkan file audio (Drag & Drop atau Klik)';
       icon = Icons.library_music_outlined;
     }
 
@@ -625,15 +647,13 @@ class VideoEditorPage extends ConsumerWidget {
                 _videoExtensions.contains(f.path.split('.').last.toLowerCase()),
             orElse: () => files.first,
           );
-          if (isIntro) {
-            ref
-                .read(activeProjectProvider.notifier)
-                .setIntroVideo(videoFile.path);
-          } else {
-            ref
-                .read(activeProjectProvider.notifier)
-                .setBackgroundVideo(videoFile.path);
-          }
+          setState(() {
+            if (isIntro) {
+              _introVideo = videoFile.path;
+            } else {
+              _backgroundVideo = videoFile.path;
+            }
+          });
         } else {
           final audioFiles = files
               .where(
@@ -643,519 +663,15 @@ class VideoEditorPage extends ConsumerWidget {
               )
               .map((f) => f.path)
               .toList();
-          final current = List<String>.from(project.audioFiles);
-          current.addAll(audioFiles);
-          ref.read(activeProjectProvider.notifier).setAudioFiles(current);
+          setState(() {
+            _audioFiles = List<String>.from(_audioFiles)..addAll(audioFiles);
+          });
         }
         ref.read(processingStateProvider.notifier).reset();
       },
       onTap: () => isVideo
           ? _selectVideo(context, ref, isIntro: isIntro)
           : _selectAudioFiles(context, ref),
-    );
-  }
-
-  Widget _buildAdvancedEncodingSettings(BuildContext context, WidgetRef ref) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF333333)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Parallel Processing Cores',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[300],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Recommended: ${SystemInfoService.getRecommendedConcurrency()}',
-                      style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                width: 80,
-                child: TextFormField(
-                  initialValue: project.concurrencyLimit.toString(),
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                  decoration: InputDecoration(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                      // isDense: true,
-                    ),
-                    filled: true,
-                    fillColor: Colors.black26,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                  onChanged: (value) {
-                    final intValue = int.tryParse(value);
-                    if (intValue != null && intValue > 0) {
-                      ref
-                          .read(activeProjectProvider.notifier)
-                          .updateSettings(concurrencyLimit: intValue);
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Number of Times to Loop Audios',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[300],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'How many times to repeat your audio sequence. Audio order shuffles after first loop.',
-                      style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                width: 80,
-                child: TextFormField(
-                  initialValue: project.audioLoopCount.toString(),
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                  decoration: InputDecoration(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                      // isDense: true,
-                    ),
-                    filled: true,
-                    fillColor: Colors.black26,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                    hintText: '1 (minimum)',
-                    hintStyle: TextStyle(fontSize: 10, color: Colors.grey[700]),
-                  ),
-                  onChanged: (value) {
-                    final intValue = int.tryParse(value);
-                    if (intValue != null && intValue >= 1) {
-                      ref
-                          .read(activeProjectProvider.notifier)
-                          .updateSettings(audioLoopCount: intValue);
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Save Location',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[300],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      project.customOutputPath ??
-                          'Default: ${p.join(project.rootPath, 'output')}',
-                      style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              TextButton.icon(
-                onPressed: () => _selectCustomOutput(context, ref),
-                icon: const Icon(Icons.folder_open, size: 14),
-                label: const Text('Change'),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.deepPurple[200],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProjectSettingsInputs(BuildContext context, WidgetRef ref) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF333333)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.info_outline, size: 12, color: Colors.grey[600]),
-              const SizedBox(width: 6),
-              Text(
-                'These details will be embedded into the video metadata.',
-                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildInputField(
-            label: 'Video Title',
-            hint: 'e.g., Relaxing Music Mix',
-            initialValue: project.title,
-            onChanged: (v) => ref
-                .read(activeProjectProvider.notifier)
-                .updateSettings(title: v),
-          ),
-          const SizedBox(height: 16),
-          _buildInputField(
-            label: 'Creator / Channel Name',
-            hint: 'e.g., Your Channel Name',
-            initialValue: project.author,
-            onChanged: (v) => ref
-                .read(activeProjectProvider.notifier)
-                .updateSettings(author: v),
-          ),
-          const SizedBox(height: 16),
-          _buildInputField(
-            label: 'Comment',
-            hint: 'e.g., Made with Swaloka',
-            initialValue: project.comment,
-            onChanged: (v) => ref
-                .read(activeProjectProvider.notifier)
-                .updateSettings(comment: v),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInputField({
-    required String label,
-    required String hint,
-    required ValueChanged<String> onChanged,
-    String? initialValue,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey[500],
-            letterSpacing: 0.5,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          initialValue: initialValue,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: Colors.grey[700]),
-            filled: true,
-            fillColor: Colors.black26,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
-            ),
-          ),
-          onChanged: onChanged,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMediaItem(
-    BuildContext context,
-    String path,
-    IconData icon, {
-    required VoidCallback onRemove,
-    bool isVideo = false,
-    int? index,
-  }) {
-    final fileName = p.basename(path);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF333333)),
-      ),
-      child: Row(
-        children: [
-          // Show index number for audio files
-          if (index != null) ...[
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: Colors.deepPurple.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '$index',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.deepPurple[200],
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isVideo
-                  ? Colors.blue.withValues(alpha: 0.1)
-                  : Colors.green.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: isVideo
-                    ? Colors.blue.withValues(alpha: 0.3)
-                    : Colors.green.withValues(alpha: 0.3),
-                width: 0.5,
-              ),
-            ),
-            child: Icon(
-              icon,
-              size: 16,
-              color: isVideo ? Colors.blue[300] : Colors.green[300],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  fileName,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  isVideo ? 'Video' : 'Audio',
-                  style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                ),
-              ],
-            ),
-          ),
-          // Preview button for both video and audio
-          IconButton(
-            icon: Icon(
-              Icons.play_circle_outline,
-              size: 20,
-              color: Colors.grey[500],
-            ),
-            onPressed: () => _showPreview(context, path, isVideo: isVideo),
-            tooltip: 'Preview',
-          ),
-          IconButton(
-            icon: Icon(Icons.close, size: 16, color: Colors.grey[600]),
-            onPressed: onRemove,
-            tooltip: 'Remove',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProcessingStatus(BuildContext context, ProcessingState state) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.deepPurple.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation(Colors.deepPurple),
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text('Processing...', style: TextStyle(fontSize: 12)),
-              ),
-            ],
-          ),
-          if (state.progress > 0) ...[
-            const SizedBox(height: 8),
-            LinearProgressIndicator(
-              value: state.progress,
-              backgroundColor: Colors.grey[800],
-              valueColor: const AlwaysStoppedAnimation(Colors.deepPurple),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorMessage(BuildContext context, String error) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline, size: 16, color: Colors.red),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              error,
-              style: const TextStyle(fontSize: 12, color: Colors.red),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSidebarFooter(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0xFF333333))),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextButton.icon(
-                  onPressed: () => _showDonateDialog(context),
-                  icon: const Icon(
-                    Icons.favorite,
-                    size: 14,
-                    color: Colors.redAccent,
-                  ),
-                  label: const Text(
-                    'Support',
-                    style: TextStyle(fontSize: 11, color: Colors.white70),
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed: () => showSettingsDialog(context),
-                icon: const Icon(Icons.settings, size: 18),
-                tooltip: 'Settings',
-                style: IconButton.styleFrom(foregroundColor: Colors.grey),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Made with ❤️ by Swaloka',
-            style: TextStyle(fontSize: 9, color: Colors.grey[700]),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecentFileItem(BuildContext context, FileSystemEntity file) {
-    final fileName = p.basename(file.path);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        onTap: () async {
-          final uri = Uri.file(file.parent.path);
-          if (await canLaunchUrl(uri)) await launchUrl(uri);
-        },
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.black12,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF333333)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.movie_outlined, size: 16, color: Colors.grey),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  fileName,
-                  style: const TextStyle(fontSize: 12),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -1171,7 +687,7 @@ class VideoEditorPage extends ConsumerWidget {
             maxHeight: isVideo ? 600 : 200,
           ),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -1179,14 +695,18 @@ class VideoEditorPage extends ConsumerWidget {
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFF333333))),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       isVideo ? Icons.videocam : Icons.audiotrack,
-                      color: isVideo ? Colors.blue : Colors.green,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1220,7 +740,7 @@ class VideoEditorPage extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -1228,24 +748,27 @@ class VideoEditorPage extends ConsumerWidget {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
+                    color: Theme.of(context).colorScheme.errorContainer,
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
-                      color: Colors.red.withValues(alpha: 0.3),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.error.withValues(alpha: 0.3),
                     ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Intro',
-                        style: TextStyle(fontSize: 9, color: Colors.red),
+                      Text(
+                        'Pembuka',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
                       ),
                       Text(
                         introVal,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.white,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -1253,15 +776,21 @@ class VideoEditorPage extends ConsumerWidget {
                   ),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Icon(Icons.arrow_forward, size: 16, color: Colors.grey),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(
+                  Icons.arrow_forward,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
+                    color: Colors.green.withValues(
+                      alpha: 0.1,
+                    ), // Keep green for success/background
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
                       color: Colors.green.withValues(alpha: 0.3),
@@ -1271,14 +800,12 @@ class VideoEditorPage extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Background',
+                        'Latar Belakang',
                         style: TextStyle(fontSize: 9, color: Colors.green),
                       ),
                       Text(
                         bgVal,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.white,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -1297,111 +824,23 @@ class VideoEditorPage extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black26,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline,
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
           Text(
             codec.toUpperCase(),
-            style: const TextStyle(
-              fontSize: 11,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
               fontWeight: FontWeight.bold,
-              color: Colors.white,
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showDonateDialog(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Color(0xFF333333)),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.favorite, color: Colors.redAccent),
-            SizedBox(width: 12),
-            Text('Support Development', style: TextStyle(color: Colors.white)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'If you find this tool useful, consider supporting its development!',
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 20),
-            _buildDonateOption(
-              Icons.coffee,
-              'Saweria',
-              'Support via Saweria',
-              () async {
-                final url = Uri.parse('https://saweria.co/masimas');
-                if (await canLaunchUrl(url)) await launchUrl(url);
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close', style: TextStyle(color: Colors.grey)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDonateOption(
-    IconData icon,
-    String title,
-    String subtitle,
-    VoidCallback onTap,
-  ) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.black26,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFF333333)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: Colors.deepPurple[200]),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.open_in_new, size: 16, color: Colors.grey[600]),
-          ],
-        ),
       ),
     );
   }
@@ -1414,22 +853,16 @@ class VideoEditorPage extends ConsumerWidget {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.video,
-        initialDirectory: project.rootPath,
+        initialDirectory: widget.project.rootPath,
       );
       if (result != null && result.files.single.path != null) {
-        if (isIntro) {
-          unawaited(
-            ref
-                .read(activeProjectProvider.notifier)
-                .setIntroVideo(result.files.single.path),
-          );
-        } else {
-          unawaited(
-            ref
-                .read(activeProjectProvider.notifier)
-                .setBackgroundVideo(result.files.single.path),
-          );
-        }
+        setState(() {
+          if (isIntro) {
+            _introVideo = result.files.single.path;
+          } else {
+            _backgroundVideo = result.files.single.path;
+          }
+        });
         ref.read(processingStateProvider.notifier).reset();
       }
     } on Exception catch (e) {
@@ -1443,18 +876,16 @@ class VideoEditorPage extends ConsumerWidget {
         type: FileType.custom,
         allowedExtensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'],
         allowMultiple: true,
-        initialDirectory: project.rootPath,
+        initialDirectory: widget.project.rootPath,
       );
       if (result != null && result.paths.isNotEmpty) {
         final selectedFiles = result.paths
             .where((p) => p != null)
             .cast<String>()
             .toList();
-        final current = List<String>.from(project.audioFiles);
-        current.addAll(selectedFiles);
-        unawaited(
-          ref.read(activeProjectProvider.notifier).setAudioFiles(current),
-        );
+        setState(() {
+          _audioFiles = List<String>.from(_audioFiles)..addAll(selectedFiles);
+        });
         ref.read(processingStateProvider.notifier).reset();
       }
     } on Exception catch (e) {
@@ -1462,29 +893,18 @@ class VideoEditorPage extends ConsumerWidget {
     }
   }
 
-  Future<void> _selectCustomOutput(BuildContext context, WidgetRef ref) async {
-    final result = await FilePicker.platform.getDirectoryPath();
-    if (result != null) {
-      unawaited(
-        ref
-            .read(activeProjectProvider.notifier)
-            .updateSettings(customOutputPath: result),
-      );
-    }
-  }
-
   Future<void> _mergeVideos(BuildContext context, WidgetRef ref) async {
-    final backgroundVideo = project.backgroundVideo;
-    final audioFiles = project.audioFiles;
-    final outputDir = project.effectiveOutputPath;
+    final backgroundVideo = _backgroundVideo;
+    final audioFiles = _audioFiles;
+    final outputDir = widget.project.effectiveOutputPath;
 
     if (backgroundVideo == null || audioFiles.isEmpty) return;
 
     // Codec Validation (Warning only, can't easily auto-fix cross-codec without massive re-encode)
-    if (project.introVideo != null) {
+    if (_introVideo != null) {
       // Get metadata for both videos (cached, so only one ffprobe call per file)
       final introMeta = await FFmpegService.getVideoMetadata(
-        project.introVideo!,
+        _introVideo!,
       );
       final bgMeta = await FFmpegService.getVideoMetadata(backgroundVideo);
 
@@ -1496,56 +916,64 @@ class VideoEditorPage extends ConsumerWidget {
         final shouldProceed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
-            title: const Row(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            title: Row(
               children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                SizedBox(width: 12),
-                Text('Codec Mismatch', style: TextStyle(color: Colors.white)),
+                const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                const SizedBox(width: 12),
+                Text(
+                  'Codec Tidak Cocok',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
               ],
             ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'The intro video and background video have different codecs. This may cause issues during merging.',
-                  style: TextStyle(color: Colors.grey),
+                Text(
+                  'Video pembuka dan video latar belakang memiliki codec berbeda. Ini dapat menyebabkan masalah saat penggabungan.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 16),
-                _buildCodecInfo('Intro Video', introMeta.codec!),
+                _buildCodecInfo('Video Pembuka', introMeta.codec!),
                 const SizedBox(height: 8),
-                _buildCodecInfo('Background Video', bgMeta.codec!),
+                _buildCodecInfo('Video Latar Belakang', bgMeta.codec!),
                 const SizedBox(height: 16),
-                const Text(
-                  'Recommendation:',
-                  style: TextStyle(
-                    color: Colors.white,
+                Text(
+                  'Rekomendasi:',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'Please convert your intro video to match the background video codec (e.g., using HandBrake to convert both to H.264/MP4).',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                Text(
+                  'Silakan konversi video pembuka Anda agar cocok dengan codec video latar belakang (misalnya, menggunakan HandBrake untuk mengonversi keduanya ke H.264/MP4).',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(color: Colors.grey),
+                child: Text(
+                  'Batal',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  foregroundColor: Colors.white,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 ),
-                child: const Text('I Understand, Try Anyway'),
+                child: const Text('Saya Mengerti, Coba Saja'),
               ),
             ],
           ),
@@ -1566,7 +994,7 @@ class VideoEditorPage extends ConsumerWidget {
             introMeta.height != bgMeta.height) {
           issues.add(
             _buildIssueRow(
-              'Resolution',
+              'Resolusi',
               '${introMeta.width}x${introMeta.height}',
               '${bgMeta.width}x${bgMeta.height}',
             ),
@@ -1592,7 +1020,7 @@ class VideoEditorPage extends ConsumerWidget {
           bgMeta.pixFmt != null &&
           introMeta.pixFmt != bgMeta.pixFmt) {
         issues.add(
-          _buildIssueRow('Pixel Format', introMeta.pixFmt!, bgMeta.pixFmt!),
+          _buildIssueRow('Format Pixel', introMeta.pixFmt!, bgMeta.pixFmt!),
         );
       }
 
@@ -1602,14 +1030,14 @@ class VideoEditorPage extends ConsumerWidget {
         final shouldProceed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
-            title: const Row(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            title: Row(
               children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                SizedBox(width: 12),
+                const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                const SizedBox(width: 12),
                 Text(
-                  'Potential Glitch Detected',
-                  style: TextStyle(color: Colors.white),
+                  'Glitch Potensial Terdeteksi',
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
             ),
@@ -1617,34 +1045,40 @@ class VideoEditorPage extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'The intro video and background video have mismatched properties. This will likely cause the merged video to glitch or fail.',
-                  style: TextStyle(color: Colors.grey),
+                Text(
+                  'Video pembuka dan video latar belakang memiliki properti yang tidak cocok. Ini kemungkinan akan menyebabkan video gabungan mengalami glitch atau gagal.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 ...issues,
                 const SizedBox(height: 16),
-                const Text(
-                  'It is recommended to manually convert your intro video to match the background video parameters before merging.',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                Text(
+                  'Disarankan untuk mengonversi video pembuka Anda secara manual agar sesuai dengan parameter video latar belakang sebelum menggabungkan.',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false), // Cancel
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(color: Colors.grey),
+                onPressed: () => Navigator.pop(context, false), // Batal
+                child: Text(
+                  'Batal',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               ElevatedButton(
-                onPressed: () => Navigator.pop(context, true), // Process Anyway
+                onPressed: () => Navigator.pop(context, true), // Proses Saja
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  foregroundColor: Colors.white,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 ),
-                child: const Text('Process Anyway'),
+                child: const Text('Proses Saja'),
               ),
             ],
           ),
@@ -1653,6 +1087,177 @@ class VideoEditorPage extends ConsumerWidget {
         if (shouldProceed != true) {
           return; // Cancel
         }
+      }
+    }
+
+    // 3. Check YouTube Standards (non-blocking, informational)
+    final bgMeta = await FFmpegService.getVideoMetadata(backgroundVideo);
+    final youtubeIssues = <String>[];
+    final youtubeDetails = <String, String>{};
+
+    // Check background video
+    final bgValidation = await FFmpegService.checkYouTubeStandards(bgMeta);
+    if (bgValidation.issues.isNotEmpty) {
+      youtubeIssues.addAll(bgValidation.issues.map((e) => 'Background: $e'));
+      youtubeDetails.addAll(
+        bgValidation.details.map((k, v) => MapEntry('BG $k', v)),
+      );
+    }
+
+    // Check intro video if exists
+    if (_introVideo != null) {
+      final introMeta = await FFmpegService.getVideoMetadata(_introVideo!);
+      final introValidation = await FFmpegService.checkYouTubeStandards(
+        introMeta,
+      );
+      if (introValidation.issues.isNotEmpty) {
+        youtubeIssues.addAll(introValidation.issues.map((e) => 'Intro: $e'));
+        youtubeDetails.addAll(
+          introValidation.details.map((k, v) => MapEntry('Intro $k', v)),
+        );
+      }
+    }
+
+    // Show YouTube standards warning if issues found
+    if (youtubeIssues.isNotEmpty) {
+      if (!context.mounted) return;
+      final shouldProceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          title: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Colors.blue),
+              const SizedBox(width: 12),
+              Text(
+                'Standar YouTube',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Video Anda tidak sepenuhnya mengikuti standar upload YouTube. Ini mungkin akan menyebabkan YouTube memproses ulang video Anda.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Masalah yang terdeteksi:',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...youtubeIssues
+                  .take(5)
+                  .map(
+                    (issue) => Padding(
+                      padding: const EdgeInsets.only(left: 12, bottom: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '• ',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          Expanded(
+                            child: Text(
+                              issue,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              if (youtubeIssues.length > 5)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, top: 4),
+                  child: Text(
+                    '...dan ${youtubeIssues.length - 5} lainnya',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.lightbulb_outline_rounded,
+                          size: 16,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onPrimaryContainer,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Rekomendasi',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onPrimaryContainer,
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Gunakan fitur "Konversi Resolusi" di Video Tools untuk mengonversi video sesuai standar YouTube sebelum menggabungkan.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(
+                'Batal',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              ),
+              child: const Text('Lanjut Saja'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldProceed != true) {
+        return; // User cancelled
       }
     }
 
@@ -1668,19 +1273,12 @@ class VideoEditorPage extends ConsumerWidget {
 
     String? logFilePath;
     try {
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final sanitizedTitle = (project.title ?? 'video').replaceAll(
-        RegExp(r'[^a-zA-Z0-9\s]'),
-        '',
-      );
-      final loopPrefix = project.audioLoopCount > 1
-          ? 'loop_${project.audioLoopCount}x_'
-          : '';
-      final outputFileName =
-          '${sanitizedTitle.replaceAll(' ', '_')}_$loopPrefix$timestamp.mp4';
+      final timestamp = TimestampFormatter.format();
+      final loopPrefix = _audioLoopCount > 1 ? 'loop_${_audioLoopCount}x_' : '';
+      final outputFileName = 'video_$loopPrefix$timestamp.mp4';
       final outputPath = p.join(outputDir, outputFileName);
       logFilePath = p.join(
-        project.rootPath,
+        widget.project.rootPath,
         'logs',
         'ffmpeg_log_$timestamp.log',
       );
@@ -1692,14 +1290,10 @@ class VideoEditorPage extends ConsumerWidget {
         backgroundVideoPath: backgroundVideo,
         audioFiles: audioFiles,
         outputPath: outputPath,
-        projectRootPath: project.rootPath,
-        title: project.title,
-        author: project.author,
-        comment: project.comment,
-        concurrencyLimit: project.concurrencyLimit,
-        audioLoopCount: project.audioLoopCount,
-        introVideoPath: project.introVideo,
-        introAudioMode: project.introAudioMode,
+        projectRootPath: widget.project.rootPath,
+        audioLoopCount: _audioLoopCount,
+        introVideoPath: _introVideo,
+        enableParallelProcessing: widget.project.enableParallelProcessing,
         onProgress: (p) =>
             ref.read(processingStateProvider.notifier).updateProgress(p),
         onLog: (log) => ref.read(processingStateProvider.notifier).addLog(log),
@@ -1708,7 +1302,7 @@ class VideoEditorPage extends ConsumerWidget {
       ref.read(processingStateProvider.notifier).setSuccess(outputPath);
       ref
           .read(projectFilesProvider.notifier)
-          .refresh(project.effectiveOutputPath);
+          .refresh(widget.project.effectiveOutputPath);
     } on Exception catch (e) {
       ref.read(processingStateProvider.notifier).setError(e.toString());
     } finally {

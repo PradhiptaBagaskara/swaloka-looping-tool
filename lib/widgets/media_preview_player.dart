@@ -9,20 +9,28 @@ class MediaPreviewPlayer extends StatefulWidget {
     required this.path,
     super.key,
     this.isVideo = true,
+    this.volume = 1.0,
     this.onDurationAvailable,
+    this.onPlaybackComplete,
   });
   final String path;
   final bool isVideo;
+  final double volume; // 0.0 to 1.0
   final void Function(Duration duration)? onDurationAvailable;
+  final void Function()? onPlaybackComplete;
 
   @override
   State<MediaPreviewPlayer> createState() => _MediaPreviewPlayerState();
 }
 
-class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
+class _MediaPreviewPlayerState extends State<MediaPreviewPlayer>
+    with AutomaticKeepAliveClientMixin {
   VideoPlayerController? _controller;
   bool _initialized = false;
   String? _error;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -35,6 +43,18 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.path != widget.path) {
       _handlePathChange();
+    } else if (oldWidget.volume != widget.volume) {
+      final controller = _controller;
+      if (controller != null && controller.value.isInitialized) {
+        // Volume changed without path change - update in real-time
+        // Get current playing state before volume change
+        final wasPlaying = controller.value.isPlaying;
+        controller.setVolume(widget.volume);
+        // Ensure playback continues if it was playing
+        if (wasPlaying && !controller.value.isPlaying) {
+          controller.play();
+        }
+      }
     }
   }
 
@@ -69,8 +89,11 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
               // Auto-play when preview opens (skip on Linux - not supported)
               if (!Platform.isLinux) {
                 controller
-                  ..setLooping(true)
+                  ..setVolume(widget.volume)
                   ..play();
+              } else {
+                // Set volume even on Linux (though auto-play doesn't work)
+                controller.setVolume(widget.volume);
               }
             }
           })
@@ -91,9 +114,23 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
   }
 
   void _onControllerUpdate() {
-    if (mounted) {
-      setState(() {});
+    if (!mounted) return;
+
+    final controller = _controller;
+    if (controller != null) {
+      // Check if playback completed
+      final position = controller.value.position;
+      final duration = controller.value.duration;
+
+      if (duration > Duration.zero &&
+          position >= duration &&
+          controller.value.isPlaying) {
+        // Playback completed
+        widget.onPlaybackComplete?.call();
+      }
     }
+
+    setState(() {});
   }
 
   void _disposePlayer() {
@@ -138,6 +175,7 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     if (_error != null) {
       return Center(
         child: Padding(
@@ -154,7 +192,9 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
               Flexible(
                 child: Text(
                   'Unable to play this file',
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -219,8 +259,10 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
                         1,
                         double.infinity,
                       ),
-                      activeColor: Colors.green,
-                      inactiveColor: Colors.grey[700],
+                      activeColor: Theme.of(context).colorScheme.primary,
+                      inactiveColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       onChanged: (v) {
                         _seekTo(Duration(milliseconds: v.toInt()));
                       },
@@ -233,17 +275,21 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
                       children: [
                         Text(
                           _formatDuration(position),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[500],
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                         Text(
                           _formatDuration(duration),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[500],
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                       ],
                     ),
@@ -271,12 +317,16 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
             child: AnimatedOpacity(
               opacity: isPlaying ? 0.0 : 1.0,
               duration: const Duration(milliseconds: 200),
-              child: const ColoredBox(
-                color: Colors.black26,
+              child: ColoredBox(
+                color: Theme.of(
+                  context,
+                ).colorScheme.surface.withValues(alpha: 0.3),
                 child: Icon(
                   Icons.play_circle_outline,
                   size: 64,
-                  color: Colors.white70,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.7),
                 ),
               ),
             ),
@@ -293,20 +343,29 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
               VideoProgressIndicator(
                 controller,
                 allowScrubbing: true,
-                colors: const VideoProgressColors(
-                  playedColor: Colors.green,
-                  bufferedColor: Colors.white24,
-                  backgroundColor: Colors.white10,
+                colors: VideoProgressColors(
+                  playedColor: Theme.of(context).colorScheme.primary,
+                  bufferedColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest,
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.outline.withValues(alpha: 0.3),
                 ),
               ),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [Colors.black87, Colors.transparent],
+                    colors: [
+                      Theme.of(
+                        context,
+                      ).colorScheme.surface.withValues(alpha: 0.8),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
                 child: Row(
@@ -314,11 +373,9 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
                   children: [
                     Text(
                       _formatDuration(position),
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.white,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         fontFamily: 'monospace',
-                        shadows: [
+                        shadows: const [
                           Shadow(
                             blurRadius: 2,
                           ),
@@ -327,11 +384,12 @@ class _MediaPreviewPlayerState extends State<MediaPreviewPlayer> {
                     ),
                     Text(
                       _formatDuration(duration),
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.white70,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.7),
                         fontFamily: 'monospace',
-                        shadows: [
+                        shadows: const [
                           Shadow(
                             blurRadius: 2,
                           ),

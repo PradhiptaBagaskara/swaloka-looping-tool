@@ -16,6 +16,7 @@ analyzer:
     inference_failure_on_instance_creation: info
     inference_failure_on_function_return_type: info
     inference_failure_on_untyped_parameter: info
+    only_throw_errors: ignore
 
 linter:
   rules:

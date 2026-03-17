@@ -6,10 +6,24 @@
 [![Built with Flutter](https://img.shields.io/badge/Built%20with-Flutter-02569B?logo=flutter)]()
 [![FFmpeg](https://img.shields.io/badge/Powered%20by-FFmpeg-green)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
+[![Download](https://img.shields.io/github/v/release/pradhiptabagaskara/swaloka-looping-tool?label=Download&style=for-the-badge&color=success)](https://github.com/pradhiptabagaskara/swaloka-looping-tool/releases/latest)
 
 **Swaloka Looping Tool** is a professional desktop video automation application that helps content creators, podcasters, and video producers automatically merge background videos with multiple audio tracks. Stop wasting hours on manual video editing—automate your entire workflow.
 
 **Perfect for:** Music Channels • Podcasts • Meditation Videos • Audiobooks • Educational Content • Gaming Commentary
+
+## 📥 Download
+
+<div align="center">
+
+### [⬇️ Download Latest Release](https://github.com/pradhiptabagaskara/swaloka-looping-tool/releases/latest)
+
+**Available for Windows, macOS, and Linux**
+
+[![Download](https://img.shields.io/github/downloads/pradhiptabagaskara/swaloka-looping-tool/total?style=flat-square&label=Total%20Downloads)](https://github.com/pradhiptabagaskara/swaloka-looping-tool/releases)
+[![Latest Release](https://img.shields.io/github/v/release/pradhiptabagaskara/swaloka-looping-tool?style=flat-square)](https://github.com/pradhiptabagaskara/swaloka-looping-tool/releases/latest)
+
+</div>
 
 ---
 

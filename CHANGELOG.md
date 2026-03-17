@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [5.4.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.3.0...swaloka_looping_tool-v5.4.0) (2026-02-20)
+
+
+### Features
+
+* **youtube:** add YouTube encoding standards  ([#47](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/47)) ([09dfa4c](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/09dfa4c151f85c82c6bc83ed78c49fddf5f62654))
+
+## [5.3.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.2.0...swaloka_looping_tool-v5.3.0) (2026-02-17)
+
+
+### Features
+
+* add audio overlay using amix ([#45](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/45)) ([5f4c826](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/5f4c826373d8a7655f3dbf993ff860da2e669c13))
+
+## [5.2.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.1.0...swaloka_looping_tool-v5.2.0) (2026-01-13)
+
+
+### Features
+
+* **video-tools:** enhance video re-encoding with aspect ratio options ([#37](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/37)) ([49d462e](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/49d462e0e6c3c012b1a06e8531c068099c79e161))
+
+## [5.1.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.0.0...swaloka_looping_tool-v5.1.0) (2026-01-06)
+
+
+### Features
+
+* improve video processing performance and UX ([f10eaf2](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/f10eaf24c95d8e875c558902f6a93d7bb3da5538))
+
+## [5.0.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v4.1.0...swaloka_looping_tool-v5.0.0) (2026-01-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** enhance project structure and add new features ([#33](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/33))
+
+### Features
+
+* **core:** enhance project structure and add new features ([#33](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/issues/33)) ([d7b8d5f](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/d7b8d5fb101039fe2cc03410d34f4fdfe59caf64))
+
 ## [4.1.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v4.0.0...swaloka_looping_tool-v4.1.0) (2026-01-05)
 
 
