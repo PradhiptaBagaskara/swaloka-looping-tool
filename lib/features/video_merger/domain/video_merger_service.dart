@@ -149,8 +149,8 @@ class VideoMergerService {
         '-map',
         '$i:a',
         '-vn',
-        '-threads',
-        '0',
+        // '-threads',
+        // '0',
         '-c:a',
         'aac',
         '-b:a',
@@ -268,6 +268,41 @@ class VideoMergerService {
     return mergedAudioPath;
   }
 
+  Future<double?> _getVideoDurationSeconds(String videoPath) async {
+    try {
+      final meta = await FFmpegService.getVideoMetadata(videoPath);
+      if (meta.duration != null) {
+        return meta.duration!.inMilliseconds / 1000.0;
+      }
+      return null;
+    } on Exception catch (_) {
+      return null;
+    }
+  }
+
+  /// Create concat demuxer file for intro + background videos
+  /// Returns the path to the concat file
+  Future<String> _createVideoConcatFile({
+    required String introVideoPath,
+    required String backgroundVideoPath,
+    required int backgroundLoopCount,
+    required Directory tempDir,
+  }) async {
+    final concatListPath = p.join(tempDir.path, 'video_concat.txt');
+
+    // Build concat list: intro once, background N times
+    final lines = <String>[
+      "file '${_formatPathForConcatFile(introVideoPath)}'",
+      ...List.generate(
+        backgroundLoopCount,
+        (_) => "file '${_formatPathForConcatFile(backgroundVideoPath)}'",
+      ),
+    ];
+
+    await File(concatListPath).writeAsString(lines.join('\n'));
+    return concatListPath;
+  }
+
   // Process audio files
   Future<String> _mergeVideoWithAudioFiles(
     String backgroundVideoPath,
@@ -311,6 +346,52 @@ class VideoMergerService {
         p.absolute(outputPath),
       ],
       errorMessage: 'Failed to merge video with audio',
+      onLog: videoMergeLog.addSubLog,
+    );
+
+    return outputPath;
+  }
+
+  /// Merge concat video file with audio in single pass
+  Future<String> _mergeConcatVideoWithAudio(
+    String videoConcatPath,
+    String outputPath,
+    String mergedAudioPath,
+    void Function(LogEntry log)? onLog,
+  ) async {
+    final videoMergeLog = LogEntry.info(
+      'Merging concatenated video with audio...',
+    );
+    onLog?.call(videoMergeLog);
+
+    await FFmpegService.run(
+      [
+        '-y',
+        '-hwaccel',
+        'auto',
+        '-f',
+        'concat',
+        '-safe',
+        '0',
+        '-i',
+        p.absolute(videoConcatPath),
+        '-i',
+        p.absolute(mergedAudioPath),
+        '-map',
+        '0:v',
+        '-map',
+        '1:a',
+        '-c:v',
+        'copy',
+        ...await FFmpegService.getStandardYouTubeVideoMetadataFlags(),
+        '-c:a',
+        'copy',
+        '-shortest',
+        '-movflags',
+        '+faststart',
+        p.absolute(outputPath),
+      ],
+      errorMessage: 'Failed to merge concat video with audio',
       onLog: videoMergeLog.addSubLog,
     );
 
@@ -369,25 +450,22 @@ class VideoMergerService {
           onLog,
         );
       } else {
-        // If intro exists: Split audio into intro/remaining parts, create videos separately, then concat
+        // NEW EFFICIENT APPROACH: Calculate loop count, create concat, merge once
         final log = LogEntry.info(
-          'Creating video with intro and background...',
+          'Creating video with intro and background (efficient mode)...',
         );
         onLog?.call(log);
 
         // Get intro video duration
-        var introSeconds = 0.0;
-        try {
-          final introMeta = await FFmpegService.getVideoMetadata(
-            introVideoPath,
-          );
-          if (introMeta.duration != null) {
-            introSeconds = introMeta.duration!.inMilliseconds / 1000.0;
-          }
-        } on Exception catch (_) {}
-
-        if (introSeconds <= 0) {
+        final introSeconds = await _getVideoDurationSeconds(introVideoPath);
+        if (introSeconds == null || introSeconds <= 0) {
           throw Exception('Could not determine intro video duration');
+        }
+
+        // Get background video duration
+        final bgSeconds = await _getVideoDurationSeconds(backgroundVideoPath);
+        if (bgSeconds == null || bgSeconds <= 0) {
+          throw Exception('Could not determine background video duration');
         }
 
         // Get merged audio duration
@@ -396,131 +474,51 @@ class VideoMergerService {
           throw Exception('Could not determine audio duration');
         }
 
-        final totalAudioDuration = audioSeconds;
+        // Calculate required loop count: ceil((audioDuration - introDuration) / bgDuration)
+        final remainingAudioSeconds = audioSeconds - introSeconds;
+        final bgLoopCount = (remainingAudioSeconds / bgSeconds).ceil();
+
+        log.addSubLog(
+          LogEntry.info(
+            'Duration calculations:\n'
+            '  • Intro: ${introSeconds.toStringAsFixed(1)}s\n'
+            '  • Background: ${bgSeconds.toStringAsFixed(1)}s\n'
+            '  • Audio total: ${audioSeconds.toStringAsFixed(1)}s\n'
+            '  • Remaining after intro: ${remainingAudioSeconds.toStringAsFixed(1)}s\n'
+            '  • Background loop count: $bgLoopCount',
+          ),
+        );
 
         onProgress?.call(0.6);
 
-        // Step 1: Create intro video with looped audio (audio loops to match intro duration)
-        final introWithAudioPath = p.join(tempDir.path, 'intro_with_audio.mp4');
-
-        final introLog = LogEntry.info(
-          'Creating intro video (${introSeconds.toStringAsFixed(1)}s) with looped audio...',
+        // Step 1: Create concat demuxer file with intro + background loops
+        final concatLog = LogEntry.info(
+          'Creating video concat file (intro + background $bgLoopCount times)...',
         );
-        log.addSubLog(introLog);
+        log.addSubLog(concatLog);
 
-        await FFmpegService.run(
-          [
-            '-y',
-            '-hwaccel',
-            'auto', // Hardware-accelerated decoding
-            '-i',
-            p.absolute(introVideoPath),
-            '-stream_loop',
-            '-1', // Loop audio infinitely
-            '-i',
-            p.absolute(mergedAudioPath),
-            '-map',
-            '0:v',
-            '-map',
-            '1:a',
-            '-c:v',
-            'copy',
-            ...await FFmpegService.getStandardYouTubeVideoMetadataFlags(),
-            '-c:a',
-            'copy',
-            '-t',
-            introSeconds.toStringAsFixed(
-              3,
-            ), // Limit output to intro video duration
-            '-movflags',
-            '+faststart',
-            p.absolute(introWithAudioPath),
-          ],
-          errorMessage: 'Failed to create intro with looped audio',
-          onLog: introLog.addSubLog,
+        final videoConcatPath = await _createVideoConcatFile(
+          introVideoPath: introVideoPath,
+          backgroundVideoPath: backgroundVideoPath,
+          backgroundLoopCount: bgLoopCount,
+          tempDir: tempDir,
+        );
+
+        concatLog.addSubLog(
+          LogEntry.success('Concat file created: $videoConcatPath'),
         );
 
         onProgress?.call(0.7);
 
-        // Step 2: Create background video with audio starting from intro offset
-        final backgroundWithAudioPath = p.join(
-          tempDir.path,
-          'background_with_audio.mp4',
+        // Step 2: Merge concat video with audio in SINGLE PASS
+        await _mergeConcatVideoWithAudio(
+          videoConcatPath,
+          outputPath,
+          mergedAudioPath,
+          onLog,
         );
 
-        final remainingAudioSeconds = totalAudioDuration - introSeconds;
-
-        final bgLog = LogEntry.info(
-          'Creating background video with audio (${remainingAudioSeconds.toStringAsFixed(1)}s remaining)...',
-        );
-        log.addSubLog(bgLog);
-
-        await FFmpegService.run(
-          [
-            '-y',
-            '-hwaccel',
-            'auto', // Hardware-accelerated decoding
-            '-stream_loop',
-            '-1', // Loop background video infinitely
-            '-i',
-            p.absolute(backgroundVideoPath),
-            '-ss',
-            introSeconds.toStringAsFixed(3), // Start audio from intro offset
-            '-i',
-            p.absolute(mergedAudioPath),
-            '-map',
-            '0:v',
-            '-map',
-            '1:a',
-            '-c:v',
-            'copy',
-            ...await FFmpegService.getStandardYouTubeVideoMetadataFlags(),
-            '-c:a',
-            'copy',
-            '-t',
-            remainingAudioSeconds.toStringAsFixed(
-              3,
-            ), // Limit to remaining audio duration
-            '-movflags',
-            '+faststart',
-            p.absolute(backgroundWithAudioPath),
-          ],
-          errorMessage: 'Failed to create background with audio',
-          onLog: bgLog.addSubLog,
-        );
-
-        onProgress?.call(0.8);
-
-        // Step 3: Concat intro + background (both have video+audio)
-        final concatLog = LogEntry.info(
-          'Concatenating intro with background...',
-        );
-        log.addSubLog(concatLog);
-
-        final concatListPath = p.join(tempDir.path, 'concat_list.txt');
-        final concatContent = [
-          "file '${_formatPathForConcatFile(introWithAudioPath)}'",
-          "file '${_formatPathForConcatFile(backgroundWithAudioPath)}'",
-        ].join('\n');
-        await File(concatListPath).writeAsString(concatContent);
-
-        await FFmpegService.run(
-          [
-            '-y',
-            '-f',
-            'concat',
-            '-safe',
-            '0',
-            '-i',
-            concatListPath,
-            '-c',
-            'copy',
-            p.absolute(outputPath),
-          ],
-          errorMessage: 'Failed to concat intro with background',
-          onLog: concatLog.addSubLog,
-        );
-        concatLog.addSubLog(LogEntry.success('Final video created'));
+        log.addSubLog(LogEntry.success('Final video created (1 SSD write)'));
       }
 
       onProgress?.call(1);

@@ -9,7 +9,6 @@ import 'package:path/path.dart' as p;
 
 import 'package:swaloka_looping_tool/core/services/ffmpeg_service.dart';
 import 'package:swaloka_looping_tool/core/utils/log_formatter.dart';
-import 'package:swaloka_looping_tool/core/utils/timestamp_formatter.dart';
 import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
 import 'package:swaloka_looping_tool/features/video_merger/presentation/providers/video_merger_providers.dart';
 import 'package:swaloka_looping_tool/layouts/layouts.dart';
@@ -34,6 +33,20 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
   String? _backgroundVideo;
   String? _introVideo;
   int _audioLoopCount = 1;
+  String _outputName = '';
+  late TextEditingController _outputNameController;
+
+  @override
+  void initState() {
+    super.initState();
+    _outputNameController = TextEditingController(text: _outputName);
+  }
+
+  @override
+  void dispose() {
+    _outputNameController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -93,7 +106,13 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                     path: _backgroundVideo!,
                     icon: Icons.videocam,
                     isVideo: true,
-                    onRemove: () => setState(() => _backgroundVideo = null),
+                    onRemove: () {
+                      setState(() {
+                        _backgroundVideo = null;
+                        _outputName = '';
+                        _outputNameController.clear();
+                      });
+                    },
                     onPreview: () => _showPreview(
                       context,
                       _backgroundVideo!,
@@ -364,6 +383,59 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                             if (intValue != null && intValue >= 1) {
                               setState(() => _audioLoopCount = intValue);
                             }
+                          },
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 24),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                'Nama Output',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const CompactTooltip(
+                              message:
+                                  'Nama file output.\n\n'
+                                  'Default: nama file video latar.\n'
+                                  'Kosongkan untuk gunakan timestamp.',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _outputNameController,
+                          decoration: InputDecoration(
+                            hintText: 'Default: nama video',
+                            hintStyle: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant
+                                  .withValues(alpha: 0.6),
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            isDense: true,
+                          ),
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          onChanged: (value) {
+                            setState(() => _outputName = value);
                           },
                         ),
                       ],
@@ -652,6 +724,9 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
               _introVideo = videoFile.path;
             } else {
               _backgroundVideo = videoFile.path;
+              // Auto-fill output name from background video filename
+              _outputName = p.basenameWithoutExtension(videoFile.path);
+              _outputNameController.text = _outputName;
             }
           });
         } else {
@@ -861,6 +936,9 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
             _introVideo = result.files.single.path;
           } else {
             _backgroundVideo = result.files.single.path;
+            // Auto-fill output name from background video filename
+            _outputName = p.basenameWithoutExtension(result.files.single.path!);
+            _outputNameController.text = _outputName;
           }
         });
         ref.read(processingStateProvider.notifier).reset();
@@ -1273,14 +1351,19 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
 
     String? logFilePath;
     try {
-      final timestamp = TimestampFormatter.format();
-      final loopPrefix = _audioLoopCount > 1 ? 'loop_${_audioLoopCount}x_' : '';
-      final outputFileName = 'video_$loopPrefix$timestamp.mp4';
+      // Use only last 4 digits of milliseconds for short, unique timestamp
+      final fullTimestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      final timestamp = fullTimestamp.substring(fullTimestamp.length - 4);
+      // Use custom output name if provided, otherwise use 'video'
+      final baseName = _outputName.trim().isEmpty
+          ? 'video'
+          : _outputName.trim();
+      final outputFileName = '${baseName}_$timestamp.mp4';
       final outputPath = p.join(outputDir, outputFileName);
       logFilePath = p.join(
         widget.project.rootPath,
         'logs',
-        'ffmpeg_log_$timestamp.log',
+        '${baseName}_$timestamp.log',
       );
 
       ref.read(processingStateProvider.notifier).startProcessing();
