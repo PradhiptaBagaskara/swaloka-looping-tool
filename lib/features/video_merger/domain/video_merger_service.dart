@@ -149,14 +149,12 @@ class VideoMergerService {
         '-map',
         '$i:a',
         '-vn',
-        // '-threads',
-        // '0',
         '-c:a',
         'aac',
         '-b:a',
-        '384k', // YouTube recommended bitrate
+        '192k', // 192kbps standard for MP3, good balance of quality and size
         '-ar',
-        '48000', // YouTube recommended sample rate
+        '44100', // 44.1kHz ideal for music, speed and quality balance
         '-ac',
         '2', // Stereo
         p.absolute(outPath),
@@ -249,6 +247,7 @@ class VideoMergerService {
       '0',
       '-i',
       concatListPath,
+      '-vn',
       '-c',
       'copy',
       p.absolute(mergedAudioPath),
@@ -303,11 +302,75 @@ class VideoMergerService {
     return concatListPath;
   }
 
+  Future<String> _prepareBackgroundLoopSourceWithStreamLoop({
+    required String backgroundVideoPath,
+    required Directory tempDir,
+    void Function(LogEntry log)? onLog,
+  }) async {
+    const minTargetSeconds = 600.0; // 10 minutes
+    final bgDurationSeconds = await _getVideoDurationSeconds(
+      backgroundVideoPath,
+    );
+
+    if (bgDurationSeconds == null || bgDurationSeconds <= 0) {
+      onLog?.call(
+        LogEntry.info(
+          'Background duration unavailable, skip pre-process and use original source',
+        ),
+      );
+      return backgroundVideoPath;
+    }
+
+    if (bgDurationSeconds >= minTargetSeconds) {
+      onLog?.call(
+        LogEntry.info(
+          'Background duration ${bgDurationSeconds.toStringAsFixed(1)}s already >= 10 minutes, skip pre-process',
+        ),
+      );
+      return backgroundVideoPath;
+    }
+
+    final repeatCount = (minTargetSeconds / bgDurationSeconds).ceil();
+    final additionalLoops = repeatCount > 0 ? repeatCount - 1 : 0;
+    final preprocessedPath = p.join(tempDir.path, 'background_preloop.mp4');
+
+    final preprocessLog = LogEntry.info(
+      'Pre-processing background using -stream_loop $additionalLoops to reach minimum 10 minutes...',
+    );
+    onLog?.call(preprocessLog);
+
+    await FFmpegService.run(
+      [
+        '-y',
+        '-hwaccel',
+        'auto',
+        '-stream_loop',
+        additionalLoops.toString(),
+        '-i',
+        p.absolute(backgroundVideoPath),
+        '-map',
+        '0:v:0',
+        '-c:v',
+        'copy',
+        '-an',
+        p.absolute(preprocessedPath),
+      ],
+      errorMessage: 'Failed to pre-process background video with stream_loop',
+      onLog: preprocessLog.addSubLog,
+    );
+
+    preprocessLog.addSubLog(
+      LogEntry.success('Background pre-process complete: $preprocessedPath'),
+    );
+    return preprocessedPath;
+  }
+
   // Process audio files
   Future<String> _mergeVideoWithAudioFiles(
     String backgroundVideoPath,
     String outputPath,
     String mergedAudioPath,
+    Directory tempDir,
     void Function(LogEntry log)? onLog,
   ) async {
     // 6. Fast mode: Loop video to match audio duration
@@ -420,9 +483,11 @@ class VideoMergerService {
     try {
       final String mergedAudioPath;
 
-      // 1) Audio pipeline - Always use AAC normalization
+      // 1) Audio pipeline - Normalize to AAC once, then concat with stream copy
       onLog?.call(
-        LogEntry.info('Audio pipeline: AAC normalize'),
+        LogEntry.info(
+          'Audio pipeline: AAC normalize then concat copy',
+        ),
       );
       final playlistFiles = _buildAudioPlaylist(
         await _normalizeAudioFilesToAacM4a(
@@ -447,6 +512,7 @@ class VideoMergerService {
           backgroundVideoPath,
           outputPath,
           mergedAudioPath,
+          tempDir,
           onLog,
         );
       } else {
@@ -454,7 +520,17 @@ class VideoMergerService {
         final log = LogEntry.info(
           'Creating video with intro and background (efficient mode)...',
         );
+        final preprocessLog = LogEntry.info(
+          'Preparing background video for looping...',
+        );
         onLog?.call(log);
+        onLog?.call(preprocessLog);
+        final preprocessedBackgroundVideoPath =
+            await _prepareBackgroundLoopSourceWithStreamLoop(
+              backgroundVideoPath: backgroundVideoPath,
+              tempDir: tempDir,
+              onLog: preprocessLog.addSubLog,
+            );
 
         // Get intro video duration
         final introSeconds = await _getVideoDurationSeconds(introVideoPath);
@@ -463,7 +539,9 @@ class VideoMergerService {
         }
 
         // Get background video duration
-        final bgSeconds = await _getVideoDurationSeconds(backgroundVideoPath);
+        final bgSeconds = await _getVideoDurationSeconds(
+          preprocessedBackgroundVideoPath,
+        );
         if (bgSeconds == null || bgSeconds <= 0) {
           throw Exception('Could not determine background video duration');
         }
@@ -499,7 +577,7 @@ class VideoMergerService {
 
         final videoConcatPath = await _createVideoConcatFile(
           introVideoPath: introVideoPath,
-          backgroundVideoPath: backgroundVideoPath,
+          backgroundVideoPath: preprocessedBackgroundVideoPath,
           backgroundLoopCount: bgLoopCount,
           tempDir: tempDir,
         );
