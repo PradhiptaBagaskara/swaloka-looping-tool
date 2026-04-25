@@ -68,24 +68,19 @@ class VideoMergerService {
     final isAACResults = _checkAudioFilesAAC(audioFiles);
 
     // Separate files into already AAC vs needs conversion
-    final alreadyAAC = <String>[];
-    final needsConversion = <String>[];
+    final normalized = List<String?>.filled(audioFiles.length, null);
+    final needsConversion = <({int originalIndex, String path})>[];
 
     for (var i = 0; i < audioFiles.length; i++) {
       if (isAACResults[i]) {
-        alreadyAAC.add(audioFiles[i]);
+        normalized[i] = audioFiles[i];
         log.addSubLog(
           LogEntry.info('✓ Already AAC: ${p.basename(audioFiles[i])}'),
         );
       } else {
-        needsConversion.add(audioFiles[i]);
+        needsConversion.add((originalIndex: i, path: audioFiles[i]));
       }
     }
-
-    final results = <String>[];
-
-    // Add files that are already AAC (use original paths)
-    results.addAll(alreadyAAC);
 
     // Convert files that need it
     if (needsConversion.isNotEmpty) {
@@ -97,11 +92,12 @@ class VideoMergerService {
       final converted = await _executeSingleRunFFmpeg(
         needsConversion,
         tempDir,
-        alreadyAAC.length, // start index after already AAC files
         parentLog: convertLog,
       );
 
-      results.addAll(converted.map((e) => e.path));
+      for (final item in converted) {
+        normalized[item.index] = item.path;
+      }
 
       convertLog.addSubLog(
         LogEntry.success(
@@ -112,37 +108,40 @@ class VideoMergerService {
 
     log.addSubLog(
       LogEntry.success(
-        'Audio check complete: ${alreadyAAC.length} skipped, ${needsConversion.length} converted',
+        'Audio check complete: ${audioFiles.length - needsConversion.length} skipped, ${needsConversion.length} converted',
       ),
     );
 
-    return results;
+    if (normalized.any((e) => e == null)) {
+      throw Exception('Failed to normalize all audio files');
+    }
+
+    return normalized.cast<String>();
   }
 
   // Helper function to run one FFmpeg command for multiple files
   Future<List<({int index, String path})>> _executeSingleRunFFmpeg(
-    List<String> inputs,
-    Directory tempDir,
-    int startIdx, {
+    List<({int originalIndex, String path})> inputs,
+    Directory tempDir, {
     required LogEntry parentLog,
   }) async {
     final batchLog = LogEntry.info(
-      'Processing batch of ${inputs.length} file(s) starting at index $startIdx...',
+      'Processing batch of ${inputs.length} file(s)...',
     );
     parentLog.addSubLog(batchLog);
 
     final args = ['-y'];
 
     // Add all inputs in this batch
-    for (final path in inputs) {
-      args.addAll(['-i', p.absolute(path)]);
+    for (final input in inputs) {
+      args.addAll(['-i', p.absolute(input.path)]);
     }
 
     final results = <({int index, String path})>[];
 
     // Map each input to its output
     for (var i = 0; i < inputs.length; i++) {
-      final idx = startIdx + i;
+      final idx = inputs[i].originalIndex;
       final outPath = p.join(tempDir.path, 'audio_part_$idx.m4a');
 
       args.addAll([
@@ -165,7 +164,7 @@ class VideoMergerService {
 
     await FFmpegService.run(
       args,
-      errorMessage: 'Failed to process audio batch starting at index $startIdx',
+      errorMessage: 'Failed to process audio normalization batch',
       onLog: batchLog.addSubLog,
     );
 
@@ -176,22 +175,22 @@ class VideoMergerService {
     return results;
   }
 
-  List<String> _buildAudioPlaylist(
-    List<String> audioFiles,
+  List<int> _buildAudioPlaylistOrder(
+    int totalAudioFiles,
     int audioLoopCount,
     void Function(LogEntry log)? onLog,
   ) {
     final processLog = LogEntry.info(
-      'Building audio playlist from ${audioFiles.length} file(s)...',
+      'Building audio playlist from $totalAudioFiles file(s)...',
     );
     onLog?.call(processLog);
 
-    final orderedFiles = List<String>.from(audioFiles);
-    final concatFiles = <String>[];
+    final orderedIndexes = List<int>.generate(totalAudioFiles, (i) => i);
+    final playlistOrder = <int>[];
 
     // First iteration: Always use original order from UI
     // This ensures the first play through matches the user's intended sequence
-    concatFiles.addAll(orderedFiles);
+    playlistOrder.addAll(orderedIndexes);
 
     if (audioLoopCount > 1) {
       // Subsequent iterations: Shuffle each time for variety
@@ -200,9 +199,9 @@ class VideoMergerService {
       //   Loop 2: [file2, file3, file1] <- shuffled
       //   Loop 3: [file3, file1, file2] <- shuffled again
       for (var loop = 1; loop < audioLoopCount; loop++) {
-        final filesToConcat = List<String>.from(orderedFiles);
+        final filesToConcat = List<int>.from(orderedIndexes);
         filesToConcat.shuffle(Random());
-        concatFiles.addAll(filesToConcat);
+        playlistOrder.addAll(filesToConcat);
       }
 
       processLog.addSubLog(
@@ -213,9 +212,65 @@ class VideoMergerService {
     }
 
     processLog.addSubLog(
-      LogEntry.success('Audio playlist ready (${concatFiles.length} item(s))'),
+      LogEntry.success(
+        'Audio playlist ready (${playlistOrder.length} item(s))',
+      ),
     );
-    return concatFiles;
+    return playlistOrder;
+  }
+
+  List<String> _applyPlaylistOrder(List<String> sourceFiles, List<int> order) {
+    return order.map((idx) => sourceFiles[idx]).toList();
+  }
+
+  String _formatTimestamp(double seconds) {
+    final totalSeconds = seconds.floor();
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final secs = totalSeconds % 60;
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+    }
+    if (minutes == 0) {
+      return '0:${secs.toString().padLeft(2, '0')}';
+    }
+    return '$minutes:${secs.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _writeYouTubeTimestampFile({
+    required String outputPath,
+    required List<String> playlistSourceFiles,
+    void Function(LogEntry log)? onLog,
+  }) async {
+    if (playlistSourceFiles.isEmpty) return;
+
+    final timestampLog = LogEntry.info('Generating YouTube timestamp file...');
+    onLog?.call(timestampLog);
+
+    final durationCache = <String, double>{};
+    var accumulatedSeconds = 0.0;
+    final lines = <String>[];
+
+    for (final sourcePath in playlistSourceFiles) {
+      final startTimestamp = _formatTimestamp(accumulatedSeconds);
+      final title = p.basenameWithoutExtension(sourcePath);
+      lines.add('$startTimestamp - $title');
+
+      if (!durationCache.containsKey(sourcePath)) {
+        durationCache[sourcePath] =
+            await _getAudioDurationSeconds(sourcePath) ?? 0;
+      }
+      accumulatedSeconds += durationCache[sourcePath]!;
+    }
+
+    final outputDir = p.dirname(outputPath);
+    final outputBase = p.basenameWithoutExtension(outputPath);
+    final timestampPath = p.join(outputDir, '${outputBase}_timestamp.txt');
+    await File(timestampPath).writeAsString(lines.join('\n'));
+
+    timestampLog.addSubLog(
+      LogEntry.success('YouTube timestamp file created: $timestampPath'),
+    );
   }
 
   Future<String> _mergeAudioPlaylist(
@@ -489,14 +544,23 @@ class VideoMergerService {
           'Audio pipeline: AAC normalize then concat copy',
         ),
       );
-      final playlistFiles = _buildAudioPlaylist(
-        await _normalizeAudioFilesToAacM4a(
-          audioFiles: audioFiles,
-          tempDir: tempDir,
-          onLog: onLog,
-        ),
+      final normalizedAudioFiles = await _normalizeAudioFilesToAacM4a(
+        audioFiles: audioFiles,
+        tempDir: tempDir,
+        onLog: onLog,
+      );
+      final playlistOrder = _buildAudioPlaylistOrder(
+        audioFiles.length,
         audioLoopCount,
         onLog,
+      );
+      final playlistFiles = _applyPlaylistOrder(
+        normalizedAudioFiles,
+        playlistOrder,
+      );
+      final timestampSourceFiles = _applyPlaylistOrder(
+        audioFiles,
+        playlistOrder,
       );
       onProgress?.call(0.3);
       mergedAudioPath = await _mergeAudioPlaylist(
@@ -600,6 +664,11 @@ class VideoMergerService {
       }
 
       onProgress?.call(1);
+      await _writeYouTubeTimestampFile(
+        outputPath: outputPath,
+        playlistSourceFiles: timestampSourceFiles,
+        onLog: onLog,
+      );
       onLog?.call(
         LogEntry.success('Video merge complete! Output: $outputPath'),
       );
