@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:path/path.dart' as p;
@@ -7,6 +8,13 @@ import 'package:swaloka_looping_tool/core/utils/temp_directory_helper.dart';
 
 /// Service for merging background video with sequential audio files
 class VideoMergerService {
+  static const int _estimatedAudioBitrateKbps = 192;
+  static const double _diskEstimateSafetyMultiplier = 1.2;
+  static const double _preprocessedBackgroundMinimumSeconds = 600;
+  static const _cacheDirectoryName = 'cache';
+  static const _audioCacheDirectoryName = 'audios';
+  static const _audioCacheManifestFileName = 'audio_cache.json';
+
   String _formatPathForConcatFile(String path) {
     var safePath = p.normalize(path);
     if (Platform.isWindows) {
@@ -54,7 +62,7 @@ class VideoMergerService {
 
   Future<List<String>> _normalizeAudioFilesToAacM4a({
     required List<String> audioFiles,
-    required Directory tempDir,
+    required String projectRootPath,
     void Function(LogEntry log)? onLog,
   }) async {
     final log = LogEntry.info(
@@ -69,35 +77,61 @@ class VideoMergerService {
 
     // Separate files into already AAC vs needs conversion
     final normalized = List<String?>.filled(audioFiles.length, null);
-    final needsConversion = <({int originalIndex, String path})>[];
+    final needsConversion =
+        <({int originalIndex, String sourcePath, String outputPath})>[];
+    final cacheManifest = await _readAudioCacheManifest(projectRootPath);
 
     for (var i = 0; i < audioFiles.length; i++) {
+      final sourcePath = p.normalize(p.absolute(audioFiles[i]));
       if (isAACResults[i]) {
-        normalized[i] = audioFiles[i];
+        normalized[i] = sourcePath;
         log.addSubLog(
-          LogEntry.info('✓ Already AAC: ${p.basename(audioFiles[i])}'),
+          LogEntry.info('✓ Already AAC: ${p.basename(sourcePath)}'),
         );
       } else {
-        needsConversion.add((originalIndex: i, path: audioFiles[i]));
+        final cachedPath = cacheManifest[sourcePath];
+        if (cachedPath != null && await File(cachedPath).exists()) {
+          normalized[i] = p.normalize(cachedPath);
+          log.addSubLog(
+            LogEntry.info('✓ Cache hit: ${p.basename(sourcePath)}'),
+          );
+          continue;
+        }
+        final outputPath = _buildCachedAudioPath(
+          projectRootPath: projectRootPath,
+          sourcePath: sourcePath,
+        );
+        needsConversion.add(
+          (
+            originalIndex: i,
+            sourcePath: sourcePath,
+            outputPath: outputPath,
+          ),
+        );
       }
     }
 
     // Convert files that need it
     if (needsConversion.isNotEmpty) {
       final convertLog = LogEntry.info(
-        'Converting ${needsConversion.length} file(s) to AAC...',
+        'Converting ${needsConversion.length} file(s) to AAC (cache miss)...',
       );
       log.addSubLog(convertLog);
 
       final converted = await _executeSingleRunFFmpeg(
         needsConversion,
-        tempDir,
         parentLog: convertLog,
       );
 
       for (final item in converted) {
         normalized[item.index] = item.path;
+        cacheManifest[item.sourcePath] = item.path;
       }
+
+      await _writeAudioCacheManifest(
+        projectRootPath: projectRootPath,
+        manifest: cacheManifest,
+      );
 
       convertLog.addSubLog(
         LogEntry.success(
@@ -120,9 +154,9 @@ class VideoMergerService {
   }
 
   // Helper function to run one FFmpeg command for multiple files
-  Future<List<({int index, String path})>> _executeSingleRunFFmpeg(
-    List<({int originalIndex, String path})> inputs,
-    Directory tempDir, {
+  Future<List<({int index, String path, String sourcePath})>>
+  _executeSingleRunFFmpeg(
+    List<({int originalIndex, String sourcePath, String outputPath})> inputs, {
     required LogEntry parentLog,
   }) async {
     final batchLog = LogEntry.info(
@@ -134,15 +168,15 @@ class VideoMergerService {
 
     // Add all inputs in this batch
     for (final input in inputs) {
-      args.addAll(['-i', p.absolute(input.path)]);
+      args.addAll(['-i', p.absolute(input.sourcePath)]);
     }
 
-    final results = <({int index, String path})>[];
+    final results = <({int index, String path, String sourcePath})>[];
 
     // Map each input to its output
     for (var i = 0; i < inputs.length; i++) {
       final idx = inputs[i].originalIndex;
-      final outPath = p.join(tempDir.path, 'audio_part_$idx.m4a');
+      final outPath = inputs[i].outputPath;
 
       args.addAll([
         '-map',
@@ -159,7 +193,13 @@ class VideoMergerService {
         p.absolute(outPath),
       ]);
 
-      results.add((index: idx, path: outPath));
+      results.add(
+        (
+          index: idx,
+          path: p.normalize(outPath),
+          sourcePath: p.normalize(inputs[i].sourcePath),
+        ),
+      );
     }
 
     await FFmpegService.run(
@@ -173,6 +213,142 @@ class VideoMergerService {
     );
 
     return results;
+  }
+
+  String _cacheRootPath(String projectRootPath) {
+    return p.join(projectRootPath, _cacheDirectoryName);
+  }
+
+  String _audioCacheDirectoryPath(String projectRootPath) {
+    return p.join(_cacheRootPath(projectRootPath), _audioCacheDirectoryName);
+  }
+
+  String _audioCacheManifestPath(String projectRootPath) {
+    return p.join(_cacheRootPath(projectRootPath), _audioCacheManifestFileName);
+  }
+
+  BigInt _fnv1a64(String value) {
+    var hash = BigInt.parse('cbf29ce484222325', radix: 16);
+    final prime = BigInt.from(0x100000001b3);
+    final mask = BigInt.parse('7fffffffffffffff', radix: 16);
+    for (final code in value.codeUnits) {
+      hash ^= BigInt.from(code);
+      hash = (hash * prime) & mask;
+    }
+    return hash;
+  }
+
+  String _buildCachedAudioPath({
+    required String projectRootPath,
+    required String sourcePath,
+  }) {
+    final sourceNormalized = p.normalize(p.absolute(sourcePath));
+    final sourceBase = p.basenameWithoutExtension(sourceNormalized);
+    final safeBase = sourceBase.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
+    final shortBase = safeBase.isEmpty
+        ? 'audio'
+        : (safeBase.length <= 48 ? safeBase : safeBase.substring(0, 48));
+    final hashHex = _fnv1a64(sourceNormalized).toRadixString(16);
+    final filename = '${shortBase}_$hashHex.m4a';
+    return p.join(_audioCacheDirectoryPath(projectRootPath), filename);
+  }
+
+  Future<Map<String, String>> _readAudioCacheManifest(
+    String projectRootPath,
+  ) async {
+    final cacheDir = Directory(_cacheRootPath(projectRootPath));
+    if (!await cacheDir.exists()) {
+      await cacheDir.create(recursive: true);
+    }
+    final audioCacheDir = Directory(_audioCacheDirectoryPath(projectRootPath));
+    if (!await audioCacheDir.exists()) {
+      await audioCacheDir.create(recursive: true);
+    }
+
+    final manifestFile = File(_audioCacheManifestPath(projectRootPath));
+    if (!await manifestFile.exists()) {
+      return {};
+    }
+
+    try {
+      final raw = await manifestFile.readAsString();
+      if (raw.trim().isEmpty) return {};
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return {};
+      return {
+        for (final entry in decoded.entries)
+          p.normalize(entry.key): p.normalize(entry.value as String),
+      };
+    } on Exception {
+      return {};
+    }
+  }
+
+  Future<void> _writeAudioCacheManifest({
+    required String projectRootPath,
+    required Map<String, String> manifest,
+  }) async {
+    final manifestFile = File(_audioCacheManifestPath(projectRootPath));
+    final normalized = <String, String>{
+      for (final entry in manifest.entries)
+        p.normalize(entry.key): p.normalize(entry.value),
+    };
+    final content = const JsonEncoder.withIndent('  ').convert(normalized);
+    await manifestFile.writeAsString(content);
+  }
+
+  Future<int> clearGlobalAudioCache({
+    required String projectRootPath,
+    void Function(LogEntry log)? onLog,
+  }) async {
+    final cacheRoot = Directory(_cacheRootPath(projectRootPath));
+    final audioCacheDir = Directory(_audioCacheDirectoryPath(projectRootPath));
+    final manifestFile = File(_audioCacheManifestPath(projectRootPath));
+
+    var removedCount = 0;
+
+    if (await audioCacheDir.exists()) {
+      final entities = await audioCacheDir.list().toList();
+      for (final entity in entities) {
+        if (entity is File) {
+          try {
+            await entity.delete();
+            removedCount++;
+          } on Exception {
+            // Ignore single file deletion failure and continue.
+          }
+        }
+      }
+      try {
+        await audioCacheDir.delete();
+      } on Exception {
+        // Ignore directory delete failure.
+      }
+    }
+
+    if (await manifestFile.exists()) {
+      try {
+        await manifestFile.delete();
+      } on Exception {
+        // Ignore manifest deletion failure.
+      }
+    }
+
+    if (await cacheRoot.exists()) {
+      final remaining = await cacheRoot.list().isEmpty;
+      if (remaining) {
+        try {
+          await cacheRoot.delete();
+        } on Exception {
+          // Ignore root deletion failure.
+        }
+      }
+    }
+
+    onLog?.call(
+      LogEntry.success('Audio cache cleaned: $removedCount file(s) removed'),
+    );
+    return removedCount;
   }
 
   List<int> _buildAudioPlaylistOrder(
@@ -332,6 +508,116 @@ class VideoMergerService {
     } on Exception catch (_) {
       return null;
     }
+  }
+
+  Future<int?> _getVideoBitrateKbps(String videoPath) async {
+    try {
+      final meta = await FFmpegService.getVideoMetadata(videoPath);
+      return meta.bitrate;
+    } on Exception catch (_) {
+      return null;
+    }
+  }
+
+  int _estimateBytesFromBitrateKbps({
+    required double durationSeconds,
+    required int bitrateKbps,
+  }) {
+    final bits = durationSeconds * bitrateKbps * 1000;
+    return (bits / 8).ceil();
+  }
+
+  Future<
+    ({
+      int estimatedOutputBytes,
+      int estimatedTempPeakBytes,
+      int estimatedRequiredBytes,
+      double estimatedDurationSeconds,
+      int videoBitrateKbps,
+      int audioBitrateKbps,
+    })
+  >
+  estimateDiskUsage({
+    required String backgroundVideoPath,
+    required List<String> audioFiles,
+    int audioLoopCount = 1,
+    String? introVideoPath,
+    void Function(LogEntry log)? onLog,
+  }) async {
+    final estimateLog = LogEntry.info(
+      'Estimating disk usage for video merge...',
+    );
+    onLog?.call(estimateLog);
+
+    var singleLoopAudioSeconds = 0.0;
+    for (final audioPath in audioFiles) {
+      singleLoopAudioSeconds += await _getAudioDurationSeconds(audioPath) ?? 0;
+    }
+
+    var estimatedDurationSeconds = singleLoopAudioSeconds * audioLoopCount;
+    if (estimatedDurationSeconds <= 0) {
+      // Fallback when one or more audio durations cannot be read.
+      estimatedDurationSeconds =
+          max(1, audioFiles.length * audioLoopCount) * 180.0;
+      estimateLog.addSubLog(
+        LogEntry.info(
+          'Audio duration metadata incomplete, using fallback estimate',
+        ),
+      );
+    }
+
+    final backgroundBitrateKbps =
+        await _getVideoBitrateKbps(backgroundVideoPath) ?? 8000;
+    final introBitrateKbps = introVideoPath == null
+        ? null
+        : await _getVideoBitrateKbps(introVideoPath);
+    final selectedVideoBitrateKbps = introBitrateKbps == null
+        ? backgroundBitrateKbps
+        : max(backgroundBitrateKbps, introBitrateKbps);
+
+    final estimatedOutputBytes = _estimateBytesFromBitrateKbps(
+      durationSeconds: estimatedDurationSeconds,
+      bitrateKbps: selectedVideoBitrateKbps + _estimatedAudioBitrateKbps,
+    );
+
+    var estimatedTempPeakBytes = _estimateBytesFromBitrateKbps(
+      durationSeconds: estimatedDurationSeconds,
+      bitrateKbps: _estimatedAudioBitrateKbps,
+    );
+
+    if (introVideoPath != null) {
+      final bgDurationSeconds = await _getVideoDurationSeconds(
+        backgroundVideoPath,
+      );
+      if (bgDurationSeconds != null &&
+          bgDurationSeconds > 0 &&
+          bgDurationSeconds < _preprocessedBackgroundMinimumSeconds) {
+        estimatedTempPeakBytes += _estimateBytesFromBitrateKbps(
+          durationSeconds: _preprocessedBackgroundMinimumSeconds,
+          bitrateKbps: backgroundBitrateKbps,
+        );
+      }
+    }
+
+    final estimatedRequiredBytes =
+        ((estimatedOutputBytes + estimatedTempPeakBytes) *
+                _diskEstimateSafetyMultiplier)
+            .ceil();
+
+    estimateLog.addSubLog(
+      LogEntry.success(
+        'Disk estimate ready: output=${estimatedOutputBytes}B, peak-temp=${estimatedTempPeakBytes}B, required=${estimatedRequiredBytes}B',
+      ),
+    );
+
+    return (
+      estimatedOutputBytes: estimatedOutputBytes,
+      estimatedTempPeakBytes: estimatedTempPeakBytes,
+      estimatedRequiredBytes: estimatedRequiredBytes,
+      estimatedDurationSeconds: estimatedDurationSeconds,
+      videoBitrateKbps: selectedVideoBitrateKbps,
+      audioBitrateKbps: _estimatedAudioBitrateKbps,
+    );
   }
 
   /// Create concat demuxer file for intro + background videos
@@ -546,7 +832,7 @@ class VideoMergerService {
       );
       final normalizedAudioFiles = await _normalizeAudioFilesToAacM4a(
         audioFiles: audioFiles,
-        tempDir: tempDir,
+        projectRootPath: projectRootPath,
         onLog: onLog,
       );
       final playlistOrder = _buildAudioPlaylistOrder(

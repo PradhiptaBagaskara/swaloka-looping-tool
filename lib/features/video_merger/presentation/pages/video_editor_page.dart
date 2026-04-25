@@ -920,6 +920,98 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     );
   }
 
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var size = bytes.toDouble();
+    var unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex++;
+    }
+    final decimals = size >= 10 ? 1 : 2;
+    return '${size.toStringAsFixed(decimals)} ${units[unitIndex]}';
+  }
+
+  Future<bool> _showDiskEstimateWarningDialog({
+    required BuildContext context,
+    required int estimatedOutputBytes,
+    required int estimatedTempPeakBytes,
+    required int estimatedRequiredBytes,
+  }) async {
+    final shouldProceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            const SizedBox(width: 12),
+            Text(
+              'Perkiraan Kebutuhan Disk',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Perkiraan ukuran per konten dan file sementara:',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildCodecInfo(
+              'Perkiraan output konten',
+              _formatBytes(estimatedOutputBytes),
+            ),
+            const SizedBox(height: 8),
+            _buildCodecInfo(
+              'Perkiraan file sementara (peak)',
+              _formatBytes(estimatedTempPeakBytes),
+            ),
+            const SizedBox(height: 8),
+            _buildCodecInfo(
+              'Estimasi kebutuhan total',
+              _formatBytes(estimatedRequiredBytes),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Pastikan disk Anda cukup. Jika ruang tidak mencukupi, proses dapat gagal di tengah jalan karena disk penuh.',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            ),
+            child: const Text('Lanjutkan'),
+          ),
+        ],
+      ),
+    );
+
+    return shouldProceed ?? false;
+  }
+
   Future<void> _selectVideo(
     BuildContext context,
     WidgetRef ref, {
@@ -977,6 +1069,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     final outputDir = widget.project.effectiveOutputPath;
 
     if (backgroundVideo == null || audioFiles.isEmpty) return;
+    final service = ref.read(videoMergerServiceProvider);
 
     // Codec Validation (Warning only, can't easily auto-fix cross-codec without massive re-encode)
     if (_introVideo != null) {
@@ -1340,6 +1433,21 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     }
 
     if (!context.mounted) return;
+    final diskEstimate = await service.estimateDiskUsage(
+      backgroundVideoPath: backgroundVideo,
+      audioFiles: audioFiles,
+      audioLoopCount: _audioLoopCount,
+      introVideoPath: _introVideo,
+    );
+    if (!context.mounted) return;
+    final shouldProceed = await _showDiskEstimateWarningDialog(
+      context: context,
+      estimatedOutputBytes: diskEstimate.estimatedOutputBytes,
+      estimatedTempPeakBytes: diskEstimate.estimatedTempPeakBytes,
+      estimatedRequiredBytes: diskEstimate.estimatedRequiredBytes,
+    );
+    if (!shouldProceed) return;
+    if (!context.mounted) return;
 
     unawaited(
       showDialog<void>(
@@ -1367,7 +1475,6 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
       );
 
       ref.read(processingStateProvider.notifier).startProcessing();
-      final service = ref.read(videoMergerServiceProvider);
 
       await service.processVideoWithAudio(
         backgroundVideoPath: backgroundVideo,
