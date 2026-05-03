@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:swaloka_looping_tool/features/bulk_loop/presentation/pages/bulk_loop_jobs_page.dart';
 import 'package:swaloka_looping_tool/features/media_tools/presentation/pages/audio_tools_standalone_page.dart';
 import 'package:swaloka_looping_tool/features/media_tools/presentation/pages/video_tools_page.dart';
 import 'package:swaloka_looping_tool/features/video_merger/domain/models/swaloka_project.dart';
@@ -55,6 +56,7 @@ class _ProjectLayoutState extends ConsumerState<ProjectLayout> {
                             index: _selectedTab,
                             children: [
                               widget.looperContent,
+                              BulkLoopJobsPage(project: widget.project),
                               VideoToolsPage(
                                 initialDirectory: widget.project.rootPath,
                               ),
@@ -101,7 +103,8 @@ class _ProjectLayoutState extends ConsumerState<ProjectLayout> {
                 SizedBox(height: baseFontSize * 0.86),
                 _buildNavButton(0, 'Looping Tools', Icons.loop),
                 _buildAudioToolsButton(),
-                _buildNavButton(1, 'Video Tools', Icons.video_library),
+                _buildNavButton(1, 'Bulk Loop', Icons.auto_awesome_motion),
+                _buildNavButton(2, 'Video Tools', Icons.video_library),
                 SizedBox(height: baseFontSize * 2.29),
                 if (_selectedTab == 0 && widget.looperQuickAction != null) ...[
                   _buildSectionTitle(context, 'Quick Actions'),
@@ -480,6 +483,15 @@ class _ProjectLayoutState extends ConsumerState<ProjectLayout> {
             ],
           ),
           SizedBox(height: baseFontSize * 0.29),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _cleanGlobalAudioCache,
+              icon: Icon(Icons.cleaning_services, size: baseFontSize * 1.0),
+              label: const Text('Clean Cache'),
+            ),
+          ),
+          SizedBox(height: baseFontSize * 0.29),
           Text(
             'Made with ❤️ by Swaloka',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -488,6 +500,42 @@ class _ProjectLayoutState extends ConsumerState<ProjectLayout> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _cleanGlobalAudioCache() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Clean Audio Cache'),
+        content: const Text(
+          'Hapus semua cache audio?\n\n'
+          'Ini akan menghapus:\n'
+          '- cache/audio_cache.json\n'
+          '- cache/audios/*.m4a',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Hapus Cache'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final removedCount = await ref
+        .read(videoMergerServiceProvider)
+        .clearGlobalAudioCache(projectRootPath: widget.project.rootPath);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Cache dibersihkan ($removedCount file).')),
     );
   }
 
