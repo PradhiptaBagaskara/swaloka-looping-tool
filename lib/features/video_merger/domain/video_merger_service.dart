@@ -83,13 +83,14 @@ class VideoMergerService {
 
     for (var i = 0; i < audioFiles.length; i++) {
       final sourcePath = p.normalize(p.absolute(audioFiles[i]));
+      final sourceCacheKey = await _buildAudioCacheKey(sourcePath);
       if (isAACResults[i]) {
         normalized[i] = sourcePath;
         log.addSubLog(
           LogEntry.info('✓ Already AAC: ${p.basename(sourcePath)}'),
         );
       } else {
-        final cachedPath = cacheManifest[sourcePath];
+        final cachedPath = cacheManifest[sourceCacheKey];
         if (cachedPath != null && await File(cachedPath).exists()) {
           normalized[i] = p.normalize(cachedPath);
           log.addSubLog(
@@ -100,6 +101,7 @@ class VideoMergerService {
         final outputPath = _buildCachedAudioPath(
           projectRootPath: projectRootPath,
           sourcePath: sourcePath,
+          sourceCacheKey: sourceCacheKey,
         );
         needsConversion.add(
           (
@@ -125,7 +127,8 @@ class VideoMergerService {
 
       for (final item in converted) {
         normalized[item.index] = item.path;
-        cacheManifest[item.sourcePath] = item.path;
+        final cacheKey = await _buildAudioCacheKey(item.sourcePath);
+        cacheManifest[cacheKey] = item.path;
       }
 
       await _writeAudioCacheManifest(
@@ -241,6 +244,7 @@ class VideoMergerService {
   String _buildCachedAudioPath({
     required String projectRootPath,
     required String sourcePath,
+    required String sourceCacheKey,
   }) {
     final sourceNormalized = p.normalize(p.absolute(sourcePath));
     final sourceBase = p.basenameWithoutExtension(sourceNormalized);
@@ -248,9 +252,26 @@ class VideoMergerService {
     final shortBase = safeBase.isEmpty
         ? 'audio'
         : (safeBase.length <= 48 ? safeBase : safeBase.substring(0, 48));
-    final hashHex = _fnv1a64(sourceNormalized).toRadixString(16);
+    final hashHex = _fnv1a64(sourceCacheKey).toRadixString(16);
     final filename = '${shortBase}_$hashHex.m4a';
     return p.join(_audioCacheDirectoryPath(projectRootPath), filename);
+  }
+
+  Future<String> _buildAudioCacheKey(String sourcePath) async {
+    final absolutePath = p.normalize(p.absolute(sourcePath));
+    var canonicalPath = absolutePath;
+    try {
+      canonicalPath = p.normalize(
+        await File(absolutePath).resolveSymbolicLinks(),
+      );
+    } on Exception {
+      // Keep absolute normalized path when canonical resolution fails.
+      canonicalPath = absolutePath;
+    }
+    if (Platform.isWindows || Platform.isMacOS) {
+      canonicalPath = canonicalPath.toLowerCase();
+    }
+    return canonicalPath;
   }
 
   Future<Map<String, String>> _readAudioCacheManifest(
@@ -304,8 +325,9 @@ class VideoMergerService {
     final cacheRoot = Directory(_cacheRootPath(projectRootPath));
     final audioCacheDir = Directory(_audioCacheDirectoryPath(projectRootPath));
     final manifestFile = File(_audioCacheManifestPath(projectRootPath));
+    final logsDir = Directory(p.join(projectRootPath, 'logs'));
 
-    var removedCount = 0;
+    var removedAudioCount = 0;
 
     if (await audioCacheDir.exists()) {
       final entities = await audioCacheDir.list().toList();
@@ -313,7 +335,7 @@ class VideoMergerService {
         if (entity is File) {
           try {
             await entity.delete();
-            removedCount++;
+            removedAudioCount++;
           } on Exception {
             // Ignore single file deletion failure and continue.
           }
@@ -345,10 +367,36 @@ class VideoMergerService {
       }
     }
 
+    final removedLogCount = await _clearLogsDirectory(logsDir);
+    final removedCount = removedAudioCount + removedLogCount;
+
     onLog?.call(
-      LogEntry.success('Audio cache cleaned: $removedCount file(s) removed'),
+      LogEntry.success(
+        'Cache cleaned: $removedAudioCount audio file(s), '
+        '$removedLogCount log file(s)',
+      ),
     );
     return removedCount;
+  }
+
+  Future<int> _clearLogsDirectory(Directory logsDir) async {
+    if (!await logsDir.exists()) return 0;
+
+    var removedLogs = 0;
+    await for (final entity in logsDir.list(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entity is File) {
+        try {
+          await entity.delete();
+          removedLogs++;
+        } on Exception {
+          // Ignore single log deletion failure and continue.
+        }
+      }
+    }
+    return removedLogs;
   }
 
   List<int> _buildAudioPlaylistOrder(

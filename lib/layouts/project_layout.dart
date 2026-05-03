@@ -509,10 +509,11 @@ class _ProjectLayoutState extends ConsumerState<ProjectLayout> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Clean Audio Cache'),
         content: const Text(
-          'Hapus semua cache audio?\n\n'
+          'Hapus semua cache audio dan log?\n\n'
           'Ini akan menghapus:\n'
           '- cache/audio_cache.json\n'
-          '- cache/audios/*.m4a',
+          '- cache/audios/*.m4a\n'
+          '- logs/*',
         ),
         actions: [
           TextButton(
@@ -535,7 +536,7 @@ class _ProjectLayoutState extends ConsumerState<ProjectLayout> {
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Cache dibersihkan ($removedCount file).')),
+      SnackBar(content: Text('Cache + log dibersihkan ($removedCount file).')),
     );
   }
 
