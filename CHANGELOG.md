@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [5.6.1](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.6.0...swaloka_looping_tool-v5.6.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* duplicates cache ([b564843](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/commit/b56484390ba0faab64c128a672d8fadfefbab604))
+
 ## [5.6.0](https://github.com/PradhiptaBagaskara/swaloka-looping-tool/compare/swaloka_looping_tool-v5.5.0...swaloka_looping_tool-v5.6.0) (2026-05-03)
 
 
