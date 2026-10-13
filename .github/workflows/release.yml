@@ -20,7 +20,7 @@ jobs:
       version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
       is_prerelease: ${{ github.ref == 'refs/heads/develop' }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           target-branch: ${{ github.ref_name }}
