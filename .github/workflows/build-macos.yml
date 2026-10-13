@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set PR version in pubspec.yaml
         if: ${{ inputs.set-pr-version }}
